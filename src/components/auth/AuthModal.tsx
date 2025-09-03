@@ -1,5 +1,13 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +31,55 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ open, onOpenChange }: AuthModalProps) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const handleSignIn = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      router.push("/dashboard");
+      onOpenChange(false);
+    } catch (error: any) {
+      toast({
+        title: "Sign In Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+    setLoading(false);
+  };
+
+  const handleCreateAccount = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+      toast({
+        title: "Passwords do not match",
+        description: "Please make sure your passwords match.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setLoading(true);
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      router.push("/dashboard");
+      onOpenChange(false);
+    } catch (error: any) {
+      toast({
+        title: "Account Creation Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+    setLoading(false);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px] bg-card border-border">
@@ -41,30 +98,34 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="email-signin">Email</Label>
-                <Input id="email-signin" type="email" placeholder="dealer@example.com" />
+                <Input id="email-signin" type="email" placeholder="dealer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password-signin">Password</Label>
-                <Input id="password-signin" type="password" placeholder="********" />
+                <Input id="password-signin" type="password" placeholder="********" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
-              <Button type="submit" className="w-full mt-2">Sign In</Button>
+              <Button type="submit" className="w-full mt-2" onClick={handleSignIn} disabled={loading}>
+                {loading ? "Signing In..." : "Sign In"}
+              </Button>
             </div>
           </TabsContent>
           <TabsContent value="create-account">
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="email-signup">Email Address</Label>
-                <Input id="email-signup" type="email" placeholder="dealer@example.com" />
+                <Input id="email-signup" type="email" placeholder="dealer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password-signup">Password</Label>
-                <Input id="password-signup" type="password" placeholder="Choose a strong password" />
+                <Input id="password-signup" type="password" placeholder="Choose a strong password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password-confirm">Confirm Password</Label>
-                <Input id="password-confirm" type="password" placeholder="Confirm your password" />
+                <Input id="password-confirm" type="password" placeholder="Confirm your password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
               </div>
-              <Button type="submit" className="w-full mt-2">Create Account</Button>
+              <Button type="submit" className="w-full mt-2" onClick={handleCreateAccount} disabled={loading}>
+                {loading ? "Creating Account..." : "Create Account"}
+              </Button>
             </div>
           </TabsContent>
         </Tabs>
