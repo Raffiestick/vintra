@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import {
   collection,
   query,
@@ -26,13 +27,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Badge } from "@/components/ui/badge";
 
 export default function DealerManagementPage() {
   const [pendingDealers, setPendingDealers] = useState<DocumentData[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
+  const functions = getFunctions();
 
   useEffect(() => {
     const q = query(collection(db, "users"), where("status", "==", "pending"));
@@ -64,27 +65,31 @@ export default function DealerManagementPage() {
     uid: string,
     action: "approve" | "deny"
   ) => {
+    if (!auth.currentUser) {
+       toast({
+        title: "Authentication Error",
+        description: "You must be logged in to perform this action.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsSubmitting((prev) => ({ ...prev, [uid]: true }));
     try {
-      const response = await fetch("/api/manage-dealer-application", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ uid, action }),
-      });
+      const manageDealerApplication = httpsCallable(functions, 'manageDealerApplication');
+      const result: any = await manageDealerApplication({ uid, action });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "An unknown error occurred.");
+      if (result.data.success) {
+        toast({
+          title: "Success",
+          description: `Dealer application has been ${action}d.`,
+        });
+      } else {
+        throw new Error(result.data.error || "An unknown error occurred.");
       }
 
-      toast({
-        title: "Success",
-        description: `Dealer application has been ${action}d.`,
-      });
     } catch (error: any) {
+      console.error("Error managing dealer application:", error);
       toast({
         title: "Action Failed",
         description: error.message,
