@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface AuthModalProps {
   open: boolean;
@@ -96,7 +97,8 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       
       router.push('/upload-documents');
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: any)
+      {
       toast({
         title: "Account Creation Failed",
         description: error.message,
@@ -108,7 +110,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px] bg-card border-border">
+      <DialogContent className="sm:max-w-md bg-card border-border">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold text-center text-card-foreground">Dealer Portal Access</DialogTitle>
           <DialogDescription className="text-center text-muted-foreground">
@@ -136,53 +138,55 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
             </div>
           </TabsContent>
           <TabsContent value="create-account">
-            <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto px-1">
-              <div className="space-y-2">
-                <Label htmlFor="companyName">Company Name</Label>
-                <Input id="companyName" placeholder="Your Company LLC" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
-              </div>
-               <div className="space-y-2">
-                <Label htmlFor="contactName">Contact Name</Label>
-                <Input id="contactName" placeholder="John Doe" value={contactName} onChange={(e) => setContactName(e.target.value)} />
-              </div>
-               <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input id="phone" type="tel" placeholder="(555) 555-5555" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="streetAddress">Street Address</Label>
-                <Input id="streetAddress" placeholder="123 Main St" value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} />
-              </div>
-              <div className="flex gap-4">
-                <div className="space-y-2 w-1/2">
-                  <Label htmlFor="city">City</Label>
-                  <Input id="city" placeholder="Anytown" value={city} onChange={(e) => setCity(e.target.value)} />
+            <ScrollArea className="h-96 w-full">
+              <div className="space-y-4 py-4 px-4">
+                <div className="space-y-2">
+                  <Label htmlFor="companyName">Company Name</Label>
+                  <Input id="companyName" placeholder="Your Company LLC" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
                 </div>
-                <div className="space-y-2 w-1/4">
-                  <Label htmlFor="state">State</Label>
-                  <Input id="state" placeholder="CA" value={state} onChange={(e) => setState(e.target.value)} />
+                 <div className="space-y-2">
+                  <Label htmlFor="contactName">Contact Name</Label>
+                  <Input id="contactName" placeholder="John Doe" value={contactName} onChange={(e) => setContactName(e.target.value)} />
                 </div>
-                 <div className="space-y-2 w-1/4">
-                  <Label htmlFor="zip">Zip</Label>
-                  <Input id="zip" placeholder="12345" value={zip} onChange={(e) => setZip(e.target.value)} />
+                 <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input id="phone" type="tel" placeholder="(555) 555-5555" value={phone} onChange={(e) => setPhone(e.target.value)} />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="streetAddress">Street Address</Label>
+                  <Input id="streetAddress" placeholder="123 Main St" value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} />
+                </div>
+                <div className="flex gap-4">
+                  <div className="space-y-2 flex-1">
+                    <Label htmlFor="city">City</Label>
+                    <Input id="city" placeholder="Anytown" value={city} onChange={(e) => setCity(e.target.value)} />
+                  </div>
+                  <div className="space-y-2 w-20">
+                    <Label htmlFor="state">State</Label>
+                    <Input id="state" placeholder="CA" value={state} onChange={(e) => setState(e.target.value)} />
+                  </div>
+                   <div className="space-y-2 w-24">
+                    <Label htmlFor="zip">Zip</Label>
+                    <Input id="zip" placeholder="12345" value={zip} onChange={(e) => setZip(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email-signup">Email Address</Label>
+                  <Input id="email-signup" type="email" placeholder="dealer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password-signup">Password</Label>
+                  <Input id="password-signup" type="password" placeholder="Choose a strong password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password-confirm">Confirm Password</Label>
+                  <Input id="password-confirm" type="password" placeholder="Confirm your password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                </div>
+                <Button type="submit" className="w-full mt-2" onClick={handleCreateAccount} disabled={loading}>
+                  {loading ? "Creating Account..." : "Create Account"}
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="email-signup">Email Address</Label>
-                <Input id="email-signup" type="email" placeholder="dealer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password-signup">Password</Label>
-                <Input id="password-signup" type="password" placeholder="Choose a strong password" value={password} onChange={(e) => setPassword(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password-confirm">Confirm Password</Label>
-                <Input id="password-confirm" type="password" placeholder="Confirm your password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-              </div>
-              <Button type="submit" className="w-full mt-2" onClick={handleCreateAccount} disabled={loading}>
-                {loading ? "Creating Account..." : "Create Account"}
-              </Button>
-            </div>
+            </ScrollArea>
           </TabsContent>
         </Tabs>
       </DialogContent>
