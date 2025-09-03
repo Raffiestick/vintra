@@ -31,7 +31,7 @@ exports.manageDealerApplication = functions.https.onCall(async (data, context) =
         }
         else if (action === "deny") {
             // Update user status in Firestore
-            await userDoc - ref.update({ status: "denied" });
+            await userDocRef.update({ status: "denied" });
         }
         // You can also add email notifications here.
         return { success: true, message: `User ${uid} has been ${action}d.` };
