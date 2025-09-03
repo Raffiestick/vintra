@@ -6,7 +6,8 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -34,6 +35,14 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [streetAddress, setStreetAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [zip, setZip] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [phone, setPhone] = useState("");
+
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -67,7 +76,24 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     }
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        companyName,
+        streetAddress,
+        city,
+        state,
+        zip,
+        contactName,
+        phone,
+        email,
+        role: 'dealer',
+        status: 'pending',
+        documentsUploaded: false,
+      });
+      
       router.push("/dashboard");
       onOpenChange(false);
     } catch (error: any) {
@@ -110,7 +136,37 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
             </div>
           </TabsContent>
           <TabsContent value="create-account">
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto px-1">
+              <div className="space-y-2">
+                <Label htmlFor="companyName">Company Name</Label>
+                <Input id="companyName" placeholder="Your Company LLC" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+              </div>
+               <div className="space-y-2">
+                <Label htmlFor="contactName">Contact Name</Label>
+                <Input id="contactName" placeholder="John Doe" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+              </div>
+               <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input id="phone" type="tel" placeholder="(555) 555-5555" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="streetAddress">Street Address</Label>
+                <Input id="streetAddress" placeholder="123 Main St" value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} />
+              </div>
+              <div className="flex gap-4">
+                <div className="space-y-2 w-1/2">
+                  <Label htmlFor="city">City</Label>
+                  <Input id="city" placeholder="Anytown" value={city} onChange={(e) => setCity(e.target.value)} />
+                </div>
+                <div className="space-y-2 w-1/4">
+                  <Label htmlFor="state">State</Label>
+                  <Input id="state" placeholder="CA" value={state} onChange={(e) => setState(e.target.value)} />
+                </div>
+                 <div className="space-y-2 w-1/4">
+                  <Label htmlFor="zip">Zip</Label>
+                  <Input id="zip" placeholder="12345" value={zip} onChange={(e) => setZip(e.target.value)} />
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="email-signup">Email Address</Label>
                 <Input id="email-signup" type="email" placeholder="dealer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
