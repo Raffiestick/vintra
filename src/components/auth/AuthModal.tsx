@@ -94,7 +94,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
         documentsUploaded: false,
       });
       
-      router.push("/dashboard");
+      router.push('/upload-documents');
       onOpenChange(false);
     } catch (error: any) {
       toast({
