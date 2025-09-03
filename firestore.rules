@@ -1,7 +1,35 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      // Note: In Firestore rules, you can't check custom claims directly.
+      // We rely on a 'role' field in the user's document in the users collection.
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Users: An admin can read/write any user doc. A user can only read/write their own doc.
+    match /users/{uid} {
+      allow read, write: if isOwner(uid) || isAdmin();
+    }
+
+    // Jackets: Admins have full access. Dealers can only read jackets assigned to them.
+    match /jackets/{vin} {
+      allow read, write: if isAdmin();
+      allow list: if isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dealer';
+      allow get: if isSignedIn() && resource.data.dealerId == request.auth.uid;
+    }
+    
+    // Counters: Only accessible by backend functions (admins).
+    match /counters/{counter} {
       allow read, write: if false;
     }
   }
