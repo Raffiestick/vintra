@@ -7,34 +7,5 @@ runConfig:
   maxInstances: 1
   cpu: 1
   memoryMiB: 1024
-# build and deployment settings
-build:
-  # an array of commands to run before building your app
-  prebuild: []
-  # an array of commands to run to build your app
-  commands:
-    - npm install
-    - npm run build
-  # an array of environment variables to set during the build process
-  env: []
-# an array of environment variables to set for your app
-env: []
-# a list of secrets to mount in your app
-secrets: []
-# a list of files to include in your app
-include: []
-# a list of files to exclude from your app
-exclude:
-  - .idea/**
-  - .vscode/**
-  - .git/**
-  - .gitignore
-  - '*.md'
-# a list of headers to add to your app's responses
-headers: []
-# a list of redirects to configure for your app
-redirects: []
-# a list of rewrites to configure for your app
-rewrites: []
 # the command to start your app
 entrypoint: npm start
