@@ -1,0 +1,20 @@
+[
+  {
+    "origin": [
+      "http://localhost:9002",
+      "https://rizeup-dealer-connect-n6k7r.web.app"
+    ],
+    "method": [
+      "GET",
+      "POST",
+      "PUT",
+      "DELETE",
+      "HEAD"
+    ],
+    "responseHeader": [
+      "Content-Type",
+      "Authorization"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

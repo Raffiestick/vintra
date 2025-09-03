@@ -1,0 +1,26 @@
+const admin = require('firebase-admin');
+
+admin.initializeApp({
+  credential: admin.credential.applicationDefault(),
+});
+
+const email = process.argv[2];
+
+if (!email) {
+  console.error('ERROR: Please provide an email address as an argument.');
+  process.exit(1);
+}
+
+async function setAdminClaim() {
+  try {
+    const user = await admin.auth().getUserByEmail(email);
+    await admin.auth().setCustomUserClaims(user.uid, { role: 'admin' });
+    console.log(`✅ Success! ${email} has been made an admin.`);
+    console.log("Log out and log back in to see the changes.");
+  } catch (error) {
+    console.error('Error:', error.message);
+  }
+  process.exit(0);
+}
+
+setAdminClaim();

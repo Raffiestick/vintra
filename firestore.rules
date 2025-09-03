@@ -6,31 +6,43 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Helper function to get the requesting user's data from the /users collection
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
     function isAdmin() {
-      // Note: In Firestore rules, you can't check custom claims directly.
-      // We rely on a 'role' field in the user's document in the users collection.
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // IMPORTANT: Rules check the Firestore document, not Auth claims.
+      // We must have a 'role' field in the user's document.
+      return isSignedIn() && getUserData().role == 'admin';
     }
 
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // Users: An admin can read/write any user doc. A user can only read/write their own doc.
     match /users/{uid} {
-      allow read, write: if isOwner(uid) || isAdmin();
+      // Admins can LIST all user documents to find pending applications
+      allow list: if isAdmin();
+
+      // A user can GET/UPDATE their own document. Admins can GET/UPDATE any document.
+      allow get, update: if isOwner(uid) || isAdmin();
+
+      // A user can CREATE their own document during signup.
+      allow create: if isOwner(uid);
     }
 
-    // Jackets: Admins have full access. Dealers can only read jackets assigned to them.
     match /jackets/{vin} {
+      // Admins have full control over jackets
       allow read, write: if isAdmin();
-      allow list: if isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'dealer';
+
+      // Dealers can read jackets assigned to them
       allow get: if isSignedIn() && resource.data.dealerId == request.auth.uid;
     }
-    
-    // Counters: Only accessible by backend functions (admins).
+
     match /counters/{counter} {
-      allow read, write: if false;
+      // Only backend functions can access counters
+      allow read, write: if false; 
     }
   }
 }

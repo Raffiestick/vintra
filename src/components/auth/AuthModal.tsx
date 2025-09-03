@@ -2,12 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-} from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -26,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface AuthModalProps {
   open: boolean;
@@ -39,21 +37,26 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   const [companyName, setCompanyName] = useState("");
   const [streetAddress, setStreetAddress] = useState("");
   const [city, setCity] = useState("");
-  const [state, setState] = useState("");
+  const [state, setState] = useState(""); // Corrected: removed extra "="
   const [zip, setZip] = useState("");
   const [contactName, setContactName] = useState("");
   const [phone, setPhone] = useState("");
-
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
-  const handleSignIn = async (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push("/dashboard");
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      const tokenResult = await user.getIdTokenResult(true);
+      if (tokenResult.claims.role === 'admin') {
+        router.push('/admin/dealer-management');
+      } else {
+        router.push('/reports');
+      }
       onOpenChange(false);
     } catch (error: any) {
       toast({
@@ -65,12 +68,11 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     setLoading(false);
   };
 
-  const handleCreateAccount = async (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirmPassword) {
       toast({
         title: "Passwords do not match",
-        description: "Please make sure your passwords match.",
         variant: "destructive",
       });
       return;
@@ -93,12 +95,12 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
         role: 'dealer',
         status: 'pending',
         documentsUploaded: false,
+        createdAt: serverTimestamp(),
       });
       
       router.push('/upload-documents');
       onOpenChange(false);
-    } catch (error: any)
-      {
+    } catch (error: any) {
       toast({
         title: "Account Creation Failed",
         description: error.message,
@@ -110,9 +112,9 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-card border-border">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold text-center text-card-foreground">Dealer Portal Access</DialogTitle>
+          <DialogTitle className="text-2xl font-bold text-center">Dealer Portal Access</DialogTitle>
           <DialogDescription className="text-center text-muted-foreground">
             Sign in or create your dealer account.
           </DialogDescription>
@@ -123,70 +125,54 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
             <TabsTrigger value="create-account">Create Account</TabsTrigger>
           </TabsList>
           <TabsContent value="sign-in">
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="email-signin">Email</Label>
-                <Input id="email-signin" type="email" placeholder="dealer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password-signin">Password</Label>
-                <Input id="password-signin" type="password" placeholder="********" value={password} onChange={(e) => setPassword(e.target.value)} />
-              </div>
-              <Button type="submit" className="w-full mt-2" onClick={handleSignIn} disabled={loading}>
-                {loading ? "Signing In..." : "Sign In"}
-              </Button>
-            </div>
+            <form onSubmit={handleSignIn}>
+              <Card className="border-0 shadow-none">
+                <CardContent className="space-y-4 pt-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="email-signin">Email</Label>
+                    <Input id="email-signin" type="email" placeholder="dealer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password-signin">Password</Label>
+                    <Input id="password-signin" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Signing In..." : "Sign In"}
+                  </Button>
+                </CardFooter>
+              </Card>
+            </form>
           </TabsContent>
           <TabsContent value="create-account">
-            <ScrollArea className="h-96 w-full">
-              <div className="space-y-4 py-4 px-4">
-                <div className="space-y-2">
-                  <Label htmlFor="companyName">Company Name</Label>
-                  <Input id="companyName" placeholder="Your Company LLC" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
-                </div>
-                 <div className="space-y-2">
-                  <Label htmlFor="contactName">Contact Name</Label>
-                  <Input id="contactName" placeholder="John Doe" value={contactName} onChange={(e) => setContactName(e.target.value)} />
-                </div>
-                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input id="phone" type="tel" placeholder="(555) 555-5555" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="streetAddress">Street Address</Label>
-                  <Input id="streetAddress" placeholder="123 Main St" value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} />
-                </div>
-                <div className="flex gap-4">
-                  <div className="space-y-2 flex-1">
-                    <Label htmlFor="city">City</Label>
-                    <Input id="city" placeholder="Anytown" value={city} onChange={(e) => setCity(e.target.value)} />
-                  </div>
-                  <div className="space-y-2 w-20">
-                    <Label htmlFor="state">State</Label>
-                    <Input id="state" placeholder="CA" value={state} onChange={(e) => setState(e.target.value)} />
-                  </div>
-                   <div className="space-y-2 w-24">
-                    <Label htmlFor="zip">Zip</Label>
-                    <Input id="zip" placeholder="12345" value={zip} onChange={(e) => setZip(e.target.value)} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email-signup">Email Address</Label>
-                  <Input id="email-signup" type="email" placeholder="dealer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password-signup">Password</Label>
-                  <Input id="password-signup" type="password" placeholder="Choose a strong password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password-confirm">Confirm Password</Label>
-                  <Input id="password-confirm" type="password" placeholder="Confirm your password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                </div>
-                <Button type="submit" className="w-full mt-2" onClick={handleCreateAccount} disabled={loading}>
-                  {loading ? "Creating Account..." : "Create Account"}
-                </Button>
-              </div>
-            </ScrollArea>
+            <form onSubmit={handleCreateAccount}>
+              <Card className="border-0 shadow-none">
+                <CardContent className="h-96 w-full pr-4">
+                  <ScrollArea className="h-full w-full">
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2"><Label>Company Name</Label><Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} /></div>
+                      <div className="space-y-2"><Label>Contact Name</Label><Input value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
+                      <div className="space-y-2"><Label>Phone Number</Label><Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
+                      <div className="space-y-2"><Label>Street Address</Label><Input value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} /></div>
+                      <div className="flex gap-4">
+                        <div className="space-y-2 flex-1"><Label>City</Label><Input value={city} onChange={(e) => setCity(e.target.value)} /></div>
+                        <div className="space-y-2 w-20"><Label>State</Label><Input value={state} onChange={(e) => setState(e.target.value)} /></div>
+                        <div className="space-y-2 w-24"><Label>Zip</Label><Input value={zip} onChange={(e) => setZip(e.target.value)} /></div>
+                      </div>
+                      <div className="space-y-2"><Label>Email Address</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+                      <div className="space-y-2"><Label>Password</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+                      <div className="space-y-2"><Label>Confirm Password</Label><Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} /></div>
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+                <CardFooter>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Creating Account..." : "Create Account"}
+                  </Button>
+                </CardFooter>
+              </Card>
+            </form>
           </TabsContent>
         </Tabs>
       </DialogContent>

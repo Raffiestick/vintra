@@ -1,12 +1,12 @@
 export default function PendingReviewPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground p-4">
-      <div className="text-center space-y-4">
-        <h1 className="text-3xl font-bold tracking-tight">Application Submitted</h1>
-        <p className="max-w-md text-muted-foreground">
-          Thank you for submitting your documents. Your application is now pending review. We will notify you by email once it has been approved.
-        </p>
-      </div>
-    </main>
+    <div className="container mx-auto flex flex-col items-center justify-center text-center py-20">
+      <h1 className="text-4xl font-bold tracking-tight mb-4">
+        Application Submitted
+      </h1>
+      <p className="max-w-xl text-lg text-muted-foreground">
+        Thank you for submitting your documents. Your application is now pending review. We will notify you by email once a decision has been made.
+      </p>
+    </div>
   );
 }
