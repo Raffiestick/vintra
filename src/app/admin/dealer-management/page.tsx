@@ -1,0 +1,168 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  DocumentData,
+} from "firebase/firestore";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+
+export default function DealerManagementPage() {
+  const [pendingDealers, setPendingDealers] = useState<DocumentData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState<Record<string, boolean>>({});
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const q = query(collection(db, "users"), where("status", "==", "pending"));
+    const unsubscribe = onSnapshot(
+      q,
+      (querySnapshot) => {
+        const dealers: DocumentData[] = [];
+        querySnapshot.forEach((doc) => {
+          dealers.push({ id: doc.id, ...doc.data() });
+        });
+        setPendingDealers(dealers);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching pending dealers: ", error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch pending dealer applications.",
+          variant: "destructive",
+        });
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [toast]);
+
+  const handleManageApplication = async (
+    uid: string,
+    action: "approve" | "deny"
+  ) => {
+    setIsSubmitting((prev) => ({ ...prev, [uid]: true }));
+    try {
+      const response = await fetch("/api/manage-dealer-application", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ uid, action }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "An unknown error occurred.");
+      }
+
+      toast({
+        title: "Success",
+        description: `Dealer application has been ${action}d.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Action Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting((prev) => ({ ...prev, [uid]: false }));
+    }
+  };
+
+  return (
+    <main className="flex min-h-screen flex-col items-center bg-background p-4 md:p-8">
+      <Card className="w-full max-w-4xl">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold">
+            Dealer Application Management
+          </CardTitle>
+          <CardDescription>
+            Review and approve or deny pending dealer applications.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p>Loading pending applications...</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Company Name</TableHead>
+                  <TableHead>Contact Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingDealers.length > 0 ? (
+                  pendingDealers.map((dealer) => (
+                    <TableRow key={dealer.id}>
+                      <TableCell className="font-medium">
+                        {dealer.companyName}
+                      </TableCell>
+                      <TableCell>{dealer.contactName}</TableCell>
+                      <TableCell>{dealer.email}</TableCell>
+                      <TableCell className="text-right space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            handleManageApplication(dealer.id, "deny")
+                          }
+                          disabled={isSubmitting[dealer.id]}
+                        >
+                          Deny
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            handleManageApplication(dealer.id, "approve")
+                          }
+                          disabled={isSubmitting[dealer.id]}
+                        >
+                          {isSubmitting[dealer.id] ? "Processing..." : "Approve"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center">
+                      No pending applications found.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </main>
+  );
+}
