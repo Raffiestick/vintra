@@ -1,6 +1,10 @@
 
-import { doc, getDoc, DocumentData } from "firebase/firestore";
-import { db } from "@/lib/firebase-admin"; // Using admin SDK for server-side fetch
+import { getFirestore } from "firebase-admin/firestore";
+import { notFound } from "next/navigation";
+
+// Initialize Admin SDK for server-side fetches
+import { initializeApp, getApps, App } from "firebase-admin/app";
+import { credential } from "firebase-admin";
 import {
   Card,
   CardContent,
@@ -12,24 +16,51 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
-interface PageProps {
-  params: {
-    vin: string;
+// Define a type for your jacket data
+interface Jacket {
+  vin: string;
+  year: number;
+  make: string;
+  model: string;
+  color: string;
+  odometer: number;
+  titleState: string;
+  titleNumber: string;
+  auctionInvoiceTotal: number;
+  dealerId: string;
+  jacketId: string;
+  createdAt?: {
+    toDate: () => Date;
   };
+  [key: string]: any;
 }
 
-async function getJacket(vin: string): Promise<DocumentData | null> {
-  if (!vin) return null;
-  const jacketRef = doc(db, "jackets", vin);
-  const docSnap = await getDoc(jacketRef);
-
-  if (docSnap.exists()) {
-    return docSnap.data();
+// Ensure Firebase Admin is initialized only once
+function getAdminApp(): App {
+    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
+    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+    : undefined;
+    
+  if (getApps().length > 0) {
+    return getApps()[0];
   }
-  return null;
+  return initializeApp({
+    credential: credential.cert(serviceAccount),
+  });
 }
 
-export default async function JacketDetailPage({ params }: PageProps) {
+async function getJacket(vin: string): Promise<Jacket | null> {
+  const adminDb = getFirestore(getAdminApp());
+  const jacketRef = adminDb.collection("jackets").doc(vin);
+  const jacketSnap = await jacketRef.get();
+
+  if (!jacketSnap.exists) {
+    return null;
+  }
+  return jacketSnap.data() as Jacket;
+}
+
+export default async function JacketDetailPage({ params }: { params: { vin: string } }) {
   const { vin } = params;
   const jacket = await getJacket(vin);
 
@@ -50,7 +81,7 @@ export default async function JacketDetailPage({ params }: PageProps) {
       </main>
     );
   }
-
+  
   // Format date if it exists
   const createdAt = jacket.createdAt?.toDate ? jacket.createdAt.toDate().toLocaleDateString() : 'N/A';
 
