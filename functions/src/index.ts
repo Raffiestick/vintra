@@ -1,3 +1,4 @@
+
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 
@@ -7,7 +8,7 @@ const db = admin.firestore();
 const auth = admin.auth();
 
 export const manageDealerApplication = onCall(async (request) => {
-  // Check authentication and admin role.
+  // Check authentication.
   if (!request.auth) {
     throw new HttpsError(
       "unauthenticated",
@@ -16,10 +17,12 @@ export const manageDealerApplication = onCall(async (request) => {
   }
 
   const callerUid = request.auth.uid;
-  const userRecord = await auth.getUser(callerUid);
-  const customClaims = userRecord.customClaims;
+  
+  // Check for admin role by reading the user's document from Firestore
+  const callerDocRef = db.collection("users").doc(callerUid);
+  const callerDoc = await callerDocRef.get();
 
-  if (customClaims?.role !== "admin") {
+  if (!callerDoc.exists || callerDoc.data()?.role !== "admin") {
      throw new HttpsError(
       "permission-denied",
       "The caller does not have administrative privileges."
@@ -39,7 +42,7 @@ export const manageDealerApplication = onCall(async (request) => {
 
   try {
     if (action === "approve") {
-      // Set custom claim for the user to give them dealer role
+      // Set custom claim for the user to give them dealer role for future efficiency
       await auth.setCustomUserClaims(uid, { role: "dealer" });
       // Update user status in Firestore
       await userDocRef.update({ status: "approved" });
