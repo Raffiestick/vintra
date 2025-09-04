@@ -1,21 +1,20 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users can only read and update their own user document.
-    // Admins can read any user document.
     match /users/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.role == 'admin');
-      allow update: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null;
+      // Admins can get single documents and list all users
+      allow get, list: if request.auth.token.role == 'admin';
+      // Any authenticated user can read their own document
+      allow get: if request.auth.uid == userId;
+      // Users can update their own info
+      allow write: if request.auth.uid == userId;
     }
 
-    // Admins can manage all jackets.
-    // Approved dealers can read jackets assigned to them.
     match /jackets/{jacketId} {
-      allow read: if request.auth != null && (request.auth.token.role == 'admin' || resource.data.dealerId == request.auth.uid);
-      allow create, update, delete: if request.auth != null && request.auth.token.role == 'admin';
+        allow read, write, delete: if request.auth.token.role == 'admin';
+        // Dealers can only read jackets assigned to them
+        allow read: if request.auth.token.role == 'dealer' && resource.data.dealerId == request.auth.uid;
     }
   }
 }
