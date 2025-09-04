@@ -1,23 +1,29 @@
-# Settings to manage and configure a Firebase App Hosting backend.
-# https://firebase.google.com/docs/app-hosting/configure
+# Specifies the version of the App Hosting schema.
+specVersion: v1alpha1
 
-# The command that starts your web app
-entrypoint: npm start
-# The command that builds your web app
-build: npm run build
-
-runConfig:
-  # Increase this value to automatically spin up more instances
-  # in response to increased traffic.
-  maxInstances: 1
-  cpu: 1
-  memoryMiB: 1024
-
-# Pass environment variables from your .env file to your build and runtime.
-# See https://firebase.google.com/docs/app-hosting/configure#env
+# Defines the environment variables that will be available to your app.
 env:
-  - variable: FIREBASE_SERVICE_ACCOUNT
-    availability:
-      - BUILD
-      - RUNTIME
-    secret: FIREBASE_SERVICE_ACCOUNT
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyAjhaoaB2BQobm4NWDeJ4ePP-ExVBB77dg"
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "rizeup-dealer-connect-n6k7r.firebaseapp.com"
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "rizeup-dealer-connect-n6k7r"
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "rizeup-dealer-connect-n6k7r.firebasestorage.app"
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "1000941113781"
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:1000941113781:web:1fb421a893eafe977409fc"
+  - variable: GEMINI_API_KEY
+    value: "AIzaSyBJ6vIOnhbHR7z2Op-dGe2iM0HfASx3JD4"
+
+# Specifies the command to run to build your app.
+buildCommand: npm run build
+
+# Specifies the command to run to start your app.
+startCommand: npm run start
+
+# Specifies the location of the static assets produced by the build.
+staticAssets:
+  - .next/static
