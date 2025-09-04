@@ -105,7 +105,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      await setDoc(doc(db, "users", user.uid), {
+      const userData = {
         uid: user.uid,
         companyName,
         streetAddress,
@@ -119,7 +119,11 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
         status: 'pending',
         documentsUploaded: false,
         createdAt: serverTimestamp(),
-      });
+      };
+
+      if(userData) {
+        await setDoc(doc(db, "users", user.uid), userData);
+      }
       
       // Force refresh the token to ensure custom claims are loaded if set by a function
       await user.getIdToken(true);
