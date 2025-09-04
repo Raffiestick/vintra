@@ -1,4 +1,5 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -10,24 +11,31 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
     function isAdmin() {
-      // Checks for a custom claim 'role' set to 'admin'
+      // Checks for the 'admin' custom claim on the auth token.
       return isSignedIn() && request.auth.token.role == 'admin';
     }
 
     // Rules for the 'users' collection
     match /users/{uid} {
-      // A new user can create their own document during signup
+      // A new user can create their own document during signup.
       allow create: if isOwner(uid);
       
-      // Admins can list all users; users can only get their own document
+      // Admins can list all users; authenticated users can only get their own document.
       allow list: if isAdmin();
       allow get: if isOwner(uid) || isAdmin();
 
-      // Users can update their own document; admins can update any
+      // Users can update their own document; admins can update any document.
       allow update: if isOwner(uid) || isAdmin();
+    }
 
-      // Admins can delete users
-      allow delete: if isAdmin();
+    // Rules for the 'jackets' collection
+    match /jackets/{jacketId} {
+      // Admins can read any jacket.
+      // A user can read a jacket if their UID matches the dealerId on the jacket.
+      allow get, list: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.dealerId);
+
+      // Only admins can create, update, or delete jackets.
+      allow create, update, delete: if isAdmin();
     }
   }
 }
