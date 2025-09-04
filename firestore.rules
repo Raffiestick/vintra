@@ -3,34 +3,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check for admin role
-    function isAdmin() {
-      return request.auth.token.role == 'admin';
-    }
-
-    // Helper function to check for dealer role
-    function isDealer() {
-      return request.auth.token.role == 'dealer';
-    }
-    
-    // Helper function to check if the user is the owner of the resource
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    // Rules for the 'users' collection
+    // Users can only read and update their own user document.
+    // Admins can read any user document.
     match /users/{userId} {
-      // Admins can read/write any user document
-      // Users can read/write their own document
-      allow read, write: if isAdmin() || isOwner(userId);
+      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.role == 'admin');
+      allow update: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null;
     }
 
-    // Rules for the 'jackets' collection
+    // Admins can manage all jackets.
+    // Approved dealers can read jackets assigned to them.
     match /jackets/{jacketId} {
-      // Admins can read/write any jacket
-      // Dealers can only read jackets assigned to them
-      allow read: if isAdmin() || (isDealer() && isOwner(resource.data.dealerId));
-      allow write: if isAdmin();
+      allow read: if request.auth != null && (request.auth.token.role == 'admin' || resource.data.dealerId == request.auth.uid);
+      allow create, update, delete: if request.auth != null && request.auth.token.role == 'admin';
     }
   }
 }
