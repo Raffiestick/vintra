@@ -122,6 +122,9 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
         createdAt: serverTimestamp(),
       });
       
+      // Force refresh the token to ensure custom claims are loaded if set by a function
+      await user.getIdToken(true);
+
       router.push('/upload-documents');
       onOpenChange(false);
     } catch (error: any) {
