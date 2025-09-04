@@ -20,34 +20,34 @@ env:
     availability:
       - BUILD
       - RUNTIME
-    secret: true
+    secret: NEXT_PUBLIC_FIREBASE_API_KEY
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
     availability:
       - BUILD
       - RUNTIME
-    secret: true
+    secret: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
     availability:
       - BUILD
       - RUNTIME
-    secret: true
+    secret: NEXT_PUBLIC_FIREBASE_PROJECT_ID
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
     availability:
       - BUILD
       - RUNTIME
-    secret: true
+    secret: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
   - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
     availability:
       - BUILD
       - RUNTIME
-    secret: true
+    secret: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
     availability:
       - BUILD
       - RUNTIME
-    secret: true
+    secret: NEXT_PUBLIC_FIREBASE_APP_ID
   - variable: FIREBASE_SERVICE_ACCOUNT
     availability:
       - BUILD
       - RUNTIME
-    secret: true
+    secret: FIREBASE_SERVICE_ACCOUNT
