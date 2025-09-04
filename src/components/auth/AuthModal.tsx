@@ -53,14 +53,15 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       const user = userCredential.user;
       const tokenResult = await user.getIdTokenResult(true); // Force refresh the token
 
-      if (tokenResult.claims.role === 'admin') {
+      const userDocRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userDocRef);
+      const userData = userDoc.data();
+
+      // Check for admin role in both claims and Firestore document
+      if (tokenResult.claims.role === 'admin' || userData?.role === 'admin') {
         router.push('/admin/dealer-management');
       } else {
-        const userDocRef = doc(db, "users", user.uid);
-        const userDoc = await getDoc(userDocRef);
-
         if (userDoc.exists()) {
-          const userData = userDoc.data();
           if (userData.documentsUploaded === false) {
             router.push('/upload-documents');
           } else if (userData.status === 'pending') {
@@ -73,8 +74,6 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
               description: "Your account has an unrecognized status. Please contact support.",
               variant: "destructive",
             });
-            // Optional: sign out the user
-            // await auth.signOut();
           }
         } else {
           // This case should ideally not happen for a non-admin user
