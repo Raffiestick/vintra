@@ -1,11 +1,17 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // A user can write any file to their own documents folder.
-    // Only that user, or an admin, can read the files.
+    
+    // Rule for dealer document uploads
     match /dealer-documents/{uid}/{fileName} {
       allow write: if request.auth.uid == uid;
       allow read: if request.auth.uid == uid || request.auth.token.role == 'admin';
+    }
+
+    // Rule for admin invoice uploads
+    match /invoice-uploads/{adminUid}/{fileName} {
+      allow write: if request.auth.token.role == 'admin' && request.auth.uid == adminUid;
+      allow read: if request.auth.token.role == 'admin';
     }
   }
 }

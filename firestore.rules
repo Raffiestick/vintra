@@ -2,47 +2,32 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Helper functions
     function isSignedIn() {
       return request.auth != null;
     }
-
-    // Helper function to get the requesting user's data from the /users collection
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function isAdmin() {
-      // IMPORTANT: Rules check the Firestore document, not Auth claims.
-      // We must have a 'role' field in the user's document.
-      return isSignedIn() && getUserData().role == 'admin';
-    }
-
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
     }
+    function isAdmin() {
+      // Checks for a custom claim 'role' set to 'admin'
+      return isSignedIn() && request.auth.token.role == 'admin';
+    }
 
+    // Rules for the 'users' collection
     match /users/{uid} {
-      // Admins can LIST all user documents to find pending applications
-      allow list: if isAdmin();
-
-      // A user can GET/UPDATE their own document. Admins can GET/UPDATE any document.
-      allow get, update: if isOwner(uid) || isAdmin();
-
-      // A user can CREATE their own document during signup.
+      // A new user can create their own document during signup
       allow create: if isOwner(uid);
-    }
+      
+      // Admins can list all users; users can only get their own document
+      allow list: if isAdmin();
+      allow get: if isOwner(uid) || isAdmin();
 
-    match /jackets/{vin} {
-      // Admins have full control over jackets
-      allow read, write: if isAdmin();
+      // Users can update their own document; admins can update any
+      allow update: if isOwner(uid) || isAdmin();
 
-      // Dealers can read jackets assigned to them
-      allow get: if isSignedIn() && resource.data.dealerId == request.auth.uid;
-    }
-
-    match /counters/{counter} {
-      // Only backend functions can access counters
-      allow read, write: if false; 
+      // Admins can delete users
+      allow delete: if isAdmin();
     }
   }
 }
