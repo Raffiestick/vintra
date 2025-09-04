@@ -27,6 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { ExternalLink } from "lucide-react";
 
 export default function DealerManagementPage() {
   const [pendingDealers, setPendingDealers] = useState<DocumentData[]>([]);
@@ -99,9 +100,13 @@ export default function DealerManagementPage() {
     }
   };
 
+  const openInNewTab = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <main className="flex min-h-screen flex-col items-center bg-background p-4 md:p-8">
-      <Card className="w-full max-w-4xl">
+      <Card className="w-full max-w-6xl">
         <CardHeader>
           <CardTitle className="text-2xl font-bold">
             Dealer Application Management
@@ -120,6 +125,8 @@ export default function DealerManagementPage() {
                   <TableHead>Company Name</TableHead>
                   <TableHead>Contact Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Resale Certificate</TableHead>
+                  <TableHead>Government ID</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -132,6 +139,28 @@ export default function DealerManagementPage() {
                       </TableCell>
                       <TableCell>{dealer.contactName}</TableCell>
                       <TableCell>{dealer.email}</TableCell>
+                       <TableCell>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openInNewTab(dealer.resellCertificateUrl)}
+                          disabled={!dealer.resellCertificateUrl}
+                        >
+                          <ExternalLink className="mr-2" />
+                          View
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openInNewTab(dealer.governmentIdUrl)}
+                          disabled={!dealer.governmentIdUrl}
+                        >
+                          <ExternalLink className="mr-2" />
+                          View
+                        </Button>
+                      </TableCell>
                       <TableCell className="text-right space-x-2">
                         <Button
                           variant="outline"
@@ -157,7 +186,7 @@ export default function DealerManagementPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center">
+                    <TableCell colSpan={6} className="text-center">
                       No pending applications found.
                     </TableCell>
                   </TableRow>
