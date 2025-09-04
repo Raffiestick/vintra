@@ -2,7 +2,8 @@
   {
     "origin": [
       "http://localhost:9002",
-      "https://rizeup-dealer-connect-n6k7r.web.app"
+      "https://rizeup-dealer-connect-n6k7r.web.app",
+      "https://*.cloudworkstations.dev"
     ],
     "method": [
       "GET",
