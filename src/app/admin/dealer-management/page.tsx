@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db, auth } from "@/lib/firebase";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { db, auth, functions } from "@/lib/firebase/client";
+import { httpsCallable } from "firebase/functions";
 import {
   collection,
   query,
@@ -33,7 +33,6 @@ export default function DealerManagementPage() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
-  const functions = getFunctions();
 
   useEffect(() => {
     const q = query(collection(db, "users"), where("status", "==", "pending"));

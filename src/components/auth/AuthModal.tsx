@@ -55,7 +55,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       if (tokenResult.claims.role === 'admin') {
         router.push('/admin/dealer-management');
       } else {
-        router.push('/reports');
+        router.push('/dashboard');
       }
       onOpenChange(false);
     } catch (error: any) {
