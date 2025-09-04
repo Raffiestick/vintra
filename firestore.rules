@@ -3,39 +3,34 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    function isOwner(uid) {
-      return isSignedIn() && request.auth.uid == uid;
-    }
+    // Helper function to check for admin role
     function isAdmin() {
-      // Checks for the 'admin' custom claim on the auth token.
-      return isSignedIn() && request.auth.token.role == 'admin';
+      return request.auth.token.role == 'admin';
+    }
+
+    // Helper function to check for dealer role
+    function isDealer() {
+      return request.auth.token.role == 'dealer';
+    }
+    
+    // Helper function to check if the user is the owner of the resource
+    function isOwner(userId) {
+      return request.auth.uid == userId;
     }
 
     // Rules for the 'users' collection
-    match /users/{uid} {
-      // A new user can create their own document during signup.
-      allow create: if isOwner(uid);
-      
-      // Admins can list all users; authenticated users can only get their own document.
-      allow list: if isAdmin();
-      allow get: if isOwner(uid) || isAdmin();
-
-      // Users can update their own document; admins can update any document.
-      allow update: if isOwner(uid) || isAdmin();
+    match /users/{userId} {
+      // Admins can read/write any user document
+      // Users can read/write their own document
+      allow read, write: if isAdmin() || isOwner(userId);
     }
 
     // Rules for the 'jackets' collection
     match /jackets/{jacketId} {
-      // Admins can read any jacket.
-      // A user can read a jacket if their UID matches the dealerId on the jacket.
-      allow get, list: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.dealerId);
-
-      // Only admins can create, update, or delete jackets.
-      allow create, update, delete: if isAdmin();
+      // Admins can read/write any jacket
+      // Dealers can only read jackets assigned to them
+      allow read: if isAdmin() || (isDealer() && isOwner(resource.data.dealerId));
+      allow write: if isAdmin();
     }
   }
 }
