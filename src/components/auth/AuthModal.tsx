@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -37,7 +37,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   const [companyName, setCompanyName] = useState("");
   const [streetAddress, setStreetAddress] = useState("");
   const [city, setCity] = useState("");
-  const [state, setState] = useState(""); // Corrected: removed extra "="
+  const [state, setState] = useState(""); 
   const [zip, setZip] = useState("");
   const [contactName, setContactName] = useState("");
   const [phone, setPhone] = useState("");
@@ -51,11 +51,35 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      const tokenResult = await user.getIdTokenResult(true);
+      const tokenResult = await user.getIdTokenResult(true); // Force refresh the token
+
       if (tokenResult.claims.role === 'admin') {
         router.push('/admin/dealer-management');
       } else {
-        router.push('/dashboard');
+        const userDocRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userDocRef);
+
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          if (userData.documentsUploaded === false) {
+            router.push('/upload-documents');
+          } else if (userData.status === 'pending') {
+            router.push('/pending-review');
+          } else if (userData.status === 'approved') {
+            router.push('/reports'); // Correct dealer dashboard
+          } else {
+             toast({
+              title: "Login Issue",
+              description: "Your account has an unrecognized status. Please contact support.",
+              variant: "destructive",
+            });
+            // Optional: sign out the user
+            // await auth.signOut();
+          }
+        } else {
+          // This case should ideally not happen for a non-admin user
+          throw new Error("User profile not found.");
+        }
       }
       onOpenChange(false);
     } catch (error: any) {
