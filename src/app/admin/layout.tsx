@@ -6,6 +6,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Power } from "lucide-react";
 
 export default function AdminLayout({
   children,
@@ -32,7 +33,7 @@ export default function AdminLayout({
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="w-64 flex-shrink-0 bg-card p-4 flex flex-col border-r">
+      <aside className="w-64 flex-shrink-0 bg-sidebar text-sidebar-foreground p-4 flex flex-col border-r border-sidebar-border">
         <div className="p-4 mb-4">
           <Link href="/admin/dealer-management">
             <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">
@@ -47,10 +48,9 @@ export default function AdminLayout({
                 <Link
                   href={item.href}
                   className={cn(
-                    "block w-full text-left px-4 py-2 rounded-md transition-colors",
-                    pathname === item.href
-                      ? "bg-primary text-primary-foreground"
-                      "hover:bg-muted"
+                    "block w-full text-left px-4 py-2 rounded-md transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    pathname === item.href &&
+                      "bg-primary text-primary-foreground"
                   )}
                 >
                   {item.label}
@@ -60,14 +60,13 @@ export default function AdminLayout({
           </ul>
         </nav>
         <div className="mt-auto">
-          <Button variant="outline" className="w-full" onClick={handleLogout}>
+          <Button variant="ghost" className="w-full justify-start" onClick={handleLogout}>
+            <Power className="mr-2 h-4 w-4" />
             Logout
           </Button>
         </div>
       </aside>
-      <main className="flex-1 p-8 overflow-auto">
-        {children}
-      </main>
+      <main className="flex-1 p-8 overflow-auto">{children}</main>
     </div>
   );
 }
