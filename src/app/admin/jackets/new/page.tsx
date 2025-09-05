@@ -88,8 +88,8 @@ export default function NewJacketPage() {
       titleNumber: "",
       saleLocation: "",
       dealerId: "",
-      year: undefined,
-      odometer: undefined,
+      year: "" as any,
+      odometer: "" as any,
       itemPrice: 0,
       buyerFee: 0,
       onlineFee: 0,
@@ -164,7 +164,7 @@ export default function NewJacketPage() {
       form.reset({
         ...form.getValues(),
         vin: vin || "",
-        year: year || undefined,
+        year: year || "",
         make: make || "",
         model: model || "",
       });
@@ -194,7 +194,7 @@ export default function NewJacketPage() {
       if (!jacketId) throw new Error("Failed to generate a valid Jacket ID.");
 
       const jacketRef = doc(db, "jackets", data.vin);
-      await setDoc(jacketRef, { ...data, createdAt: Timestamp.now() });
+      await setDoc(jacketRef, { ...data, jacketId, createdAt: Timestamp.now() });
       
       toast({ title: "Success", description: "New jacket created successfully." });
       router.push(`/jacket/preview/${data.vin}`);
