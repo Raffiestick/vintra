@@ -17,6 +17,31 @@ function assertAdmin(request: CallableRequest) {
   }
 }
 
+export const getJacketByVin = onCall(async (request: CallableRequest) => {
+    const vin = request.data.vin;
+    if (!vin || typeof vin !== 'string') {
+        throw new HttpsError("invalid-argument", "The function must be called with a 'vin' string.");
+    }
+
+    try {
+        const jacketRef = db.collection("jackets").doc(vin);
+        const jacketSnap = await jacketRef.get();
+
+        if (!jacketSnap.exists) {
+            throw new HttpsError("not-found", `No jacket found with VIN: ${vin}`);
+        }
+        
+        return jacketSnap.data();
+    } catch (error) {
+        logger.error(`Error fetching jacket for VIN ${vin}:`, error);
+        if (error instanceof HttpsError) {
+          throw error;
+        }
+        throw new HttpsError("internal", "An error occurred while fetching the jacket.");
+    }
+});
+
+
 export const manageDealerApplication = onCall(async (request: CallableRequest) => {
     assertAdmin(request);
     

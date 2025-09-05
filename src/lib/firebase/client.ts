@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { connectFunctionsEmulator, getFunctions } from 'firebase/functions';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -24,8 +25,12 @@ const storage = getStorage(app);
  */
 export async function getClientFunctions() {
   if (typeof window !== 'undefined') {
-    const { getFunctions } = await import('firebase/functions');
-    return getFunctions(app, 'us-central1');
+    const functions = getFunctions(app, 'us-central1');
+    if (process.env.NODE_ENV === 'development') {
+      // Uncomment the following line to connect to the local functions emulator
+      // connectFunctionsEmulator(functions, 'localhost', 5001);
+    }
+    return functions;
   }
   return null;
 }
