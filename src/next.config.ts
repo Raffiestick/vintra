@@ -30,7 +30,7 @@ const nextConfig = {
     //
     // This is the fix for the "Module parse failed: Unexpected token" error
     // related to 'undici'. The 'undici' package is a server-side dependency
-    // of 'firebase/functions' and should not be bundled into client-side code.
+    // and should not be bundled into client-side code.
     //
     // By adding this alias, we are telling Webpack to replace any import of
     // 'undici' with a harmless empty module when building for the client,

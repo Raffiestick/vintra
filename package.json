@@ -12,6 +12,8 @@
     "start": "next start -p 8080"
   },
   "dependencies": {
+    "@genkit-ai/googleai": "^1.14.1",
+    "@genkit-ai/next": "^1.14.1",
     "@google-cloud/vertexai": "^1.8.0",
     "@hookform/resolvers": "^3.3.4",
     "@radix-ui/react-dialog": "^1.1.1",
@@ -28,8 +30,9 @@
     "firebase": "^10.8.1",
     "firebase-admin": "^12.0.0",
     "firebase-functions": "^5.0.1",
+    "genkit": "^1.14.1",
     "lucide-react": "^0.344.0",
-    "next": "14.1.0",
+    "next": "^15.0.0",
     "react": "^18",
     "react-dom": "^18",
     "react-hook-form": "^7.51.0",
@@ -42,7 +45,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",
-    "eslint-config-next": "14.1.0",
+    "eslint-config-next": "^15.0.0",
     "postcss": "^8",
     "tailwindcss": "^3.3.0",
     "typescript": "^5"
