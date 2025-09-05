@@ -61,7 +61,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       if (tokenResult.claims.role === 'admin' || userData?.role === 'admin') {
         router.push('/admin/dealer-management');
       } else {
-        if (userDoc.exists()) {
+        if (userDoc.exists() && userData) {
           if (userData.documentsUploaded === false) {
             router.push('/upload-documents');
           } else if (userData.status === 'pending') {
