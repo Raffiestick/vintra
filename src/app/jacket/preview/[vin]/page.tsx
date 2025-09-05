@@ -1,10 +1,6 @@
 
-import { getFirestore } from "firebase-admin/firestore";
+import { db } from "@/lib/firebase-admin";
 import { notFound } from "next/navigation";
-
-// Initialize Admin SDK for server-side fetches
-import { initializeApp, getApps, App } from "firebase-admin/app";
-import { credential } from "firebase-admin";
 import {
   Card,
   CardContent,
@@ -37,28 +33,12 @@ interface Jacket {
 
 // Define the type for the page props
 interface PageProps {
-  params: {
-    vin: string;
-  };
-}
-
-// Ensure Firebase Admin is initialized only once
-function getAdminApp(): App {
-    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
-    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-    : undefined;
-    
-  if (getApps().length > 0) {
-    return getApps()[0];
-  }
-  return initializeApp({
-    credential: credential.cert(serviceAccount),
-  });
+  params: { vin: string };
+  searchParams: { [key: string]: string | string[] | undefined };
 }
 
 async function getJacket(vin: string): Promise<Jacket | null> {
-  const adminDb = getFirestore(getAdminApp());
-  const jacketRef = adminDb.collection("jackets").doc(vin);
+  const jacketRef = db.collection("jackets").doc(vin);
   const jacketSnap = await jacketRef.get();
 
   if (!jacketSnap.exists) {
