@@ -43,8 +43,15 @@ const jacketSchema = z.object({
   model: z.string().min(1, "Model is required"),
   color: z.string().min(1, "Color is required"),
   odometer: z.coerce.number().min(0, "Odometer must be a positive number"),
+  engine: z.string().min(1, "Engine is required"),
+  length: z.string().min(1, "Length is required"),
   titleState: z.string().min(1, "Title state is required"),
   titleNumber: z.string().min(1, "Title number is required"),
+  saleLocation: z.string().min(1, "Sale location is required"),
+  itemPrice: z.coerce.number().min(0, "Item price must be a positive number"),
+  buyerFee: z.coerce.number().min(0, "Buyer fee must be a positive number"),
+  onlineFee: z.coerce.number().min(0, "Online fee must be a positive number"),
+  managementFee: z.coerce.number().min(0, "Management fee must be a positive number"),
   auctionInvoiceTotal: z.coerce.number().min(0, "Auction total must be a positive number"),
   dealerId: z.string().min(1, "Dealer assignment is required"),
 });
@@ -70,7 +77,26 @@ export default function NewJacketPage() {
 
   const form = useForm<JacketFormValues>({
     resolver: zodResolver(jacketSchema),
+    defaultValues: {
+        itemPrice: 0,
+        buyerFee: 0,
+        onlineFee: 0,
+        managementFee: 0,
+        auctionInvoiceTotal: 0,
+    }
   });
+
+  const { watch, setValue } = form;
+  const itemPrice = watch("itemPrice");
+  const buyerFee = watch("buyerFee");
+  const onlineFee = watch("onlineFee");
+  const managementFee = watch("managementFee");
+
+  useEffect(() => {
+    const total = (itemPrice || 0) + (buyerFee || 0) + (onlineFee || 0) + (managementFee || 0);
+    setValue("auctionInvoiceTotal", total, { shouldValidate: true });
+  }, [itemPrice, buyerFee, onlineFee, managementFee, setValue]);
+
 
   useEffect(() => {
     const fetchDealers = async () => {
@@ -204,16 +230,23 @@ export default function NewJacketPage() {
           <CardContent>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                   <FormField control={form.control} name="vin" render={({ field }) => ( <FormItem><FormLabel>VIN</FormLabel><FormControl><Input placeholder="Vehicle Identification Number" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="year" render={({ field }) => ( <FormItem><FormLabel>Year</FormLabel><FormControl><Input type="number" placeholder="e.g., 2023" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="make" render={({ field }) => ( <FormItem><FormLabel>Make</FormLabel><FormControl><Input placeholder="e.g., Toyota" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="model" render={({ field }) => ( <FormItem><FormLabel>Model</FormLabel><FormControl><Input placeholder="e.g., Camry" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="color" render={({ field }) => ( <FormItem><FormLabel>Color</FormLabel><FormControl><Input placeholder="e.g., Super White" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="odometer" render={({ field }) => ( <FormItem><FormLabel>Odometer</FormLabel><FormControl><Input type="number" placeholder="e.g., 25000" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="engine" render={({ field }) => ( <FormItem><FormLabel>Engine</FormLabel><FormControl><Input placeholder="e.g., 2.5L 4-Cylinder" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="length" render={({ field }) => ( <FormItem><FormLabel>Length</FormLabel><FormControl><Input placeholder="e.g., 192.1 in" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="titleState" render={({ field }) => ( <FormItem><FormLabel>Title State</FormLabel><FormControl><Input placeholder="e.g., WY" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="titleNumber" render={({ field }) => ( <FormItem><FormLabel>Title Number</FormLabel><FormControl><Input placeholder="e.g., 123456789" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                  <FormField control={form.control} name="auctionInvoiceTotal" render={({ field }) => ( <FormItem><FormLabel>Auction Invoice Total ($)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 15000.00" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="saleLocation" render={({ field }) => ( <FormItem><FormLabel>Sale Location</FormLabel><FormControl><Input placeholder="e.g., Dallas, TX" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="itemPrice" render={({ field }) => ( <FormItem><FormLabel>Item Price ($)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 12000.00" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="buyerFee" render={({ field }) => ( <FormItem><FormLabel>Buyer Fee ($)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 500.00" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="onlineFee" render={({ field }) => ( <FormItem><FormLabel>Online Fee ($)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 50.00" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="managementFee" render={({ field }) => ( <FormItem><FormLabel>Management Fee ($)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 250.00" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="auctionInvoiceTotal" render={({ field }) => ( <FormItem><FormLabel>Auction Invoice Total ($)</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 15000.00" {...field} readOnly className="bg-muted" /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="dealerId" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Assign to Dealer</FormLabel>
@@ -261,7 +294,7 @@ export default function NewJacketPage() {
   };
 
   return (
-    <Card className="w-full max-w-4xl">
+    <Card className="w-full max-w-6xl">
       <CardHeader>
         <CardTitle>{getTitle()}</CardTitle>
         <CardDescription>{getDescription()}</CardDescription>
@@ -270,3 +303,5 @@ export default function NewJacketPage() {
     </Card>
   );
 }
+
+    
