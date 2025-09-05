@@ -78,11 +78,23 @@ export default function NewJacketPage() {
   const form = useForm<JacketFormValues>({
     resolver: zodResolver(jacketSchema),
     defaultValues: {
-        itemPrice: 0,
-        buyerFee: 0,
-        onlineFee: 0,
-        managementFee: 0,
-        auctionInvoiceTotal: 0,
+      vin: "",
+      make: "",
+      model: "",
+      color: "",
+      engine: "",
+      length: "",
+      titleState: "",
+      titleNumber: "",
+      saleLocation: "",
+      dealerId: "",
+      year: undefined,
+      odometer: undefined,
+      itemPrice: 0,
+      buyerFee: 0,
+      onlineFee: 0,
+      managementFee: 0,
+      auctionInvoiceTotal: 0,
     }
   });
 
@@ -93,7 +105,7 @@ export default function NewJacketPage() {
   const managementFee = watch("managementFee");
 
   useEffect(() => {
-    const total = (itemPrice || 0) + (buyerFee || 0) + (onlineFee || 0) + (managementFee || 0);
+    const total = (Number(itemPrice) || 0) + (Number(buyerFee) || 0) + (Number(onlineFee) || 0) + (Number(managementFee) || 0);
     setValue("auctionInvoiceTotal", total, { shouldValidate: true });
   }, [itemPrice, buyerFee, onlineFee, managementFee, setValue]);
 
