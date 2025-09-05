@@ -7,9 +7,6 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import Link from 'next/link';
-
-// ... (Interface Dealer definition)
 
 export default function DealerManagementPage() {
     const [pendingDealers, setPendingDealers] = useState<any[]>([]);
@@ -30,6 +27,7 @@ export default function DealerManagementPage() {
             await manageDealerApplication({ uid, action });
             toast({ title: `Dealer ${action === 'approve' ? 'Approved' : 'Denied'}` });
         } catch (error: any) {
+            console.error("Error calling function:", error);
             toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
         }
     };
@@ -51,7 +49,7 @@ export default function DealerManagementPage() {
                             <TableRow key={dealer.id}>
                                 <TableCell>{dealer.companyName}</TableCell>
                                 <TableCell>{dealer.contactName}</TableCell>
-                                <TableCell>
+                                <TableCell className="space-x-2">
                                     <Button onClick={() => handleApplication(dealer.id, 'approve')}>Approve</Button>
                                     <Button variant="destructive" onClick={() => handleApplication(dealer.id, 'deny')}>Deny</Button>
                                 </TableCell>
