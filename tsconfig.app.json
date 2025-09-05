@@ -1,18 +1,26 @@
 {
     "extends": "./tsconfig.json",
+    "compilerOptions": {
+      "noImplicitAny": false
+    },
     "include": [
       "next-env.d.ts",
-      "app/**/*.ts",
-      "app/**/*.tsx",
-      "pages/**/*.ts",
-      "pages/**/*.tsx",
-      "src/**/*.ts",
-      "src/**/*.tsx",
-      "components/**/*.ts",
-      "components/**/*.tsx",
-      "lib/**/*.ts",
-      "lib/**/*.tsx"
+      "src/app/**/*.ts",
+      "src/app/**/*.tsx",
+      "src/components/**/*.ts",
+      "src/components/**/*.tsx",
+      "src/lib/**/*.ts",
+      "src/lib/**/*.tsx",
+      "src/hooks/**/*.ts",
+      "src/hooks/**/*.tsx"
     ],
-    "exclude": ["node_modules", ".next", "dist", "build", "out", "functions"]
+    "exclude": [
+      "node_modules",
+      ".next",
+      "dist",
+      "build",
+      "out",
+      "functions",
+      "src/ai/**"
+    ]
   }
-  

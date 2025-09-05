@@ -4,33 +4,26 @@
     "lib": ["DOM", "DOM.Iterable", "ES2023"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "jsx": "preserve",
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "noEmit": true,
     "strict": true,
     "skipLibCheck": true,
-    "incremental": true
+    "noEmit": true,
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
-  "include": [
-    "next-env.d.ts",
-    "app/**/*.ts",
-    "app/**/*.tsx",
-    "pages/**/*.ts",
-    "pages/**/*.tsx",
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "components/**/*.ts",
-    "components/**/*.tsx",
-    "lib/**/*.ts",
-    "lib/**/*.tsx"
-  ],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": [
     "node_modules",
-    ".next",
-    "dist",
-    "build",
-    "out",
-    "functions"          // <<— keep Cloud Functions out of the app typecheck
+    "functions"
   ]
 }

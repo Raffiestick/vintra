@@ -10,16 +10,17 @@ env:
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
     value: "rizeup-dealer-connect-n6k7r"
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-    value: "rizeup-dealer-connect-n6k7r.appspot.com" # Corrected
+    value: "rizeup-dealer-connect-n6k7r.appspot.com"
   - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
     value: "1000941113781"
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
     value: "1:1000941113781:web:1fb421a893eafe977409fc"
   - variable: GEMINI_API_KEY
     value: "AIzaSyBJ6vIOnhbHR7z2Op-dGe2iM0HfASx3JD4"
-  # The FIREBASE_CONFIG variable is often added automatically by the build, but we can specify it here to be certain.
   - variable: FIREBASE_CONFIG
-    value: '{"projectId":"rizeup-dealer-connect-n6k7r","storageBucket":"rizeup-dealer-connect-n6k7r.appspot.com"}' # Corrected
+    value: '{"projectId":"rizeup-dealer-connect-n6k7r","storageBucket":"rizeup-dealer-connect-n6k7r.appspot.com"}'
+  - variable: FIREBASE_WEBAPP_CONFIG
+    value: '{"apiKey":"AIzaSyAjhaoaB2BQobm4NWDeJ4ePP-ExVBB77dg","appId":"1:1000941113781:web:1fb421a893eafe977409fc","authDomain":"rizeup-dealer-connect-n6k7r.firebaseapp.com","databaseURL":"","messagingSenderId":"1000941113781","projectId":"rizeup-dealer-connect-n6k7r","storageBucket":"rizeup-dealer-connect-n6k7r.appspot.com"}'
 
 # Specifies the command to run to build your app.
 buildCommand: npm run build
