@@ -12,12 +12,7 @@ const firebaseConfig = {
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
 };
 
-let app: FirebaseApp;
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApp();
-}
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -34,5 +29,18 @@ export async function getClientFunctions() {
   }
   return null;
 }
+
+/** Helper to lazy-load httpsCallable on the client */
+export async function httpsCallableClient<I = unknown, O = unknown>(name: string) {
+  const [functions, mod] = await Promise.all([
+    getClientFunctions(),
+    import('firebase/functions'), // Dynamically import the functions module
+  ]);
+  if (!functions) {
+    throw new Error("Firebase Functions is not available on the server.");
+  }
+  return mod.httpsCallable<I, O>(functions, name);
+}
+
 
 export { app, auth, db, storage };

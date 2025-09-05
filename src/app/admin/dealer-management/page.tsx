@@ -1,62 +1,65 @@
 'use client';
+
 import { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { db } from '@/lib/firebase/client';
-import { getClientFunctions } from '@/lib/firebase/client';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db, httpsCallableClient } from '@/lib/firebase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import Link from 'next/link';
 
-interface Dealer {
-    id: string;
-    companyName: string;
-    contactName: string;
-    email: string;
-    phone: string;
-    resellCertificateUrl?: string;
-    governmentIdUrl?: string;
-}
+// ... (Interface Dealer definition)
 
 export default function DealerManagementPage() {
-    const [pendingDealers, setPendingDealers] = useState<Dealer[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [pendingDealers, setPendingDealers] = useState<any[]>([]);
     const { toast } = useToast();
 
     useEffect(() => {
         const q = query(collection(db, "users"), where("status", "==", "pending"));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const dealers: Dealer[] = [];
-            querySnapshot.forEach((doc) => {
-                dealers.push({ id: doc.id, ...doc.data() } as Dealer);
-            });
-            setPendingDealers(dealers);
-            setIsLoading(false);
+            const dealersData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setPendingDealers(dealersData);
         });
-        return () => unsubscribe(); // Cleanup listener on component unmount
+        return () => unsubscribe();
     }, []);
 
     const handleApplication = async (uid: string, action: 'approve' | 'deny') => {
         try {
-            const functions = await getClientFunctions();
-            if (!functions) return;
-
-            const manageDealerApplication = httpsCallable(functions, 'manageDealerApplication');
+            const manageDealerApplication = await httpsCallableClient('manageDealerApplication');
             await manageDealerApplication({ uid, action });
-            toast({
-                title: `Dealer ${action === 'approve' ? 'Approved' : 'Denied'}`,
-                description: `The dealer application has been successfully updated.`,
-            });
+            toast({ title: `Dealer ${action === 'approve' ? 'Approved' : 'Denied'}` });
         } catch (error: any) {
-            console.error(`Error ${action}ing dealer:`, error);
-            toast({
-                title: 'Update Failed',
-                description: error.message,
-                variant: 'destructive',
-            });
+            toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
         }
     };
-    
-    // ... (Your JSX for displaying the table of dealers goes here)
+
+    return (
+        <Card>
+            <CardHeader><CardTitle>Dealer Management</CardTitle></CardHeader>
+            <CardContent>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Company</TableHead>
+                            <TableHead>Contact</TableHead>
+                            <TableHead>Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {pendingDealers.map((dealer) => (
+                            <TableRow key={dealer.id}>
+                                <TableCell>{dealer.companyName}</TableCell>
+                                <TableCell>{dealer.contactName}</TableCell>
+                                <TableCell>
+                                    <Button onClick={() => handleApplication(dealer.id, 'approve')}>Approve</Button>
+                                    <Button variant="destructive" onClick={() => handleApplication(dealer.id, 'deny')}>Deny</Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    );
 }
