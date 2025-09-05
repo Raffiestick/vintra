@@ -31,10 +31,9 @@ interface Jacket {
   [key: string]: any;
 }
 
-// Define the type for the page props
-interface PageProps {
+// Define the type for the page props using Next.js conventions
+interface JacketDetailPageProps {
   params: { vin: string };
-  searchParams: { [key: string]: string | string[] | undefined };
 }
 
 async function getJacket(vin: string): Promise<Jacket | null> {
@@ -47,7 +46,7 @@ async function getJacket(vin: string): Promise<Jacket | null> {
   return jacketSnap.data() as Jacket;
 }
 
-export default async function JacketDetailPage({ params }: PageProps) {
+export default async function JacketDetailPage({ params }: JacketDetailPageProps) {
   const { vin } = params;
   const jacket = await getJacket(vin);
 
