@@ -41,10 +41,10 @@ const jacketSchema = z.object({
   year: z.coerce.number().min(1900, "Invalid year").max(new Date().getFullYear() + 1, "Invalid year"),
   make: z.string().min(1, "Make is required"),
   model: z.string().min(1, "Model is required"),
-  color: z.string().min(1, "Color is required"),
-  odometer: z.coerce.number().min(0, "Odometer must be a positive number"),
-  engine: z.string().min(1, "Engine is required"),
-  length: z.string().min(1, "Length is required"),
+  color: z.string().optional(),
+  odometer: z.coerce.number().optional(),
+  engine: z.string().optional(),
+  length: z.string().optional(),
   titleState: z.string().min(1, "Title state is required"),
   titleNumber: z.string().min(1, "Title number is required"),
   saleLocation: z.string().min(1, "Sale location is required"),
@@ -193,8 +193,16 @@ export default function NewJacketPage() {
 
       if (!jacketId) throw new Error("Failed to generate a valid Jacket ID.");
 
+      const submissionData = {
+        ...data,
+        color: data.color || "N/A",
+        engine: data.engine || "N/A",
+        length: data.length || "N/A",
+        odometer: data.odometer === 0 || data.odometer ? data.odometer : "N/A",
+      };
+
       const jacketRef = doc(db, "jackets", data.vin);
-      await setDoc(jacketRef, { ...data, jacketId, createdAt: Timestamp.now() });
+      await setDoc(jacketRef, { ...submissionData, jacketId, createdAt: Timestamp.now() });
       
       toast({ title: "Success", description: "New jacket created successfully." });
       router.push(`/jacket/preview/${data.vin}`);
@@ -247,10 +255,10 @@ export default function NewJacketPage() {
                   <FormField control={form.control} name="year" render={({ field }) => ( <FormItem><FormLabel>Year</FormLabel><FormControl><Input type="number" placeholder="e.g., 2023" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="make" render={({ field }) => ( <FormItem><FormLabel>Make</FormLabel><FormControl><Input placeholder="e.g., Toyota" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="model" render={({ field }) => ( <FormItem><FormLabel>Model</FormLabel><FormControl><Input placeholder="e.g., Camry" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                  <FormField control={form.control} name="color" render={({ field }) => ( <FormItem><FormLabel>Color</FormLabel><FormControl><Input placeholder="e.g., Super White" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                  <FormField control={form.control} name="odometer" render={({ field }) => ( <FormItem><FormLabel>Odometer</FormLabel><FormControl><Input type="number" placeholder="e.g., 25000" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                  <FormField control={form.control} name="engine" render={({ field }) => ( <FormItem><FormLabel>Engine</FormLabel><FormControl><Input placeholder="e.g., 2.5L 4-Cylinder" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                  <FormField control={form.control} name="length" render={({ field }) => ( <FormItem><FormLabel>Length</FormLabel><FormControl><Input placeholder="e.g., 192.1 in" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="color" render={({ field }) => ( <FormItem><FormLabel>Color</FormLabel><FormControl><Input placeholder="e.g., Super White or N/A" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="odometer" render={({ field }) => ( <FormItem><FormLabel>Odometer</FormLabel><FormControl><Input type="number" placeholder="e.g., 25000 or N/A" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="engine" render={({ field }) => ( <FormItem><FormLabel>Engine</FormLabel><FormControl><Input placeholder="e.g., 2.5L 4-Cylinder or N/A" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                  <FormField control={form.control} name="length" render={({ field }) => ( <FormItem><FormLabel>Length</FormLabel><FormControl><Input placeholder="e.g., 192.1 in or N/A" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="titleState" render={({ field }) => ( <FormItem><FormLabel>Title State</FormLabel><FormControl><Input placeholder="e.g., WY" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="titleNumber" render={({ field }) => ( <FormItem><FormLabel>Title Number</FormLabel><FormControl><Input placeholder="e.g., 123456789" {...field} /></FormControl><FormMessage /></FormItem> )} />
                   <FormField control={form.control} name="saleLocation" render={({ field }) => ( <FormItem><FormLabel>Sale Location</FormLabel><FormControl><Input placeholder="e.g., Dallas, TX" {...field} /></FormControl><FormMessage /></FormItem> )} />
