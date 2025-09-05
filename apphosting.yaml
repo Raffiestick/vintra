@@ -21,6 +21,7 @@ env:
     value: '{"projectId":"rizeup-dealer-connect-n6k7r","storageBucket":"rizeup-dealer-connect-n6k7r.appspot.com"}'
   - variable: FIREBASE_WEBAPP_CONFIG
     value: '{"apiKey":"AIzaSyAjhaoaB2BQobm4NWDeJ4ePP-ExVBB77dg","appId":"1:1000941113781:web:1fb421a893eafe977409fc","authDomain":"rizeup-dealer-connect-n6k7r.firebaseapp.com","databaseURL":"","messagingSenderId":"1000941113781","projectId":"rizeup-dealer-connect-n6k7r","storageBucket":"rizeup-dealer-connect-n6k7r.appspot.com"}'
+  - secret: FIREBASE_SERVICE_ACCOUNT
 
 # Specifies the command to run to build your app.
 buildCommand: npm run build

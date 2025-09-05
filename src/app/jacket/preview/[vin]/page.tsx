@@ -35,6 +35,13 @@ interface Jacket {
   [key: string]: any;
 }
 
+// Define the type for the page props
+interface PageProps {
+  params: {
+    vin: string;
+  };
+}
+
 // Ensure Firebase Admin is initialized only once
 function getAdminApp(): App {
     const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
@@ -60,7 +67,7 @@ async function getJacket(vin: string): Promise<Jacket | null> {
   return jacketSnap.data() as Jacket;
 }
 
-export default async function JacketDetailPage({ params }: { params: { vin: string } }) {
+export default async function JacketDetailPage({ params }: PageProps) {
   const { vin } = params;
   const jacket = await getJacket(vin);
 
