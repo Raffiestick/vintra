@@ -37,7 +37,7 @@ import { FileScan, Pencil, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
 const jacketSchema = z.object({
-  vin: z.string().length(17, "VIN must be 17 characters"),
+  vin: z.string().min(1, "VIN is required"),
   year: z.coerce.number().min(1900, "Invalid year").max(new Date().getFullYear() + 1, "Invalid year"),
   make: z.string().min(1, "Make is required"),
   model: z.string().min(1, "Model is required"),
