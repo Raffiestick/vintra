@@ -45,8 +45,9 @@ export default function DealerManagementClient() {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Company</TableHead>
-                            <TableHead>Contact</TableHead>
+                            <TableHead>Business Name</TableHead>
+                            <TableHead>Contact Name</TableHead>
+                            <TableHead>Phone Number</TableHead>
                             <TableHead>Documents</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
@@ -54,7 +55,7 @@ export default function DealerManagementClient() {
                     <TableBody>
                         {pendingDealers.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={4} className="h-24 text-center">
+                                <TableCell colSpan={5} className="h-24 text-center">
                                     No pending applications.
                                 </TableCell>
                             </TableRow>
@@ -63,23 +64,24 @@ export default function DealerManagementClient() {
                                 <TableRow key={dealer.id}>
                                     <TableCell className="font-medium">{dealer.companyName}</TableCell>
                                     <TableCell>{dealer.contactName}</TableCell>
+                                    <TableCell>{dealer.phone}</TableCell>
                                     <TableCell>
                                         <div className="flex items-center space-x-2">
                                             {dealer.resellCertificateUrl ? (
-                                                <Button asChild variant="link" className="p-0 h-auto">
+                                                <Button asChild variant="outline" size="sm">
                                                     <a href={dealer.resellCertificateUrl} target="_blank" rel="noopener noreferrer">
-                                                        <Download className="mr-1 h-4 w-4"/>
-                                                        Certificate
+                                                        <Download className="mr-2 h-4 w-4"/>
+                                                        Tax Resell Cert
                                                     </a>
                                                 </Button>
                                             ) : (
                                                 <span className="text-xs text-muted-foreground">No Cert.</span>
                                             )}
                                             {dealer.governmentIdUrl ? (
-                                                <Button asChild variant="link" className="p-0 h-auto">
+                                                <Button asChild variant="outline" size="sm">
                                                     <a href={dealer.governmentIdUrl} target="_blank" rel="noopener noreferrer">
-                                                        <Download className="mr-1 h-4 w-4"/>
-                                                        ID
+                                                        <Download className="mr-2 h-4 w-4"/>
+                                                        Gov ID
                                                     </a>
                                                 </Button>
                                             ) : (
