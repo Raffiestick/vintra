@@ -39,7 +39,7 @@ function assertAdmin(request: CallableRequest) {
   }
 }
 
-export const getJacketByVin = onCall(async (request: CallableRequest) => {
+export const getJacketByVin = onCall({ region: "us-central1" }, async (request: CallableRequest) => {
     const db = getFirestore();
     const vin = request.data.vin;
     if (!vin || typeof vin !== 'string') {
@@ -65,7 +65,9 @@ export const getJacketByVin = onCall(async (request: CallableRequest) => {
 });
 
 
-export const manageDealerApplication = onCall({ secrets: [DEV_ADMIN_UID] }, async (request: CallableRequest) => {
+export const manageDealerApplication = onCall(
+  { region: "us-central1", secrets: [DEV_ADMIN_UID] },
+  async (request: CallableRequest) => {
     assertAdmin(request);
     const db = getFirestore();
     const { uid, action } = request.data;
@@ -88,7 +90,9 @@ export const manageDealerApplication = onCall({ secrets: [DEV_ADMIN_UID] }, asyn
     }
 });
 
-export const generateJacketId = onCall({ secrets: [DEV_ADMIN_UID] }, async (request: CallableRequest) => {
+export const generateJacketId = onCall(
+  { region: "us-central1", secrets: [DEV_ADMIN_UID] },
+  async (request: CallableRequest) => {
     assertAdmin(request);
     const jacketId = Math.floor(100000 + Math.random() * 900000).toString();
     return { jacketId };
