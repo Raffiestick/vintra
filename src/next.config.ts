@@ -26,6 +26,17 @@ const nextConfig = {
   devIndicators: {
     allowedDevOrigins: ['*.cloudworkstations.dev'],
   },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Prevent Node-only deps from being bundled into the browser build
+      config.resolve.alias = {
+        ...(config.resolve.alias || {}),
+        undici: false,
+        'node-fetch': false,
+      };
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
