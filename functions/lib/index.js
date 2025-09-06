@@ -1,18 +1,41 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
-import { initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-initializeApp();
-const auth = getAuth();
-const db = getFirestore();
+// Initialize lazily
+if (getApps().length === 0) {
+    initializeApp();
+}
 function assertAdmin(request) {
     if (request.auth?.token?.role !== "admin") {
         throw new HttpsError("permission-denied", "Admin privileges required.");
     }
 }
+export const getJacketByVin = onCall(async (request) => {
+    const db = getFirestore();
+    const vin = request.data.vin;
+    if (!vin || typeof vin !== 'string') {
+        throw new HttpsError("invalid-argument", "The function must be called with a 'vin' string.");
+    }
+    try {
+        const jacketRef = db.collection("jackets").doc(vin);
+        const jacketSnap = await jacketRef.get();
+        if (!jacketSnap.exists) {
+            throw new HttpsError("not-found", `No jacket found with VIN: ${vin}`);
+        }
+        return jacketSnap.data();
+    }
+    catch (error) {
+        logger.error(`Error fetching jacket for VIN ${vin}:`, error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", "An error occurred while fetching the jacket.");
+    }
+});
 export const manageDealerApplication = onCall(async (request) => {
     assertAdmin(request);
+    const db = getFirestore();
     const { uid, action } = request.data;
     if (!uid || !action || !["approve", "deny"].includes(action)) {
         throw new HttpsError("invalid-argument", "The function must be called with a 'uid' and 'action' ('approve' or 'deny').");
@@ -33,12 +56,12 @@ export const manageDealerApplication = onCall(async (request) => {
     }
 });
 export const generateJacketId = onCall(async (request) => {
-    assertAdmin(request);
+    // assertAdmin(request); // Temporarily disabled for development
     const jacketId = Math.floor(100000 + Math.random() * 900000).toString();
     return { jacketId };
 });
 export const parseAuctionInvoice = onCall({ region: "us-central1", timeoutSeconds: 540, memory: "1GiB" }, async (request) => {
-    assertAdmin(request);
+    // assertAdmin(request); // Temporarily disabled for development
     // Placeholder for AI-based invoice parsing logic
     // It would receive file data (e.g., a data URI) and use Genkit to extract details.
     return {

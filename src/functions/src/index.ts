@@ -5,20 +5,37 @@ import { initializeApp, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import type { CallableRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
+
+// Secret to allow one dev UID to bypass claim check (only if set)
+const DEV_ADMIN_UID = defineSecret("DEV_ADMIN_UID");
 
 // Initialize lazily
 if (getApps().length === 0) {
   initializeApp();
 }
 
+/**
+ * Require admin privileges.
+ * If DEV_ADMIN_UID is set and matches the caller’s UID, bypass for development.
+ */
 function assertAdmin(request: CallableRequest) {
-  // Allow a specific UID to bypass the admin check for development
-  const devAdminUid = "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
-  if (request.auth?.uid === devAdminUid) {
-    return;
+  // Must be signed in
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "You must be signed in.");
   }
-  
-  if (request.auth?.token?.role !== "admin") {
+
+  // Optional dev bypass via secret (safe: inert if unset)
+  const devBypass = DEV_ADMIN_UID.value(); // empty string if not defined
+  if (devBypass && request.auth.uid === devBypass) {
+    logger.info(`Bypassing admin check for dev UID: ${request.auth.uid}`);
+    return; // bypass granted for development
+  }
+
+  // Normal path: check custom claim
+  const role = (request.auth.token as any)?.role;
+  if (role !== "admin") {
+    logger.warn(`Admin check failed for UID: ${request.auth.uid}. Role is: ${role}`);
     throw new HttpsError("permission-denied", "Admin privileges required.");
   }
 }
@@ -49,7 +66,7 @@ export const getJacketByVin = onCall(async (request: CallableRequest) => {
 });
 
 
-export const manageDealerApplication = onCall(async (request: CallableRequest) => {
+export const manageDealerApplication = onCall({ secrets: [DEV_ADMIN_UID] }, async (request: CallableRequest) => {
     assertAdmin(request);
     const db = getFirestore();
     const { uid, action } = request.data;
@@ -72,14 +89,14 @@ export const manageDealerApplication = onCall(async (request: CallableRequest) =
     }
 });
 
-export const generateJacketId = onCall(async (request: CallableRequest) => {
+export const generateJacketId = onCall({ secrets: [DEV_ADMIN_UID] }, async (request: CallableRequest) => {
     assertAdmin(request);
     const jacketId = Math.floor(100000 + Math.random() * 900000).toString();
     return { jacketId };
 });
 
 export const parseAuctionInvoice = onCall(
-  { region: "us-central1", timeoutSeconds: 540, memory: "1GiB" },
+  { region: "us-central1", timeoutSeconds: 540, memory: "1GiB", secrets: [DEV_ADMIN_UID] },
   async (request: CallableRequest) => {
     assertAdmin(request);
     // Placeholder for AI-based invoice parsing logic
