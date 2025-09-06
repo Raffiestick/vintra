@@ -1,5 +1,13 @@
 {
   "extends": "./tsconfig.json",
   "include": ["src/**/*", "next-env.d.ts"],
-  "exclude": ["src/functions", "src/functions/**", "functions", "functions/**", "node_modules"]
+  "exclude": [
+    "src/functions",
+    "src/functions/**",
+    "src/ai",
+    "src/ai/**",
+    "functions",
+    "functions/**",
+    "node_modules"
+  ]
 }
