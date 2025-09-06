@@ -79,7 +79,11 @@ export default function ApprovedDealersClient() {
                                 <TableRow key={dealer.id}>
                                     <TableCell className="font-medium">{dealer.companyName}</TableCell>
                                     <TableCell>{dealer.contactName}</TableCell>
-                                    <TableCell>{dealer.email}</TableCell>
+                                    <TableCell>
+                                        <a href={`mailto:${dealer.email}`} className="text-primary hover:underline">
+                                            {dealer.email}
+                                        </a>
+                                    </TableCell>
                                     <TableCell>{dealer.phone}</TableCell>
                                     <TableCell>{formatDate(dealer.createdAt)}</TableCell>
                                     <TableCell>
