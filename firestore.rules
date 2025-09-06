@@ -8,27 +8,22 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // Allow new users to create their own profile document
-      allow create: if request.auth.uid == userId;
+      // Allow users to create, read and update their own document.
+      // This is the key fix: combining create with update/write permissions.
+      allow get, write: if request.auth.uid == userId;
 
-      // Allow users to read and update their own document
-      allow get, update: if request.auth.uid == userId;
-
-      // Admins can list and get any user document
-      allow list, get: if request.auth != null && isAdmin(request.auth.uid);
-
-      // Admins can update any user document
-      allow update: if request.auth != null && isAdmin(request.auth.uid);
+      // Admins can list any user document and create/update any user document
+      allow list: if request.auth != null && isAdmin(request.auth.uid);
+      allow write: if request.auth != null && isAdmin(request.auth.uid);
     }
     
     match /jackets/{jacketId} {
-      // Allow any authenticated user to read all jackets, but we will filter on the client
-      // A dealer can only read jackets assigned to them (enforced by client-side query)
-      // An admin can read all jackets (enforced by client-side query)
+      // Allow any authenticated user to read all jackets.
+      // Client-side queries will filter for permissions.
       allow read: if request.auth != null;
       
       // Only admins can create, update, or delete jackets
-      allow create, update, delete: if request.auth != null && isAdmin(request.auth.uid);
+      allow write: if request.auth != null && isAdmin(request.auth.uid);
     }
   }
 }
