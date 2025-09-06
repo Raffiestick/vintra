@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -44,13 +45,13 @@ export default function UploadDocumentsPage() {
       const userDocRef = doc(db, "users", user.uid);
 
       // Upload Resale Certificate
-      const certRef = ref(storage, `dealer-documents/${user.uid}/resale-certificate`);
+      const certRef = ref(storage, `user-documents/${user.uid}/resale-certificate`);
       await uploadBytes(certRef, certFile);
       const certUrl = await getDownloadURL(certRef);
       await updateDoc(userDocRef, { resellCertificateUrl: certUrl });
 
       // Upload Government ID
-      const idRef = ref(storage, `dealer-documents/${user.uid}/government-id`);
+      const idRef = ref(storage, `user-documents/${user.uid}/government-id`);
       await uploadBytes(idRef, idFile);
       const idUrl = await getDownloadURL(idRef);
       await updateDoc(userDocRef, { governmentIdUrl: idUrl });
