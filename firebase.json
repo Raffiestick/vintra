@@ -3,9 +3,12 @@
   "firestore": {
     "rules": "firestore.rules"
   },
-  "storage": {
-    "rules": "storage.rules"
-  },
+  "storage": [
+    {
+      "bucket": "rizeup-dealer-connect-n6k7r.appspot.com",
+      "rules": "storage.rules"
+    }
+  ],
   "functions": {
     "source": "src/functions",
     "predeploy": [
