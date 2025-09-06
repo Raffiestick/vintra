@@ -5,7 +5,8 @@ service firebase.storage {
 
     function signedIn() { return request.auth != null; }
 
-    // TEMP DEV BYPASS (same UID as in Firestore rules)
+    // TEMP DEV BYPASS: Treat this UID as admin in dev.
+    // ⚠️ Remove this when you have proper custom admin claims in production.
     function isDevAdmin() {
       return signedIn() && request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
     }
@@ -16,25 +17,29 @@ service firebase.storage {
       );
     }
 
+    // --- RULES START HERE ---
+
     // Dealer-owned documents (gov ID, tax cert, etc.)
-    match /user-documents/{uid}/{path=**} {
-      // Dealers can read their own files; admins can read all
+    // This rule allows a signed-in user to upload files to a folder matching their UID.
+    match /user-documents/{uid}/{fileName} {
+      // Admins can read any file.
+      // Users can only read their own files.
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
 
-      // Dealers can write only to their own folder.
-      // NOTE: Temporarily removed size and content-type checks for debugging.
-      allow write: if signedIn() && request.auth.uid == uid;
+      // Admins can write any file.
+      // Users can only write to their own folder.
+      // This also includes a size and type check for security.
+      allow write: if (isAdmin() || (signedIn() && request.auth.uid == uid))
+        && request.resource.size < 10 * 1024 * 1024 // 10MB limit
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
     }
 
-    // Invoice uploads for AI parsing
-    match /invoice-uploads/{uid}/{path=**} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
-
-      // NOTE: Temporarily removed size and content-type checks for debugging.
-      allow write: if signedIn() && request.auth.uid == uid;
+    // Invoice uploads (for AI parsing, by admins or the assigned user)
+    match /invoice-uploads/{uid}/{fileName} {
+       allow read, write: if isAdmin() || (signedIn() && request.auth.uid == uid);
     }
 
-    // Default deny
+    // Fallback rule to deny all other access.
     match /{allPaths=**} {
       allow read, write: if false;
     }
