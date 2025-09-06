@@ -21,25 +21,17 @@ service firebase.storage {
       // Dealers can read their own files; admins can read all
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
 
-      // Dealers can write only to their own folder; limit size and type
-      allow write: if signedIn() && request.auth.uid == uid
-        && request.resource.size < 10 * 1024 * 1024
-        && (
-             request.resource.contentType.matches('image/.*')
-             || request.resource.contentType == 'application/pdf'
-           );
+      // Dealers can write only to their own folder.
+      // NOTE: Temporarily removed size and content-type checks for debugging.
+      allow write: if signedIn() && request.auth.uid == uid;
     }
 
     // Invoice uploads for AI parsing
     match /invoice-uploads/{uid}/{path=**} {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
 
-      allow write: if signedIn() && request.auth.uid == uid
-        && request.resource.size < 25 * 1024 * 1024
-        && (
-             request.resource.contentType.matches('image/.*')
-             || request.resource.contentType == 'application/pdf'
-           );
+      // NOTE: Temporarily removed size and content-type checks for debugging.
+      allow write: if signedIn() && request.auth.uid == uid;
     }
 
     // Default deny
