@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    // Other experimental flags can go here
+  },
+  // Add allowedDevOrigins to the top level to resolve the cross-origin warning
+  allowedDevOrigins: ["*.cloudworkstations.dev"],
   webpack: (config, { isServer }) => {
     if (!isServer) {
       // Prevent Node-only deps from leaking into the browser build
@@ -10,10 +15,6 @@ const nextConfig = {
       };
     }
     return config;
-  },
-  // Add the following to address the cross-origin warning in dev mode
-  experimental: {
-    allowedDevOrigins: ["https://*.cloudworkstations.dev"],
   },
 };
 
