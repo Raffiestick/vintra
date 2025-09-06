@@ -6,7 +6,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Power } from "lucide-react";
+import { Power, UserCheck, UserCog, FilePlus } from "lucide-react";
 
 export default function AdminLayout({
   children,
@@ -27,8 +27,9 @@ export default function AdminLayout({
   };
 
   const navItems = [
-    { href: "/admin/dealer-management", label: "Dealer Management" },
-    { href: "/admin/jackets/new", label: "New Jacket" },
+    { href: "/admin/dealer-management", label: "Dealer Management", icon: UserCog },
+    { href: "/admin/approved-dealers", label: "Approved Dealers", icon: UserCheck },
+    { href: "/admin/jackets/new", label: "New Jacket", icon: FilePlus },
   ];
 
   return (
@@ -48,11 +49,12 @@ export default function AdminLayout({
                 <Link
                   href={item.href}
                   className={cn(
-                    "block w-full text-left px-4 py-2 rounded-md transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    "flex items-center w-full text-left px-4 py-2 rounded-md transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                     pathname === item.href &&
                       "bg-primary text-primary-foreground"
                   )}
                 >
+                  <item.icon className="mr-2 h-4 w-4" />
                   {item.label}
                 </Link>
               </li>
