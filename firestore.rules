@@ -1,4 +1,3 @@
-
 rules_version = '2';
 
 service cloud.firestore {
@@ -9,13 +8,16 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // Allow users to read, create, and update their own document
-      allow get, update, create: if request.auth.uid == userId;
+      // Allow new users to create their own profile document
+      allow create: if request.auth.uid == userId;
+
+      // Allow users to read and update their own document
+      allow get, update: if request.auth.uid == userId;
 
       // Admins can list and get any user document
       allow list, get: if request.auth != null && isAdmin(request.auth.uid);
 
-      // Admins can also update any user document
+      // Admins can update any user document
       allow update: if request.auth != null && isAdmin(request.auth.uid);
     }
     

@@ -1,17 +1,12 @@
 rules_version = '2';
+
 service firebase.storage {
   match /b/{bucket}/o {
-    
-    // Rule for dealer document uploads
-    match /dealer-documents/{uid}/{fileName} {
-      allow write: if request.auth.uid == uid;
-      allow read: if request.auth.uid == uid || request.auth.token.role == 'admin';
-    }
-
-    // Rule for admin invoice uploads
-    match /invoice-uploads/{adminUid}/{fileName} {
-      allow write: if request.auth.token.role == 'admin' && request.auth.uid == adminUid;
-      allow read: if request.auth.token.role == 'admin';
+    // Match the path for dealer documents, which are stored under `dealer-documents/{userId}/{fileName}`
+    match /dealer-documents/{userId}/{allPaths=**} {
+      // Allow a user to read and write files only in their own folder.
+      // This is crucial for security.
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
