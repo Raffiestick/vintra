@@ -15,6 +15,7 @@ interface ApprovedDealer {
     companyName: string;
     contactName: string;
     phone: string;
+    email: string;
     resellCertificateUrl?: string;
     governmentIdUrl?: string;
     createdAt: Timestamp;
@@ -54,6 +55,7 @@ export default function ApprovedDealersClient() {
                         <TableRow>
                             <TableHead>Business Name</TableHead>
                             <TableHead>Contact Name</TableHead>
+                            <TableHead>Email</TableHead>
                             <TableHead>Phone Number</TableHead>
                             <TableHead>Date Joined</TableHead>
                             <TableHead>Documents</TableHead>
@@ -62,13 +64,13 @@ export default function ApprovedDealersClient() {
                     <TableBody>
                         {loading ? (
                             <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center">
+                                <TableCell colSpan={6} className="h-24 text-center">
                                     Loading approved dealers...
                                 </TableCell>
                             </TableRow>
                         ) : approvedDealers.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center">
+                                <TableCell colSpan={6} className="h-24 text-center">
                                     No approved dealers found.
                                 </TableCell>
                             </TableRow>
@@ -77,6 +79,7 @@ export default function ApprovedDealersClient() {
                                 <TableRow key={dealer.id}>
                                     <TableCell className="font-medium">{dealer.companyName}</TableCell>
                                     <TableCell>{dealer.contactName}</TableCell>
+                                    <TableCell>{dealer.email}</TableCell>
                                     <TableCell>{dealer.phone}</TableCell>
                                     <TableCell>{formatDate(dealer.createdAt)}</TableCell>
                                     <TableCell>
