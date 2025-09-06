@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
-    "build": "next build",
+    "build": "npm run typecheck && next build",
     "start": "next start -p 8080"
   },
   "dependencies": {
