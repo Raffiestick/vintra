@@ -12,6 +12,12 @@ if (getApps().length === 0) {
 }
 
 function assertAdmin(request: CallableRequest) {
+  // Allow a specific UID to bypass the admin check for development
+  const devAdminUid = "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
+  if (request.auth?.uid === devAdminUid) {
+    return;
+  }
+  
   if (request.auth?.token?.role !== "admin") {
     throw new HttpsError("permission-denied", "Admin privileges required.");
   }
@@ -67,7 +73,7 @@ export const manageDealerApplication = onCall(async (request: CallableRequest) =
 });
 
 export const generateJacketId = onCall(async (request: CallableRequest) => {
-    // assertAdmin(request); // Temporarily disabled for development
+    assertAdmin(request);
     const jacketId = Math.floor(100000 + Math.random() * 900000).toString();
     return { jacketId };
 });
@@ -75,7 +81,7 @@ export const generateJacketId = onCall(async (request: CallableRequest) => {
 export const parseAuctionInvoice = onCall(
   { region: "us-central1", timeoutSeconds: 540, memory: "1GiB" },
   async (request: CallableRequest) => {
-    // assertAdmin(request); // Temporarily disabled for development
+    assertAdmin(request);
     // Placeholder for AI-based invoice parsing logic
     // It would receive file data (e.g., a data URI) and use Genkit to extract details.
     return { 
