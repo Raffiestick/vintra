@@ -3,73 +3,25 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
-      return request.auth != null;
+    // Default deny all access to all collections
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    // TEMP DEV BYPASS: Treat this UID as admin in dev.
-    // ⚠️ Remove this when you have proper custom admin claims in production.
-    function isDevAdmin() {
-      return signedIn() && request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
+    // Allow users to create, read and update their own document.
+    match /users/{userId} {
+      allow read, update, create: if request.auth != null && request.auth.uid == userId;
     }
 
-    function isAdmin() {
-      return signedIn() && (
-        (request.auth.token.role == 'admin') || isDevAdmin()
-      );
-    }
-
-    // ---------- users/{uid} ----------
-    match /users/{uid} {
-      // Anyone can read their own doc. Admin can read all.
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
-
-      // Create:
-      // - By the user himself for their own uid
-      // - OR by an admin
-      // - Only allowed fields; prevents privilege escalation on signup
-      allow create: if isAdmin() || (
-        signedIn() &&
-        request.auth.uid == uid &&
-        request.resource.data.role == 'dealer' &&
-        request.resource.data.status == 'pending' &&
-        request.resource.data.documentsUploaded == false &&
-        // No unexpected fields on create:
-        request.resource.data.keys().hasOnly([
-          'uid','companyName','streetAddress','city','state','zip',
-          'contactName','phone','email',
-          'role','status','documentsUploaded','createdAt',
-          'resellCertificateUrl','governmentIdUrl'
-        ])
-      );
-
-      // Update by the user:
-      // - Only their own doc
-      // - Cannot change role or status
-      // - Only allowed, non-privileged fields
-      allow update: if signedIn() && request.auth.uid == uid &&
-        // User cannot touch role/status (must remain as before)
-        request.resource.data.role == resource.data.role &&
-        request.resource.data.status == resource.data.status &&
-        // Only allow these fields to be changed by the user
-        request.resource.data.keys().hasOnly([
-          'companyName','streetAddress','city','state','zip','contactName','phone','email',
-          'documentsUploaded','resellCertificateUrl','governmentIdUrl'
-        ]);
-
-      // Admins can do anything on user docs (approve/deny, set role, corrections)
-      allow create, update, delete: if isAdmin();
-    }
-
-    // ---------- jackets/{vin} ----------
+    // Admins can read all jackets.
+    // Authenticated dealers can read jackets assigned to them.
     match /jackets/{vin} {
-      // Admin can read all; dealers can read only if assigned
-      allow read: if isAdmin() || (signedIn() && resource.data.dealerId == request.auth.uid);
-
-      // Create/update/delete only by admin
-      allow create, update, delete: if isAdmin();
+       allow read: if request.auth != null && 
+                    (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+                     resource.data.dealerId == request.auth.uid);
+      
+      // Admins can write to jackets.
+      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
-
-    // (Optional) If you have other collections, add here with similar patterns
   }
 }
