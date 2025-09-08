@@ -165,8 +165,9 @@ export default function UploadDocumentsPage() {
                 setCertFile(e.target.files ? e.target.files[0] : null)
               }
               disabled={uploading}
+              accept="application/pdf,image/png,image/jpeg"
             />
-            {uploading && (
+            {uploading && certFile && (
               <div className="flex items-center gap-2 pt-1">
                 <Progress value={certProgress} className="w-full h-2" />
                 <span className="text-xs text-muted-foreground">
@@ -184,8 +185,9 @@ export default function UploadDocumentsPage() {
                 setIdFile(e.target.files ? e.target.files[0] : null)
               }
               disabled={uploading}
+               accept="application/pdf,image/png,image/jpeg"
             />
-            {uploading && (
+            {uploading && idFile && (
               <div className="flex items-center gap-2 pt-1">
                 <Progress value={idProgress} className="w-full h-2" />
                 <span className="text-xs text-muted-foreground">
