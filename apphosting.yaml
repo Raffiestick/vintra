@@ -10,7 +10,7 @@ env:
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
     value: "rizeup-dealer-connect-n6k7r"
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-    value: "rizeup-dealer-connect-n6k7r.appspot.com"
+    value: "rizeup-dealer-connect-n6k7r.firebasestorage.app"
   - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
     value: "1000941113781"
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
