@@ -1,20 +1,25 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { doc, updateDoc } from "firebase/firestore";
-import { auth, db, storage } from "@/lib/firebase/client"; 
+import { auth, db, storage } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import type { User } from "firebase/auth";
 import { Progress } from "@/components/ui/progress";
-
 
 export default function UploadDocumentsPage() {
   const router = useRouter();
@@ -32,13 +37,17 @@ export default function UploadDocumentsPage() {
       if (currentUser) {
         setUser(currentUser);
       } else {
-        router.push('/'); // Redirect if not logged in
+        router.push("/"); // Redirect if not logged in
       }
     });
     return () => unsubscribe();
   }, [router]);
-  
-  const uploadFile = (file: File, path: string, onProgress: (progress: number) => void): Promise<string> => {
+
+  const uploadFile = (
+    file: File,
+    path: string,
+    onProgress: (progress: number) => void
+  ): Promise<string> => {
     return new Promise((resolve, reject) => {
       const storageRef = ref(storage, path);
       const uploadTask = uploadBytesResumable(storageRef, file);
@@ -46,7 +55,8 @@ export default function UploadDocumentsPage() {
       uploadTask.on(
         "state_changed",
         (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          const progress =
+            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           onProgress(progress);
         },
         (error) => {
@@ -58,15 +68,15 @@ export default function UploadDocumentsPage() {
             const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
             resolve(downloadURL);
           } catch (error) {
-             console.error("Failed to get download URL:", error)
-             reject(error);
+            console.error("Failed to get download URL:", error);
+            reject(error);
           }
         }
       );
     });
   };
 
-  const handleUpload = async () => {
+  const handleUpload = useCallback(async () => {
     if (!certFile || !idFile || !user) {
       setError("Please select both files to upload.");
       return;
@@ -82,32 +92,53 @@ export default function UploadDocumentsPage() {
 
       const [certUrl, idUrl] = await Promise.all([
         uploadFile(certFile, certPath, setCertProgress),
-        uploadFile(idFile, idPath, setIdProgress)
+        uploadFile(idFile, idPath, setIdProgress),
       ]);
-      
-      toast({ title: "Uploads Complete", description: "Updating your profile." });
+
+      toast({
+        title: "Uploads Complete",
+        description: "Updating your profile.",
+      });
 
       const userDocRef = doc(db, "users", user.uid);
-      await updateDoc(userDocRef, { 
+      await updateDoc(userDocRef, {
         resellCertificateUrl: certUrl,
         governmentIdUrl: idUrl,
         documentsUploaded: true,
-        status: 'pending' // Ensure status is pending
+        status: "pending", // Ensure status is pending
       });
-      
-      toast({ title: "All documents uploaded!", description: "Redirecting you now..."});
-      router.push("/pending-review");
 
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      toast({
+        title: "All documents uploaded!",
+        description: "Redirecting you now...",
+      });
+      router.push("/pending-review");
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "An unknown error occurred.";
       console.error("Upload process failed:", err);
       setError(`Upload failed: ${errorMessage}`);
-      toast({ title: "Upload Failed", description: errorMessage, variant: "destructive"});
+      toast({
+        title: "Upload Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      // Re-throw the error to be caught by the calling function's catch block
+      throw err;
     } finally {
       setUploading(false);
       setCertProgress(0);
       setIdProgress(0);
     }
+  }, [certFile, idFile, user, router, toast]);
+
+  const handleSubmit = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    handleUpload().catch((err) => {
+      // The error is already logged and displayed in the toast by handleUpload.
+      // This catch block simply prevents the unhandled promise rejection crash.
+      console.log("Submit failed, error was caught.");
+    });
   };
 
   if (!user) {
@@ -119,22 +150,57 @@ export default function UploadDocumentsPage() {
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>Upload Documents</CardTitle>
-          <CardDescription>Please provide your Resale Certificate and a Government ID to complete your application.</CardDescription>
+          <CardDescription>
+            Please provide your Resale Certificate and a Government ID to
+            complete your application.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="resale-cert">Resale Certificate (PDF, PNG, JPG)</Label>
-            <Input id="resale-cert" type="file" onChange={(e) => setCertFile(e.target.files ? e.target.files[0] : null)} disabled={uploading}/>
-             {uploading && <div className="flex items-center gap-2 pt-1"><Progress value={certProgress} className="w-full h-2" /><span className="text-xs text-muted-foreground">{Math.round(certProgress)}%</span></div>}
+            <Input
+              id="resale-cert"
+              type="file"
+              onChange={(e) =>
+                setCertFile(e.target.files ? e.target.files[0] : null)
+              }
+              disabled={uploading}
+            />
+            {uploading && (
+              <div className="flex items-center gap-2 pt-1">
+                <Progress value={certProgress} className="w-full h-2" />
+                <span className="text-xs text-muted-foreground">
+                  {Math.round(certProgress)}%
+                </span>
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="gov-id">Government ID (PDF, PNG, JPG)</Label>
-            <Input id="gov-id" type="file" onChange={(e) => setIdFile(e.target.files ? e.target.files[0] : null)} disabled={uploading}/>
-             {uploading && <div className="flex items-center gap-2 pt-1"><Progress value={idProgress} className="w-full h-2" /><span className="text-xs text-muted-foreground">{Math.round(idProgress)}%</span></div>}
+            <Input
+              id="gov-id"
+              type="file"
+              onChange={(e) =>
+                setIdFile(e.target.files ? e.target.files[0] : null)
+              }
+              disabled={uploading}
+            />
+            {uploading && (
+              <div className="flex items-center gap-2 pt-1">
+                <Progress value={idProgress} className="w-full h-2" />
+                <span className="text-xs text-muted-foreground">
+                  {Math.round(idProgress)}%
+                </span>
+              </div>
+            )}
           </div>
-          
+
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button onClick={handleUpload} disabled={uploading || !certFile || !idFile} className="w-full">
+          <Button
+            onClick={handleSubmit}
+            disabled={uploading || !certFile || !idFile}
+            className="w-full"
+          >
             {uploading ? "Uploading..." : "Submit Documents"}
           </Button>
         </CardContent>
