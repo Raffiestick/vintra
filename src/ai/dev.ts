@@ -1,5 +1,2 @@
-import { config } from 'dotenv';
-config();
-
-import '@/ai/flows/generate-marketing-content.ts';
-import '@/ai/flows/summarize-product-specs.ts';
+// This file is intentionally left blank. It is used for local AI script development
+// and is excluded from the production build to prevent errors.
