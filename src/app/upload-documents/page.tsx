@@ -50,12 +50,17 @@ export default function UploadDocumentsPage() {
           onProgress(progress);
         },
         (error) => {
-          console.error("Upload failed:", error);
+          console.error("Upload failed for path:", path, error);
           reject(error);
         },
         async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          resolve(downloadURL);
+          try {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(downloadURL);
+          } catch (error) {
+             console.error("Failed to get download URL:", error)
+             reject(error);
+          }
         }
       );
     });
@@ -93,10 +98,11 @@ export default function UploadDocumentsPage() {
       toast({ title: "All documents uploaded!", description: "Redirecting you now..."});
       router.push("/pending-review");
 
-    } catch (err: any) {
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       console.error("Upload process failed:", err);
-      setError(`Upload failed: ${err.message}`);
-      toast({ title: "Upload Failed", description: err.message, variant: "destructive"});
+      setError(`Upload failed: ${errorMessage}`);
+      toast({ title: "Upload Failed", description: errorMessage, variant: "destructive"});
     } finally {
       setUploading(false);
       setCertProgress(0);
