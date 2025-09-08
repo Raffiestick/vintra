@@ -5,17 +5,6 @@ import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { connectFunctionsEmulator, getFunctions } from 'firebase/functions';
 
-// Define the config object structure, but don't populate it here.
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
-
-// Declare variables that will hold the Firebase services.
 let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
@@ -23,13 +12,23 @@ let storage: FirebaseStorage;
 
 // Initialize Firebase services only in the browser.
 if (typeof window !== 'undefined' && !getApps().length) {
-  // Now, inside the client-only block, initialize the app.
+  // This config object is now created only in the browser,
+  // ensuring `process.env` variables are available.
+  const firebaseConfig = {
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  };
+
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
   storage = getStorage(app);
 } else {
-  // On the server, provide placeholder services.
+  // On the server or if already initialized, use existing or placeholder instances.
   app = getApps().length > 0 ? getApp() : ({} as FirebaseApp);
   auth = {} as Auth;
   db = {} as Firestore;
