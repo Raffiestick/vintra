@@ -109,10 +109,12 @@ export default function UploadDocumentsPage() {
       });
 
       toast({
-        title: "All documents uploaded!",
+        title: "Profile updated successfully!",
         description: "Redirecting you now...",
       });
+      
       router.push("/pending-review");
+
     } catch (err: unknown) {
       const errorMessage =
         err instanceof Error ? err.message : "An unknown error occurred.";
