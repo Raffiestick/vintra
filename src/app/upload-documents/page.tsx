@@ -93,7 +93,7 @@ export default function UploadDocumentsPage() {
       toast({ title: "All documents uploaded!", description: "Redirecting you now..."});
       router.push("/pending-review");
 
-    } catch (err: any) => {
+    } catch (err: any) {
       console.error("Upload process failed:", err);
       setError(`Upload failed: ${err.message}`);
       toast({ title: "Upload Failed", description: err.message, variant: "destructive"});
