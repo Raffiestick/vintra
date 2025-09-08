@@ -2,46 +2,35 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-
-    function signedIn() { return request.auth != null; }
-
-    // TEMP DEV BYPASS: Treat this UID as admin in dev.
-    // ⚠️ Remove this when you have proper custom admin claims in production.
-    function isDevAdmin() {
-      return signedIn() && request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
+    
+    // Helper functions
+    function signedIn() {
+      return request.auth != null;
     }
 
     function isAdmin() {
-      return signedIn() && (
-        (request.auth.token.role == 'admin') || isDevAdmin()
-      );
+      // Check for the custom claim on the user's token
+      return signedIn() && request.auth.token.role == 'admin';
     }
 
-    // --- RULES START HERE ---
-
-    // Dealer-owned documents (gov ID, tax cert, etc.)
-    // This rule allows a signed-in user to upload files to a folder matching their UID.
-    match /user-documents/{uid}/{fileName} {
-      // Admins can read any file.
-      // Users can only read their own files.
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
-
-      // Admins can write any file.
-      // Users can only write to their own folder.
-      // This also includes a size and type check for security.
-      allow write: if (isAdmin() || (signedIn() && request.auth.uid == uid))
-        && request.resource.size < 10 * 1024 * 1024 // 10MB limit
-        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
-    }
-
-    // Invoice uploads (for AI parsing, by admins or the assigned user)
-    match /invoice-uploads/{uid}/{fileName} {
-       allow read, write: if isAdmin() || (signedIn() && request.auth.uid == uid);
-    }
-
-    // Fallback rule to deny all other access.
+    // Admins can read/write anywhere
     match /{allPaths=**} {
-      allow read, write: if false;
+      allow read, write: if isAdmin();
+    }
+    
+    // User-specific document uploads
+    // This allows users to upload their own documents and admins to view them.
+    match /user-documents/{uid}/{path=**} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      
+      // Allow create and write if the user is signed in, the UID matches,
+      // and the file meets size and type constraints.
+      allow create, write: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024 // 10MB limit
+        && (
+             request.resource.contentType.matches('image/.*')
+             || request.resource.contentType == 'application/pdf'
+           );
     }
   }
 }
