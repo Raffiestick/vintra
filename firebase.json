@@ -5,7 +5,7 @@
   },
   "storage": {
     "rules": "storage.rules",
-    "cors": "cors.json"
+    "cors": "cors.apphosting.json"
   },
   "functions": {
     "source": "src/functions",
