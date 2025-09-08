@@ -2,7 +2,8 @@
   {
     "origin": [
       "https://rizeup-dealer-connect-n6k7r.web.app",
-      "https://rizeup-dealer-connect-n6k7r.firebaseapp.com"
+      "https://rizeup-dealer-connect-n6k7r.firebaseapp.com",
+      "https://rizeup-dealer-connect--rizeup-dealer-connect-n6k7r.us-central1.hosted.app"
     ],
     "method": ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
     "responseHeader": [
