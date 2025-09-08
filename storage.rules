@@ -2,35 +2,24 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    
     // Helper functions
     function signedIn() {
       return request.auth != null;
     }
-
     function isAdmin() {
-      // Check for the custom claim on the user's token
       return signedIn() && request.auth.token.role == 'admin';
     }
 
-    // Admins can read/write anywhere
-    match /{allPaths=**} {
-      allow read, write: if isAdmin();
-    }
-    
-    // User-specific document uploads
-    // This allows users to upload their own documents and admins to view them.
+    // Rules for user documents
     match /user-documents/{uid}/{path=**} {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
-      
-      // Allow create and write if the user is signed in, the UID matches,
-      // and the file meets size and type constraints.
       allow create, write: if signedIn() && request.auth.uid == uid
-        && request.resource.size < 10 * 1024 * 1024 // 10MB limit
+        && request.resource.size < 10 * 1024 * 1024
         && (
              request.resource.contentType.matches('image/.*')
              || request.resource.contentType == 'application/pdf'
            );
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
     }
   }
 }
