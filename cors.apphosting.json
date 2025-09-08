@@ -1,0 +1,25 @@
+[
+  {
+    "origin": [
+      "https://rizeup-dealer-connect--rizeup-dealer-connect-n6k7r.us-central1.hosted.app",
+      "https://rizeup-dealer-connect-n6k7r.web.app",
+      "https://rizeup-dealer-connect-n6k7r.firebaseapp.com",
+      "http://localhost:3000"
+    ],
+    "method": ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
+    "responseHeader": [
+      "Authorization",
+      "Content-Type",
+      "x-goog-resumable",
+      "X-Goog-Upload-Protocol",
+      "X-Goog-Upload-Command",
+      "X-Goog-Upload-Header-Content-Length",
+      "X-Goog-Upload-Header-Content-Type",
+      "X-Goog-Upload-Offset",
+      "X-Goog-Upload-File-Name",
+      "X-Firebase-Storage-Version",
+      "x-client-data"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]
