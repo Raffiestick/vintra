@@ -3,14 +3,14 @@ specVersion: v1alpha1
 
 # Defines the environment variables that will be available to your app.
 env:
-    # --- Public Firebase Variables ---
-    # These are safe to include directly in your repository.
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
     value: "AIzaSyAjhaoaB2BQobm4NWDeJ4ePP-ExVBB77dg"
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
     value: "rizeup-dealer-connect-n6k7r.firebaseapp.com"
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
     value: "rizeup-dealer-connect-n6k7r"
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "rizeup-dealer-connect-n6k7r.appspot.com"
   - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
     value: "1000941113781"
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
