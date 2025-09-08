@@ -1,8 +1,8 @@
 
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { connectFunctionsEmulator, getFunctions } from 'firebase/functions';
 
 const firebaseConfig = {
@@ -15,15 +15,25 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase on the client side only
-const app: FirebaseApp = typeof window !== 'undefined' && !getApps().length
-  ? initializeApp(firebaseConfig)
-  : getApps().length
-  ? getApp()
-  : {} as FirebaseApp; // Provide a mock app for server-side build
+let app: FirebaseApp;
+let auth: Auth;
+let db: Firestore;
+let storage: FirebaseStorage;
 
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
+if (typeof window !== 'undefined' && !getApps().length) {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
+} else {
+  // On the server, get the existing app or a placeholder
+  app = getApps().length ? getApp() : ({} as FirebaseApp);
+  // Provide mock/placeholder services for server-side rendering
+  auth = {} as Auth;
+  db = {} as Firestore;
+  storage = {} as FirebaseStorage;
+}
+
 
 /**
  * Client-only accessor for Functions. It uses a dynamic import so
