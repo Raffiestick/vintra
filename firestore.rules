@@ -2,34 +2,27 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Check if a user has the 'admin' role in their custom claims.
-    function isAdmin() {
-      return request.auth.token.role == 'admin';
-    }
 
-    // Rules for the 'users' collection.
+    // Users (Dealers)
+    // - A user can create their own document on signup.
+    // - A user can read or update their own document.
+    // - Admins can read the list of users and get individual user documents.
     match /users/{userId} {
-      // Allow user creation for any authenticated user (signup).
       allow create: if request.auth != null;
-      
-      // Allow users to read, update, or delete their OWN document.
-      // Admins can also perform these actions.
-      allow read, update, delete: if request.auth.uid == userId || isAdmin();
-    }
-    
-    // Rules for the 'jackets' collection
-    match /jackets/{vin} {
-       // Admins can do anything.
-       // Assigned dealers can read their own jackets.
-       allow read: if isAdmin() || (request.auth.uid == resource.data.dealerId);
-       allow create, update, delete: if isAdmin();
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      allow list, get: if request.auth != null && request.auth.token.role == 'admin';
     }
 
-    // Fallback for any other path - only admins can access.
-    // This is a safeguard. Specific rules above take precedence.
+    // Jackets
+    // - Can only be read/written by an authenticated user.
+    // - Further specific access can be controlled by checking dealerId against auth.uid if needed.
+    match /jackets/{vin} {
+       allow read, write: if request.auth != null;
+    }
+
+    // Default deny all other reads/writes
     match /{document=**} {
-      allow read, write: if isAdmin();
+      allow read, write: if false;
     }
   }
 }
