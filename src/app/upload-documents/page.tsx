@@ -105,7 +105,7 @@ export default function UploadDocumentsPage() {
         resellCertificateUrl: certUrl,
         governmentIdUrl: idUrl,
         documentsUploaded: true,
-        status: "pending", // Ensure status is pending
+        status: "pending",
       });
 
       toast({
