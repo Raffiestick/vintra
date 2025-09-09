@@ -1,9 +1,11 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
-import { notFound, useParams } from "next/navigation";
-import { httpsCallableClient } from "@/lib/firebase/client";
+import { useEffect, useState, useCallback } from "react";
+import { useParams } from "next/navigation";
+import { httpsCallableClient, db, storage } from "@/lib/firebase/client";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { doc, updateDoc, onSnapshot } from "firebase/firestore";
 import {
   Card,
   CardContent,
@@ -13,8 +15,13 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
+import { UploadCloud, CheckCircle, File as FileIcon, Loader2 } from "lucide-react";
 
 interface Jacket {
   vin: string;
@@ -28,6 +35,7 @@ interface Jacket {
   auctionInvoiceTotal: number;
   dealerId: string;
   jacketId: string;
+  titleUrl?: string; // Add titleUrl field
   createdAt?: {
     _seconds: number;
     _nanoseconds: number;
@@ -83,34 +91,85 @@ export default function JacketDetailPage() {
   const [jacket, setJacket] = useState<Jacket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const [titleFile, setTitleFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const { toast } = useToast();
 
   useEffect(() => {
-    if (!vin) return;
+    if (!vin) {
+      setError("VIN not found in URL.");
+      setLoading(false);
+      return;
+    }
 
-    const fetchJacket = async () => {
-      setLoading(true);
-      try {
-        const getJacketByVin = await httpsCallableClient<{ vin: string }, Jacket>("getJacketByVin");
-        const result = await getJacketByVin({ vin });
-        if (result.data) {
-          setJacket(result.data);
-        } else {
-          setError("Jacket not found.");
-        }
-      } catch (err: any) {
-        console.error("Error fetching jacket:", err);
-        setError(err.message || "Failed to fetch jacket data.");
-      } finally {
-        setLoading(false);
+    const jacketDocRef = doc(db, "jackets", vin);
+    const unsubscribe = onSnapshot(jacketDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setJacket(docSnap.data() as Jacket);
+        setError(null);
+      } else {
+        setError("Jacket not found.");
+        setJacket(null);
       }
-    };
+      setLoading(false);
+    }, (err) => {
+      console.error("Error fetching jacket:", err);
+      setError(err.message || "Failed to fetch jacket data.");
+      setLoading(false);
+    });
 
-    fetchJacket();
+    return () => unsubscribe();
   }, [vin]);
+
+  const handleTitleUpload = useCallback(async () => {
+    if (!titleFile || !vin) {
+      toast({ title: "Please select a file first.", variant: "destructive" });
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+    toast({ title: "Starting title upload..." });
+
+    const fileExtension = titleFile.name.split('.').pop();
+    const storagePath = `jacket-documents/${vin}/title.${fileExtension}`;
+    const storageRef = ref(storage, storagePath);
+    const uploadTask = uploadBytesResumable(storageRef, titleFile);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress(progress);
+      },
+      (error) => {
+        console.error("Upload failed:", error);
+        toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
+        setIsUploading(false);
+      },
+      async () => {
+        try {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          const jacketDocRef = doc(db, "jackets", vin);
+          await updateDoc(jacketDocRef, { titleUrl: downloadURL });
+          
+          toast({ title: "Upload Complete!", description: "Vehicle title has been saved." });
+        } catch (updateError: any) {
+          console.error("Failed to update jacket document:", updateError);
+          toast({ title: "Update Failed", description: updateError.message, variant: "destructive" });
+        } finally {
+          setIsUploading(false);
+          setTitleFile(null); // Clear file input after upload
+        }
+      }
+    );
+  }, [vin, titleFile, toast]);
 
   if (loading) {
     return (
-      <main className="flex min-h-screen flex-col items-center bg-background p-4 md:p-8">
+      <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8">
         <JacketDetailSkeleton />
       </main>
     );
@@ -140,7 +199,7 @@ export default function JacketDetailPage() {
     : 'N/A';
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-background p-4 md:p-8">
+    <main className="flex min-h-screen flex-col items-center bg-background p-4 md:p-8 gap-8">
        <Card className="w-full max-w-4xl">
         <CardHeader>
           <div className="flex justify-between items-start">
@@ -185,6 +244,49 @@ export default function JacketDetailPage() {
             <Button size="lg" className="w-full md:w-auto">Process Jacket</Button>
         </CardFooter>
        </Card>
+
+       <Card className="w-full max-w-4xl">
+         <CardHeader>
+           <CardTitle>Jacket Processing</CardTitle>
+           <CardDescription>Upload required documents to process this jacket.</CardDescription>
+         </CardHeader>
+         <CardContent className="space-y-6">
+           <div className="space-y-4">
+             <Label htmlFor="title-upload" className="font-semibold text-base">Vehicle Title</Label>
+             {jacket.titleUrl ? (
+                <div className="flex items-center gap-3 text-green-600">
+                  <CheckCircle className="h-5 w-5" />
+                  <p className="font-medium">Title successfully uploaded.</p>
+                  <Button asChild variant="link">
+                    <a href={jacket.titleUrl} target="_blank" rel="noopener noreferrer">View Title</a>
+                  </Button>
+                </div>
+             ) : (
+                <div className="space-y-3">
+                  <div className="flex gap-4 items-center">
+                    <Input id="title-upload" type="file" onChange={(e) => setTitleFile(e.target.files ? e.target.files[0] : null)} disabled={isUploading} className="max-w-sm"/>
+                    <Button onClick={handleTitleUpload} disabled={!titleFile || isUploading}>
+                      {isUploading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin"/>
+                      ) : (
+                        <UploadCloud className="mr-2 h-4 w-4"/>
+                      )}
+                      {isUploading ? 'Uploading...' : 'Upload Title'}
+                    </Button>
+                  </div>
+                  {isUploading && (
+                    <div className="flex items-center gap-2">
+                       <Progress value={uploadProgress} className="w-full max-w-sm h-2" />
+                       <span className="text-xs text-muted-foreground">{Math.round(uploadProgress)}%</span>
+                    </div>
+                  )}
+                </div>
+             )}
+           </div>
+         </CardContent>
+       </Card>
     </main>
   );
 }
+
+    
