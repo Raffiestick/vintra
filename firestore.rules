@@ -1,36 +1,31 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
+    function isSignedIn() {
       return request.auth != null;
     }
 
-    // TEMP DEV BYPASS. Remove for production when custom claims are set.
-    function isDevAdmin() {
-      return signedIn() && request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
-    }
-
+    // We treat either role=admin or token.admin=true as admin.
     function isAdmin() {
-      return signedIn() && (
-        (request.auth.token.role == 'admin') || isDevAdmin()
+      return isSignedIn() && (
+        request.auth.token.role == 'admin' ||
+        request.auth.token.admin == true
       );
     }
 
-    // This rule allows admins to query the users collection,
-    // which is needed for the admin dashboard.
-    match /users/{uid} {
-      allow list: if isAdmin();
-      allow get: if isAdmin() || (signedIn() && request.auth.uid == uid);
-      allow create: if (signedIn() && request.auth.uid == uid);
-      allow update, delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
+    function isDealer() {
+      return isSignedIn() && request.auth.token.role == 'dealer';
     }
 
-    // jackets/{vin}
+    // JACKETS: allow admin full control.
+    // TEMP DEV: also allow any signed-in user to read so preview pages work while we build.
+    // TODO: Remove the "isSignedIn()" read fallback before production.
     match /jackets/{vin} {
-      allow read: if isAdmin() || (signedIn() && resource.data.dealerId == request.auth.uid);
-      allow create, update, delete: if isAdmin();
+      allow read: if isAdmin() || (isDealer() && resource.data.dealerId == request.auth.uid) || isSignedIn(); // TEMP DEV READ
+      allow write: if isAdmin();
     }
+
+    // (Keep other collection rules as they are or leave them implicit-deny.)
   }
 }
