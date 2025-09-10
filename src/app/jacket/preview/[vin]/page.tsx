@@ -11,8 +11,13 @@ import {
   Timestamp,
   arrayUnion,
 } from "firebase/firestore";
+import {
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
+} from "firebase/storage";
 import { useAuth } from "@/hooks/use-auth";
-import { db } from "@/lib/firebase/client";
+import { db, storage } from "@/lib/firebase/client";
 import {
   Card,
   CardContent,
@@ -27,8 +32,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, UploadCloud, Download } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -40,6 +53,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 interface MiscFee {
     description: string;
     amount: number;
+    createdAt?: Timestamp;
+}
+
+interface JacketDocument {
+    name: string;
+    type: "title" | "poa" | "addendum";
+    url: string;
     createdAt?: Timestamp;
 }
 
@@ -59,6 +79,7 @@ interface Jacket {
   onlineFee?: number;
   managementFee?: number;
   miscFees?: MiscFee[];
+  documents?: JacketDocument[];
   creatorId?: string;
   dealerId?: string;
   createdAt?: Timestamp;
@@ -121,12 +142,16 @@ export default function JacketDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState<"auction" | "mgmt" | null>(null);
 
-  // State for the misc fee form
   const [feeDescription, setFeeDescription] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
   const [feeError, setFeeError] = useState("");
   const [isAddingFee, setIsAddingFee] = useState(false);
 
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docType, setDocType] = useState<JacketDocument['type'] | ''>('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [docError, setDocError] = useState('');
 
   useEffect(() => {
     if (!vin || typeof vin !== "string") {
@@ -234,6 +259,66 @@ export default function JacketDetailPage() {
     } finally {
         setIsAddingFee(false);
     }
+  };
+
+  const handleUploadDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin || !docFile || !docType || !vin) {
+        setDocError("Please select a file and document type.");
+        return;
+    }
+    setDocError('');
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    const storagePath = `jacket-documents/${vin}/${docType}/${docFile.name}`;
+    const storageRef = ref(storage, storagePath);
+    const uploadTask = uploadBytesResumable(storageRef, docFile);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress(progress);
+      },
+      (error) => {
+        console.error("Upload failed:", error);
+        toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
+        setIsUploading(false);
+      },
+      async () => {
+        try {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          const newDocument: JacketDocument = {
+            name: docFile.name,
+            type: docType,
+            url: downloadURL,
+            createdAt: Timestamp.fromDate(new Date()),
+          };
+
+          const jacketDocRef = doc(db, "jackets", vin);
+          await updateDoc(jacketDocRef, {
+            documents: arrayUnion(newDocument),
+            updatedAt: Timestamp.fromDate(new Date()),
+          });
+
+          toast({ title: "Document Uploaded", description: `${docFile.name} has been added.` });
+          
+          setDocFile(null);
+          setDocType('');
+          // Manually reset file input
+          const fileInput = document.getElementById('docFile') as HTMLInputElement;
+          if(fileInput) fileInput.value = "";
+
+        } catch (err: any) {
+          console.error("Error updating Firestore:", err);
+          toast({ title: "Update Failed", description: err.message, variant: "destructive" });
+        } finally {
+          setIsUploading(false);
+          setUploadProgress(0);
+        }
+      }
+    );
   };
 
 
@@ -420,6 +505,85 @@ export default function JacketDetailPage() {
         
         <Card>
             <CardHeader>
+                <CardTitle>Documents</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-4">
+                    {(!jacket.documents || jacket.documents.length === 0) ? (
+                        <p className="text-sm text-muted-foreground">No documents yet.</p>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>File Name</TableHead>
+                                    <TableHead>Type</TableHead>
+                                    <TableHead>Added</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {jacket.documents.map((doc, index) => (
+                                    <TableRow key={index}>
+                                        <TableCell className="font-medium">
+                                          <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:underline text-primary">
+                                            <Download className="h-4 w-4" />
+                                            {doc.name}
+                                          </a>
+                                        </TableCell>
+                                        <TableCell><Badge variant="outline" className="capitalize">{doc.type}</Badge></TableCell>
+                                        <TableCell>{doc.createdAt ? doc.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </div>
+            </CardContent>
+            {isAdmin && (
+                <CardFooter className="border-t pt-6">
+                    <form onSubmit={handleUploadDocument} className="w-full space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                            <div className="space-y-1">
+                                <Label htmlFor="docType">Document Type</Label>
+                                <Select value={docType} onValueChange={(v) => setDocType(v as JacketDocument['type'])} disabled={isUploading}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select type..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="title">Title</SelectItem>
+                                        <SelectItem value="poa">POA</SelectItem>
+                                        <SelectItem value="addendum">Addendum</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="docFile">File</Label>
+                                <Input 
+                                    id="docFile"
+                                    type="file"
+                                    onChange={(e) => setDocFile(e.target.files ? e.target.files[0] : null)}
+                                    disabled={isUploading}
+                                />
+                            </div>
+                             <Button type="submit" disabled={isUploading || !docFile || !docType}>
+                                {isUploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Uploading...</> : <><UploadCloud className="mr-2 h-4 w-4"/>Upload</>}
+                            </Button>
+                        </div>
+                        {isUploading && (
+                            <div className="flex items-center gap-2 pt-1">
+                                <Progress value={uploadProgress} className="w-full h-2" />
+                                <span className="text-xs text-muted-foreground">
+                                {Math.round(uploadProgress)}%
+                                </span>
+                            </div>
+                        )}
+                        {docError && <p className="text-sm text-destructive">{docError}</p>}
+                    </form>
+                </CardFooter>
+            )}
+        </Card>
+
+        <Card>
+            <CardHeader>
                 <CardTitle>Misc Fees</CardTitle>
             </CardHeader>
             <CardContent>
@@ -451,7 +615,7 @@ export default function JacketDetailPage() {
             {isAdmin && (
                 <CardFooter className="border-t pt-6">
                     <form onSubmit={handleAddFee} className="w-full space-y-4">
-                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                             <div className="md:col-span-2 space-y-1">
                                 <Label htmlFor="feeDescription">Fee Description</Label>
                                 <Input 
@@ -508,3 +672,4 @@ export default function JacketDetailPage() {
     </main>
   );
 }
+
