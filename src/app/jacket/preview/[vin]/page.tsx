@@ -86,8 +86,10 @@ function JacketDetailSkeleton() {
 }
 
 export default function JacketDetailPage() {
-  const params = useParams();
-  const vin = Array.isArray(params.vin) ? params.vin[0] : params.vin;
+  const params = useParams<{ vin: string | string[] }>();
+  const vinParam = params?.vin;
+  const vin = Array.isArray(vinParam) ? vinParam[0] : vinParam;
+
   const [jacket, setJacket] = useState<Jacket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,29 +100,35 @@ export default function JacketDetailPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!vin) {
+    if (!vin || typeof vin !== 'string') {
       setError("VIN not found in URL.");
       setLoading(false);
       return;
     }
 
-    const jacketDocRef = doc(db, "jackets", vin);
-    const unsubscribe = onSnapshot(jacketDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setJacket(docSnap.data() as Jacket);
-        setError(null);
-      } else {
-        setError("Jacket not found.");
-        setJacket(null);
-      }
-      setLoading(false);
-    }, (err) => {
-      console.error("Error fetching jacket:", err);
-      setError(err.message || "Failed to fetch jacket data.");
-      setLoading(false);
-    });
+    try {
+      const jacketDocRef = doc(db, "jackets", String(vin));
+      const unsubscribe = onSnapshot(jacketDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          setJacket(docSnap.data() as Jacket);
+          setError(null);
+        } else {
+          setError("Jacket not found.");
+          setJacket(null);
+        }
+        setLoading(false);
+      }, (err) => {
+        console.error("Error fetching jacket:", err);
+        setError(err.message || "Failed to fetch jacket data.");
+        setLoading(false);
+      });
 
-    return () => unsubscribe();
+      return () => unsubscribe();
+    } catch (err: any) {
+        console.error("Error setting up Firestore listener:", err);
+        setError(err.message || "An unexpected error occurred.");
+        setLoading(false);
+    }
   }, [vin]);
 
   const handleTitleUpload = useCallback(async () => {
@@ -152,7 +160,7 @@ export default function JacketDetailPage() {
       async () => {
         try {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const jacketDocRef = doc(db, "jackets", vin);
+          const jacketDocRef = doc(db, "jackets", String(vin));
           await updateDoc(jacketDocRef, { titleUrl: downloadURL });
           
           toast({ title: "Upload Complete!", description: "Vehicle title has been saved." });
