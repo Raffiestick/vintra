@@ -6,7 +6,7 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // We treat either role=admin or token.admin=true as admin.
+    // Treat either role=admin or token.admin=true as admin.
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.role == 'admin' ||
@@ -14,18 +14,15 @@ service cloud.firestore {
       );
     }
 
-    function isDealer() {
-      return isSignedIn() && request.auth.token.role == 'dealer';
-    }
-
-    // JACKETS: allow admin full control.
-    // TEMP DEV: also allow any signed-in user to read so preview pages work while we build.
-    // TODO: Remove the "isSignedIn()" read fallback before production.
+    // JACKETS
+    // DEV behavior: allow any SIGNED-IN user to READ so preview pages render.
+    // Writes remain ADMIN-only.
+    // NOTE: We'll tighten reads later before production.
     match /jackets/{vin} {
-      allow read: if isAdmin() || (isDealer() && resource.data.dealerId == request.auth.uid) || isSignedIn(); // TEMP DEV READ
+      allow read: if isAdmin() || isSignedIn();
       allow write: if isAdmin();
     }
 
-    // (Keep other collection rules as they are or leave them implicit-deny.)
+    // All other collections default to deny unless separately allowed elsewhere.
   }
 }
