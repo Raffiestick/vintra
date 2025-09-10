@@ -1,3 +1,4 @@
+'use client';
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { initializeApp, getApps } from "firebase-admin/app";
@@ -83,26 +84,28 @@ export const generateJacketDocuments = onCall({ region: "us-central1", secrets: 
 export const grantAdminRole = functions.https.onRequest(async (req, res) => {
     try {
         if (req.method !== "POST") {
-            return res.status(405).send("Method Not Allowed");
+            res.status(405).send("Method Not Allowed");
+            return;
         }
         const cfg = functions.config();
         const seed = (cfg.admin && cfg.admin.seed_token) ? String(cfg.admin.seed_token) : "";
         const header = String(req.get("x-admin-seed") || "");
         if (!seed || header !== seed) {
             functions.logger.warn("Unauthorized attempt to grant admin role.");
-            return res.status(401).send("Unauthorized");
+            res.status(401).send("Unauthorized");
+            return;
         }
         const { targetUid } = req.body || {};
         if (!targetUid || typeof targetUid !== "string") {
-            return res.status(400).send("Missing targetUid");
+            res.status(400).send("Missing targetUid");
+            return;
         }
         await admin.auth().setCustomUserClaims(targetUid, { role: "admin", admin: true });
         functions.logger.info(`Successfully granted admin role to ${targetUid}`);
-        return res.json({ ok: true, targetUid });
+        res.json({ ok: true, targetUid });
     }
     catch (err) {
         functions.logger.error("grantAdminRole error", err);
-        return res.status(500).send(err?.message || "Internal error");
+        res.status(500).send(err?.message || "Internal error");
     }
 });
-// --- END grantAdminRole (secure) ---
