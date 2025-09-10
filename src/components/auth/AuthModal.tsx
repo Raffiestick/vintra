@@ -108,6 +108,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
 
       const userData = {
         uid: user.uid,
+        email,
         companyName,
         streetAddress,
         city,
@@ -115,16 +116,15 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
         zip,
         contactName,
         phone,
-        email,
         role: 'dealer',
-        status: 'pending',
+        status: 'new', // Start as 'new', will go to 'pending' after docs
         documentsUploaded: false,
+        resellCertificateUrl: '',
+        governmentIdUrl: '',
         createdAt: serverTimestamp(),
       };
-
-      if(userData) {
-        await setDoc(doc(db, "users", user.uid), userData);
-      }
+      
+      await setDoc(doc(db, "users", user.uid), userData);
       
       // Force refresh the token to ensure custom claims are loaded if set by a function
       await user.getIdToken(true);

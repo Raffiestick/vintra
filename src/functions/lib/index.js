@@ -77,7 +77,7 @@ export const generateJacketDocuments = onCall({ region: "us-central1", secrets: 
 });
 // ===== DEV ONLY: Hard-code a UID to become admin =====
 // Replace PASTE_YOUR_UID with my actual UID before deploying.
-const DEV_ADMIN_UID = "PASTE_YOUR_UID";
+const DEV_ADMIN_UID = "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
 /**
  * POST https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/devMakeMeAdmin
  * No auth headers required (DEV ONLY). Do NOT ship this to production.

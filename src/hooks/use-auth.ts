@@ -40,5 +40,3 @@ export function useAuth(): AuthState {
 
   return { user, loading, isAdmin };
 }
-
-    
