@@ -29,10 +29,10 @@ interface Jacket {
   make: string;
   model: string;
   color: string;
-  odometer: number;
+  odometer?: number;
   titleState: string;
   titleNumber: string;
-  auctionInvoiceTotal: number;
+  auctionInvoiceTotal?: number;
   dealerId: string;
   jacketId: string;
   titleUrl?: string; // Add titleUrl field
@@ -205,6 +205,16 @@ export default function JacketDetailPage() {
   const createdAt = jacket.createdAt?._seconds 
     ? new Date(jacket.createdAt._seconds * 1000).toLocaleDateString() 
     : 'N/A';
+    
+  const formatCurrency = (value?: number) => {
+    if (typeof value !== 'number') return '$0.00';
+    return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  };
+  
+  const formatOdometer = (value?: number) => {
+      if (typeof value !== 'number') return 'N/A';
+      return value.toLocaleString();
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center bg-background p-4 md:p-8 gap-8">
@@ -213,7 +223,7 @@ export default function JacketDetailPage() {
           <div className="flex justify-between items-start">
             <div>
               <CardTitle className="text-3xl font-bold">
-                {jacket.year} {jacket.make} {jacket.model}
+                {jacket.year || 'N/A'} {jacket.make || 'N/A'} {jacket.model || 'N/A'}
               </CardTitle>
               <CardDescription>
                 VIN: <span className="font-mono">{jacket.vin}</span>
@@ -228,18 +238,18 @@ export default function JacketDetailPage() {
           <div className="md:col-span-3 border-t pt-6">
             <h4 className="text-lg font-semibold mb-4">Vehicle Information</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div><strong className="block text-muted-foreground">Color:</strong> {jacket.color}</div>
-                <div><strong className="block text-muted-foreground">Odometer:</strong> {jacket.odometer.toLocaleString()}</div>
-                <div><strong className="block text-muted-foreground">Title State:</strong> {jacket.titleState}</div>
-                <div><strong className="block text-muted-foreground">Title Number:</strong> {jacket.titleNumber}</div>
+                <div><strong className="block text-muted-foreground">Color:</strong> {jacket.color || 'N/A'}</div>
+                <div><strong className="block text-muted-foreground">Odometer:</strong> {formatOdometer(jacket.odometer)}</div>
+                <div><strong className="block text-muted-foreground">Title State:</strong> {jacket.titleState || 'N/A'}</div>
+                <div><strong className="block text-muted-foreground">Title Number:</strong> {jacket.titleNumber || 'N/A'}</div>
             </div>
           </div>
 
            <div className="md:col-span-3 border-t pt-6">
             <h4 className="text-lg font-semibold mb-4">Financials & Assignment</h4>
              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div><strong className="block text-muted-foreground">Auction Total:</strong> ${jacket.auctionInvoiceTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                <div className="col-span-2"><strong className="block text-muted-foreground">Assigned Dealer ID:</strong> <span className="font-mono text-xs">{jacket.dealerId}</span></div>
+                <div><strong className="block text-muted-foreground">Auction Total:</strong> {formatCurrency(jacket.auctionInvoiceTotal)}</div>
+                <div className="col-span-2"><strong className="block text-muted-foreground">Assigned Dealer ID:</strong> <span className="font-mono text-xs">{jacket.dealerId || 'Not Assigned'}</span></div>
              </div>
           </div>
           <div className="md:col-span-3 border-t pt-6">
@@ -296,5 +306,7 @@ export default function JacketDetailPage() {
     </main>
   );
 }
+
+    
 
     
