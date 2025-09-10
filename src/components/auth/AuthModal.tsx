@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { DEV_ADMIN_UID } from "@/lib/auth/roles";
 
 interface AuthModalProps {
   open: boolean;
@@ -55,9 +56,10 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       
       // Force refresh the token to get latest claims.
       const tokenResult = await user.getIdTokenResult(true);
-      const isAdmin = tokenResult.claims.admin === true;
+      const isAdminByClaim = tokenResult.claims.admin === true;
+      const isAdminByUID = user.uid === DEV_ADMIN_UID;
 
-      if (isAdmin) {
+      if (isAdminByClaim || isAdminByUID) {
         router.push('/admin/dealer-management');
       } else {
         const userDocRef = doc(db, "users", user.uid);
