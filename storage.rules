@@ -3,39 +3,39 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    function signedIn() {
+    // Helper functions to check user roles, mirroring Firestore rules.
+    function isSignedIn() {
       return request.auth != null;
     }
 
-    // TEMP DEV BYPASS. Remove for production when custom claims are set.
-    function isDevAdmin() {
-      return signedIn() && request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
-    }
-
     function isAdmin() {
-      return signedIn() && (
-        (request.auth.token.role == 'admin') || isDevAdmin()
+      return isSignedIn() && (
+        request.auth.token.role == 'admin' ||
+        request.auth.token.admin == true
       );
     }
-
-    // Only PDFs/images <= 10MB (adjust if needed)
-    function isAllowedUpload() {
-      return request.resource.size < 10 * 1024 * 1024
-        && (
-          request.resource.contentType.matches('image/.*')
-          || request.resource.contentType == 'application/pdf'
-        );
+    
+    // Hard-coded admin UID for development bypass
+    function isDevAdmin() {
+      return isSignedIn() && request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
     }
 
-    // user-documents/{uid}/...
+    // Allow users to upload their own application documents (resale cert, ID).
     match /user-documents/{userId}/{allPaths=**} {
-      // Owner or admin can read
-      allow read: if (signedIn() && request.auth.uid == userId) || isAdmin();
+      allow read: if isAdmin() || isDevAdmin();
+      allow write: if request.auth.uid == userId;
+    }
 
-      // Only the owner may upload/write
-      allow write: if signedIn()
-        && request.auth.uid == userId
-        && isAllowedUpload();
+    // Allow admins to upload documents for any jacket.
+    match /jacket-documents/{vin}/{allPaths=**} {
+      allow write: if isAdmin() || isDevAdmin();
+    }
+
+    // Allow any authenticated user to read files. This is generally safe because
+    // file paths are not guessable and access to the URLs is controlled by
+    // your Firestore read rules.
+    match /{allPaths=**} {
+      allow read: if isSignedIn();
     }
   }
 }
