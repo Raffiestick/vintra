@@ -4,8 +4,6 @@ import { logger } from "firebase-functions";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
-import * as functions from "firebase-functions";
-import * as admin from "firebase-admin";
 // Secret to allow one dev UID to bypass claim check (only if set)
 const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID");
 // Initialize lazily
@@ -74,22 +72,4 @@ export const generateJacketDocuments = onCall({ region: "us-central1", secrets: 
     return {
         pdfUrl: `https://example.com/placeholder-for-${vin}.pdf`
     };
-});
-// ===== DEV ONLY: Hard-code a UID to become admin =====
-// Replace PASTE_YOUR_UID with my actual UID before deploying.
-const DEV_ADMIN_UID = "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
-/**
- * POST https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/devMakeMeAdmin
- * No auth headers required (DEV ONLY). Do NOT ship this to production.
- */
-export const devMakeMeAdmin = functions.https.onRequest(async (req, res) => {
-    try {
-        await admin.auth().setCustomUserClaims(DEV_ADMIN_UID, { role: "admin", admin: true });
-        res.set("Content-Type", "application/json");
-        res.status(200).send(JSON.stringify({ ok: true, targetUid: DEV_ADMIN_UID }));
-    }
-    catch (err) {
-        console.error("devMakeMeAdmin error", err);
-        res.status(500).send(err?.message || "Internal error");
-    }
 });

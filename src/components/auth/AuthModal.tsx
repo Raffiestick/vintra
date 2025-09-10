@@ -52,32 +52,34 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      const tokenResult = await user.getIdTokenResult(true); // Force refresh the token
+      
+      // Force refresh the token to get latest claims.
+      const tokenResult = await user.getIdTokenResult(true);
+      const isAdmin = tokenResult.claims.admin === true;
 
       const userDocRef = doc(db, "users", user.uid);
       const userDoc = await getDoc(userDocRef);
-      const userData = userDoc.data();
 
-      // Check for admin role in both claims and Firestore document
-      if (tokenResult.claims.role === 'admin' || userData?.role === 'admin') {
+      if (isAdmin) {
         router.push('/admin/dealer-management');
       } else {
-        if (userDoc.exists() && userData) {
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
           if (userData.documentsUploaded === false) {
             router.push('/upload-documents');
           } else if (userData.status === 'pending') {
             router.push('/pending-review');
           } else if (userData.status === 'approved') {
-            router.push('/reports'); // Correct dealer dashboard
+            router.push('/reports');
           } else {
              toast({
               title: "Login Issue",
-              description: "Your account has an unrecognized status. Please contact support.",
+              description: "Your account status is unrecognized. Please contact support.",
               variant: "destructive",
             });
           }
         } else {
-          // This case should ideally not happen for a non-admin user
+          // This case should not happen for a non-admin, but is a safeguard.
           throw new Error("User profile not found.");
         }
       }

@@ -21,15 +21,16 @@ export function useAuth(): AuthState {
       setUser(currentUser);
       if (currentUser) {
         try {
-          const tokenResult = await currentUser.getIdTokenResult(true); // Force refresh
-          const claims = tokenResult.claims;
-          // Check for admin role in claims
-          setIsAdmin(claims.role === 'admin' || claims.admin === true);
+          // Force refresh the token to get the latest custom claims.
+          const tokenResult = await currentUser.getIdTokenResult(true);
+          // Check for the 'admin' claim.
+          setIsAdmin(tokenResult.claims.admin === true);
         } catch (error) {
           console.error("Error getting user token claims:", error);
           setIsAdmin(false);
         }
       } else {
+        // No user, not an admin.
         setIsAdmin(false);
       }
       setLoading(false);
