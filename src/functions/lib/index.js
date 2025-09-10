@@ -31,28 +31,6 @@ function assertAdmin(request) {
         throw new HttpsError("permission-denied", "Admin privileges required.");
     }
 }
-export const getJacketByVin = onCall({ region: "us-central1" }, async (request) => {
-    const db = getFirestore();
-    const vin = request.data.vin;
-    if (!vin || typeof vin !== 'string') {
-        throw new HttpsError("invalid-argument", "The function must be called with a 'vin' string.");
-    }
-    try {
-        const jacketRef = db.collection("jackets").doc(vin);
-        const jacketSnap = await jacketRef.get();
-        if (!jacketSnap.exists) {
-            throw new HttpsError("not-found", `No jacket found with VIN: ${vin}`);
-        }
-        return jacketSnap.data();
-    }
-    catch (error) {
-        logger.error(`Error fetching jacket for VIN ${vin}:`, error);
-        if (error instanceof HttpsError) {
-            throw error;
-        }
-        throw new HttpsError("internal", "An error occurred while fetching the jacket.");
-    }
-});
 export const manageDealerApplication = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID] }, async (request) => {
     assertAdmin(request);
     const db = getFirestore();
@@ -80,14 +58,17 @@ export const generateJacketId = onCall({ region: "us-central1", secrets: [DEV_AD
     const jacketId = Math.floor(100000 + Math.random() * 900000).toString();
     return { jacketId };
 });
-export const parseAuctionInvoice = onCall({ region: "us-central1", timeoutSeconds: 540, memory: "1GiB", secrets: [DEV_ADMIN_UID] }, async (request) => {
+// Placeholder for the PDF generation function. We will implement this later.
+export const generateJacketDocuments = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID] }, async (request) => {
     assertAdmin(request);
-    // Placeholder for AI-based invoice parsing logic
-    // It would receive file data (e.g., a data URI) and use Genkit to extract details.
+    const { vin } = request.data;
+    if (!vin) {
+        throw new HttpsError("invalid-argument", "The function must be called with a 'vin'.");
+    }
+    // TODO: Implement PDF generation logic using Puppeteer.
+    logger.info(`Placeholder: Document generation requested for VIN: ${vin}`);
+    // For now, return a placeholder URL.
     return {
-        vin: "VIN_FROM_AI",
-        year: "YEAR_FROM_AI",
-        make: "MAKE_FROM_AI",
-        model: "MODEL_FROM_AI",
+        pdfUrl: `https://example.com/placeholder-for-${vin}.pdf`
     };
 });
