@@ -60,12 +60,14 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       const isAdminByUID = user.uid === DEV_ADMIN_UID;
 
       if (isAdminByClaim || isAdminByUID) {
+        onOpenChange(false);
         router.push('/admin/dealer-management');
       } else {
         const userDocRef = doc(db, "users", user.uid);
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
           const userData = userDoc.data();
+          onOpenChange(false);
           if (userData.documentsUploaded === false) {
             router.push('/upload-documents');
           } else if (userData.status === 'pending') {
@@ -80,11 +82,9 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
             });
           }
         } else {
-          // This case should not happen for a non-admin, but is a safeguard.
           throw new Error("User profile not found.");
         }
       }
-      onOpenChange(false);
     } catch (error: any) {
       toast({
         title: "Sign In Failed",
@@ -131,9 +131,9 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       
       // Force refresh the token to ensure custom claims are loaded if set by a function
       await user.getIdToken(true);
-
-      router.push('/upload-documents');
+      
       onOpenChange(false);
+      router.push('/upload-documents');
     } catch (error: any) {
       toast({
         title: "Account Creation Failed",
