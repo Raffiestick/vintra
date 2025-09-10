@@ -7,7 +7,7 @@ import { defineSecret } from "firebase-functions/params";
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 // Secret to allow one dev UID to bypass claim check (only if set)
-const DEV_ADMIN_UID = defineSecret("DEV_ADMIN_UID");
+const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID");
 // Initialize lazily
 if (getApps().length === 0) {
     initializeApp();
@@ -22,7 +22,7 @@ function assertAdmin(request) {
         throw new HttpsError("unauthenticated", "You must be signed in.");
     }
     // Optional dev bypass via secret (safe: inert if unset)
-    const devBypass = DEV_ADMIN_UID.value(); // empty string if not defined
+    const devBypass = DEV_ADMIN_UID_SECRET.value(); // empty string if not defined
     if (devBypass && request.auth.uid === devBypass) {
         logger.info(`Bypassing admin check for dev UID: ${request.auth.uid}`);
         return; // bypass granted for development
@@ -34,7 +34,7 @@ function assertAdmin(request) {
         throw new HttpsError("permission-denied", "Admin privileges required.");
     }
 }
-export const manageDealerApplication = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID] }, async (request) => {
+export const manageDealerApplication = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
     assertAdmin(request);
     const db = getFirestore();
     const { uid, action } = request.data;
@@ -56,13 +56,13 @@ export const manageDealerApplication = onCall({ region: "us-central1", secrets: 
         throw new HttpsError("internal", "An error occurred while managing the application.");
     }
 });
-export const generateJacketId = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID] }, async (request) => {
+export const generateJacketId = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
     assertAdmin(request);
     const jacketId = Math.floor(100000 + Math.random() * 900000).toString();
     return { jacketId };
 });
 // Placeholder for the PDF generation function. We will implement this later.
-export const generateJacketDocuments = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID] }, async (request) => {
+export const generateJacketDocuments = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
     assertAdmin(request);
     const { vin } = request.data;
     if (!vin) {
@@ -75,37 +75,21 @@ export const generateJacketDocuments = onCall({ region: "us-central1", secrets: 
         pdfUrl: `https://example.com/placeholder-for-${vin}.pdf`
     };
 });
-// --- BEGIN grantAdminRole (secure) ---
+// ===== DEV ONLY: Hard-code a UID to become admin =====
+// Replace PASTE_YOUR_UID with my actual UID before deploying.
+const DEV_ADMIN_UID = "PASTE_YOUR_UID";
 /**
- * POST https://us-central1-<PROJECT-ID>.cloudfunctions.net/grantAdminRole
- * Headers:  x-admin-seed: <SECRET>
- * Body:     { "targetUid": "<FIREBASE_UID>" }
+ * POST https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/devMakeMeAdmin
+ * No auth headers required (DEV ONLY). Do NOT ship this to production.
  */
-export const grantAdminRole = functions.https.onRequest(async (req, res) => {
+export const devMakeMeAdmin = functions.https.onRequest(async (req, res) => {
     try {
-        if (req.method !== "POST") {
-            res.status(405).send("Method Not Allowed");
-            return;
-        }
-        const cfg = functions.config();
-        const seed = (cfg.admin && cfg.admin.seed_token) ? String(cfg.admin.seed_token) : "";
-        const header = String(req.get("x-admin-seed") || "");
-        if (!seed || header !== seed) {
-            functions.logger.warn("Unauthorized attempt to grant admin role.");
-            res.status(401).send("Unauthorized");
-            return;
-        }
-        const { targetUid } = req.body || {};
-        if (!targetUid || typeof targetUid !== "string") {
-            res.status(400).send("Missing targetUid");
-            return;
-        }
-        await admin.auth().setCustomUserClaims(targetUid, { role: "admin", admin: true });
-        functions.logger.info(`Successfully granted admin role to ${targetUid}`);
-        res.json({ ok: true, targetUid });
+        await admin.auth().setCustomUserClaims(DEV_ADMIN_UID, { role: "admin", admin: true });
+        res.set("Content-Type", "application/json");
+        res.status(200).send(JSON.stringify({ ok: true, targetUid: DEV_ADMIN_UID }));
     }
     catch (err) {
-        functions.logger.error("grantAdminRole error", err);
+        console.error("devMakeMeAdmin error", err);
         res.status(500).send(err?.message || "Internal error");
     }
 });
