@@ -9,8 +9,9 @@ import {
   updateDoc,
   serverTimestamp,
   Timestamp,
+  arrayUnion,
 } from "firebase/firestore";
-import { useAuth } from "@/hooks/use-auth"; // Assuming a simple auth hook exists or we can get user
+import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/client";
 import {
   Card,
@@ -18,12 +19,14 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
+  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import {
@@ -32,6 +35,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+interface MiscFee {
+    description: string;
+    amount: number;
+    createdAt?: Timestamp;
+}
 
 interface Jacket {
   vin: string;
@@ -48,7 +58,7 @@ interface Jacket {
   buyerFee?: number;
   onlineFee?: number;
   managementFee?: number;
-  miscFees?: { name: string; amount: number }[];
+  miscFees?: MiscFee[];
   creatorId?: string;
   dealerId?: string;
   createdAt?: Timestamp;
@@ -104,12 +114,19 @@ export default function JacketDetailPage() {
   );
 
   const { toast } = useToast();
-  const { user, isAdmin } = useAuth(); // Simple hook to get user and admin status
+  const { user, isAdmin } = useAuth(); 
 
   const [jacket, setJacket] = useState<Jacket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState<"auction" | "mgmt" | null>(null);
+
+  // State for the misc fee form
+  const [feeDescription, setFeeDescription] = useState("");
+  const [feeAmount, setFeeAmount] = useState("");
+  const [feeError, setFeeError] = useState("");
+  const [isAddingFee, setIsAddingFee] = useState(false);
+
 
   useEffect(() => {
     if (!vin || typeof vin !== "string") {
@@ -162,7 +179,6 @@ export default function JacketDetailPage() {
         });
       } catch (err: any) {
         console.error("Failed to update jacket:", err);
-        // Revert UI state on error
         setJacket((prev) => (prev ? { ...prev, [field]: originalValue } : null));
         toast({
           title: "Update Failed",
@@ -176,6 +192,50 @@ export default function JacketDetailPage() {
     },
     [vin, user, isAdmin, jacket, toast]
   );
+  
+  const handleAddFee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin) return;
+
+    const parsedAmount = parseFloat(feeAmount);
+    if (feeDescription.trim() === "") {
+        setFeeError("Description is required.");
+        return;
+    }
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        setFeeError("Please enter a valid positive amount.");
+        return;
+    }
+    setFeeError("");
+    setIsAddingFee(true);
+
+    const newFee: MiscFee = {
+        description: feeDescription.trim(),
+        amount: parsedAmount,
+        createdAt: Timestamp.fromDate(new Date()),
+    };
+
+    try {
+        const jacketDocRef = doc(db, "jackets", vin as string);
+        await updateDoc(jacketDocRef, {
+            miscFees: arrayUnion(newFee),
+            updatedAt: Timestamp.fromDate(new Date()),
+        });
+        toast({ title: "Fee Added", description: "The miscellaneous fee has been added." });
+        setFeeDescription("");
+        setFeeAmount("");
+    } catch (err: any) {
+        console.error("Failed to add fee:", err);
+        toast({
+            title: "Error Adding Fee",
+            description: err.message || "An unexpected error occurred.",
+            variant: "destructive",
+        });
+    } finally {
+        setIsAddingFee(false);
+    }
+  };
+
 
   const fmtCurrency = (n?: number): string => {
     if (n === null || typeof n === "undefined") {
@@ -195,12 +255,12 @@ export default function JacketDetailPage() {
       (jacket.onlineFee || 0);
     const mgmtDue = jacket.managementFee || 0;
     const miscTotal =
-      jacket.miscFees?.reduce((acc, fee) => acc + (fee.amount || 0), 0) || 0;
+      jacket.miscFees?.reduce((acc, fee) => acc + (fee?.amount || 0), 0) || 0;
     const subtotal = auctionDue + mgmtDue + miscTotal;
     const outstanding =
       (jacket.isAuctionPaid ? 0 : auctionDue) +
       (jacket.isMgmtFeePaid ? 0 : mgmtDue) +
-      miscTotal; // Assuming miscFees are always outstanding until handled separately
+      miscTotal; 
     return { auctionDue, mgmtDue, miscTotal, subtotal, outstanding };
   }, [jacket]);
 
@@ -265,7 +325,7 @@ export default function JacketDetailPage() {
   }) => (
     <TooltipProvider>
       <Tooltip delayDuration={0}>
-        <TooltipTrigger disabled={isAdmin} asChild>
+        <TooltipTrigger disabled={!isAdmin} asChild>
           <div className="flex items-center space-x-3">
             {updating ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -357,6 +417,72 @@ export default function JacketDetailPage() {
             />
           </CardContent>
         </Card>
+        
+        <Card>
+            <CardHeader>
+                <CardTitle>Misc Fees</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-4">
+                    {(!jacket.miscFees || jacket.miscFees.length === 0) ? (
+                        <p className="text-sm text-muted-foreground">No misc fees yet.</p>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Description</TableHead>
+                                    <TableHead>Added</TableHead>
+                                    <TableHead className="text-right">Amount</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {jacket.miscFees.map((fee, index) => (
+                                    <TableRow key={index}>
+                                        <TableCell className="font-medium">{fee.description}</TableCell>
+                                        <TableCell>{fee.createdAt ? fee.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
+                                        <TableCell className="text-right">{fmtCurrency(fee.amount)}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </div>
+            </CardContent>
+            {isAdmin && (
+                <CardFooter className="border-t pt-6">
+                    <form onSubmit={handleAddFee} className="w-full space-y-4">
+                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="md:col-span-2 space-y-1">
+                                <Label htmlFor="feeDescription">Fee Description</Label>
+                                <Input 
+                                    id="feeDescription"
+                                    value={feeDescription}
+                                    onChange={(e) => setFeeDescription(e.target.value)}
+                                    placeholder="e.g. Lost Key Replacement"
+                                    disabled={isAddingFee}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="feeAmount">Amount ($)</Label>
+                                <Input
+                                    id="feeAmount"
+                                    type="number"
+                                    value={feeAmount}
+                                    onChange={(e) => setFeeAmount(e.target.value)}
+                                    placeholder="50.00"
+                                    step="0.01"
+                                    disabled={isAddingFee}
+                                />
+                            </div>
+                        </div>
+                        {feeError && <p className="text-sm text-destructive">{feeError}</p>}
+                        <Button type="submit" disabled={isAddingFee}>
+                            {isAddingFee ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Adding...</> : 'Add Fee'}
+                        </Button>
+                    </form>
+                </CardFooter>
+            )}
+        </Card>
 
         {financials && (
            <Card>
@@ -372,7 +498,7 @@ export default function JacketDetailPage() {
                 <div><strong className="block text-muted-foreground">Mgmt Fee</strong> {fmtCurrency(jacket.managementFee)}</div>
                 <div className="font-bold"><strong className="block text-muted-foreground">Mgmt Due</strong> {fmtCurrency(financials.mgmtDue)}</div>
 
-                <div><strong className="block text-muted-foreground">Misc Total</strong> {fmtCurrency(financials.miscTotal)}</div>
+                <div className="font-bold text-primary"><strong className="block text-muted-foreground">Misc Total</strong> {fmtCurrency(financials.miscTotal)}</div>
                 <div className="font-bold"><strong className="block text-muted-foreground">Subtotal</strong> {fmtCurrency(financials.subtotal)}</div>
                 <div className="col-span-full md:col-span-1 text-lg font-bold text-destructive"><strong className="block text-muted-foreground">Total Outstanding</strong> {fmtCurrency(financials.outstanding)}</div>
              </CardContent>
@@ -382,5 +508,3 @@ export default function JacketDetailPage() {
     </main>
   );
 }
-
-    
