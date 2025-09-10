@@ -2,11 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() {
-      return request.auth != null;
-    }
+    function isSignedIn() { return request.auth != null; }
 
-    // Treat either role=admin or token.admin=true as admin.
+    // Claims-based admin (kept)
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.role == 'admin' ||
@@ -14,15 +12,32 @@ service cloud.firestore {
       );
     }
 
-    // JACKETS
-    // DEV behavior: allow any SIGNED-IN user to READ so preview pages render.
-    // Writes remain ADMIN-only.
-    // NOTE: We'll tighten reads later before production.
-    match /jackets/{vin} {
-      allow read: if isAdmin() || isSignedIn();
-      allow write: if isAdmin();
+    // DEV-only hard-coded admin UID bypass
+    function isDevAdmin() {
+      return isSignedIn() && request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
     }
 
-    // All other collections default to deny unless separately allowed elsewhere.
+    // Dealer role (kept)
+    function isDealer() {
+      return isSignedIn() && request.auth.token.role == 'dealer';
+    }
+
+    // Jackets:
+    // Read: admin OR dev-admin UID OR dealer that owns the jacket
+    // Write: admin OR dev-admin UID
+    match /jackets/{vin} {
+      allow read: if isAdmin() || isDevAdmin() || (isDealer() && resource.data.dealerId == request.auth.uid);
+      allow write: if isAdmin() || isDevAdmin();
+    }
+
+    // Users:
+    // Read: Any signed-in user can read their own document. Admins can read any.
+    // Create: Anyone can create their own user document (on signup).
+    // Update: Any signed-in user can update their own document. Admins can update any.
+    match /users/{userId} {
+      allow read: if (isSignedIn() && request.auth.uid == userId) || isAdmin() || isDevAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if (isSignedIn() && request.auth.uid == userId) || isAdmin() || isDevAdmin();
+    }
   }
 }
