@@ -57,12 +57,11 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
       const tokenResult = await user.getIdTokenResult(true);
       const isAdmin = tokenResult.claims.admin === true;
 
-      const userDocRef = doc(db, "users", user.uid);
-      const userDoc = await getDoc(userDocRef);
-
       if (isAdmin) {
         router.push('/admin/dealer-management');
       } else {
+        const userDocRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
           const userData = userDoc.data();
           if (userData.documentsUploaded === false) {
