@@ -1,179 +1,208 @@
 
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
-import { httpsCallableClient, db, storage } from "@/lib/firebase/client";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { doc, updateDoc, onSnapshot } from "firebase/firestore";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useParams, useRouter } from "next/navigation";
+import {
+  doc,
+  onSnapshot,
+  updateDoc,
+  serverTimestamp,
+  Timestamp,
+} from "firebase/firestore";
+import { useAuth } from "@/hooks/use-auth"; // Assuming a simple auth hook exists or we can get user
+import { db } from "@/lib/firebase/client";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { UploadCloud, CheckCircle, File as FileIcon, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Jacket {
   vin: string;
-  year: number;
-  make: string;
-  model: string;
-  color: string;
+  year?: number;
+  make?: string;
+  model?: string;
+  color?: string;
   odometer?: number;
-  titleState: string;
-  titleNumber: string;
-  auctionInvoiceTotal?: number;
-  dealerId: string;
-  jacketId: string;
-  titleUrl?: string; // Add titleUrl field
-  createdAt?: {
-    _seconds: number;
-    _nanoseconds: number;
-  };
-  [key: string]: any;
+  jacketId?: string;
+  auctionSaleDate?: Timestamp;
+  isAuctionPaid?: boolean;
+  isMgmtFeePaid?: boolean;
+  itemPrice?: number;
+  buyerFee?: number;
+  onlineFee?: number;
+  managementFee?: number;
+  miscFees?: { name: string; amount: number }[];
+  creatorId?: string;
+  dealerId?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 function JacketDetailSkeleton() {
   return (
-    <Card className="w-full max-w-4xl">
-      <CardHeader>
-        <div className="flex justify-between items-start">
-          <div>
-            <Skeleton className="h-8 w-64 mb-2" />
-            <Skeleton className="h-4 w-80" />
-          </div>
-          <Skeleton className="h-8 w-32" />
-        </div>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
-        <div className="md:col-span-3 border-t pt-6">
-          <h4 className="text-lg font-semibold mb-4">Vehicle Information</h4>
+    <div className="w-full max-w-4xl space-y-8">
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-8 w-3/4 mb-2" />
+          <Skeleton className="h-4 w-1/2" />
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div><strong className="block text-muted-foreground">Color:</strong> <Skeleton className="h-5 w-20 mt-1"/></div>
-              <div><strong className="block text-muted-foreground">Odometer:</strong> <Skeleton className="h-5 w-24 mt-1"/></div>
-              <div><strong className="block text-muted-foreground">Title State:</strong> <Skeleton className="h-5 w-16 mt-1"/></div>
-              <div><strong className="block text-muted-foreground">Title Number:</strong> <Skeleton className="h-5 w-28 mt-1"/></div>
+            {[...Array(4)].map((_, i) => (
+              <div key={i}>
+                <Skeleton className="h-4 w-20 mb-1" />
+                <Skeleton className="h-5 w-24" />
+              </div>
+            ))}
           </div>
-        </div>
-         <div className="md:col-span-3 border-t pt-6">
-          <h4 className="text-lg font-semibold mb-4">Financials & Assignment</h4>
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div><strong className="block text-muted-foreground">Auction Total:</strong> <Skeleton className="h-5 w-24 mt-1"/></div>
-              <div className="col-span-2"><strong className="block text-muted-foreground">Assigned Dealer ID:</strong> <Skeleton className="h-5 w-48 mt-1"/></div>
-           </div>
-        </div>
-        <div className="md:col-span-3 border-t pt-6">
-           <div className="text-xs text-muted-foreground">
-              Created on: <Skeleton className="h-4 w-24 inline-block"/>
-           </div>
-        </div>
-      </CardContent>
-      <CardFooter className="border-t pt-6">
-          <Button size="lg" className="w-full md:w-auto" disabled>Process Jacket</Button>
-      </CardFooter>
-     </Card>
-  )
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Status</CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center space-x-8">
+          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-32" />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Financials</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-32 w-full" />
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 export default function JacketDetailPage() {
   const params = useParams<{ vin: string | string[] }>();
   const vinParam = params?.vin;
-  const vin = Array.isArray(vinParam) ? vinParam[0] : vinParam;
+  const vin = useMemo(
+    () => (Array.isArray(vinParam) ? vinParam[0] : vinParam),
+    [vinParam]
+  );
+
+  const { toast } = useToast();
+  const { user, isAdmin } = useAuth(); // Simple hook to get user and admin status
 
   const [jacket, setJacket] = useState<Jacket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  const [titleFile, setTitleFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const { toast } = useToast();
+  const [isUpdating, setIsUpdating] = useState<"auction" | "mgmt" | null>(null);
 
   useEffect(() => {
-    if (!vin || typeof vin !== 'string') {
+    if (!vin || typeof vin !== "string") {
       setError("VIN not found in URL.");
       setLoading(false);
       return;
     }
 
-    try {
-      const jacketDocRef = doc(db, "jackets", String(vin));
-      const unsubscribe = onSnapshot(jacketDocRef, (docSnap) => {
+    const jacketDocRef = doc(db, "jackets", vin);
+    const unsubscribe = onSnapshot(
+      jacketDocRef,
+      (docSnap) => {
         if (docSnap.exists()) {
-          setJacket(docSnap.data() as Jacket);
+          setJacket({ vin: docSnap.id, ...docSnap.data() } as Jacket);
           setError(null);
         } else {
           setError("Jacket not found.");
           setJacket(null);
         }
         setLoading(false);
-      }, (err) => {
+      },
+      (err) => {
         console.error("Error fetching jacket:", err);
-        setError(err.message || "Failed to fetch jacket data.");
+        setError("Failed to fetch jacket data.");
         setLoading(false);
-      });
-
-      return () => unsubscribe();
-    } catch (err: any) {
-        console.error("Error setting up Firestore listener:", err);
-        setError(err.message || "An unexpected error occurred.");
-        setLoading(false);
-    }
-  }, [vin]);
-
-  const handleTitleUpload = useCallback(async () => {
-    if (!titleFile || !vin) {
-      toast({ title: "Please select a file first.", variant: "destructive" });
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadProgress(0);
-    toast({ title: "Starting title upload..." });
-
-    const fileExtension = titleFile.name.split('.').pop();
-    const storagePath = `jacket-documents/${vin}/title.${fileExtension}`;
-    const storageRef = ref(storage, storagePath);
-    const uploadTask = uploadBytesResumable(storageRef, titleFile);
-
-    uploadTask.on(
-      "state_changed",
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(progress);
-      },
-      (error) => {
-        console.error("Upload failed:", error);
-        toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
-        setIsUploading(false);
-      },
-      async () => {
-        try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const jacketDocRef = doc(db, "jackets", String(vin));
-          await updateDoc(jacketDocRef, { titleUrl: downloadURL });
-          
-          toast({ title: "Upload Complete!", description: "Vehicle title has been saved." });
-        } catch (updateError: any) {
-          console.error("Failed to update jacket document:", updateError);
-          toast({ title: "Update Failed", description: updateError.message, variant: "destructive" });
-        } finally {
-          setIsUploading(false);
-          setTitleFile(null); // Clear file input after upload
-        }
       }
     );
-  }, [vin, titleFile, toast]);
+
+    return () => unsubscribe();
+  }, [vin]);
+
+  const handleStatusChange = useCallback(
+    async (field: "isAuctionPaid" | "isMgmtFeePaid", value: boolean) => {
+      if (!vin || !user || !isAdmin) return;
+
+      const updatingType = field === "isAuctionPaid" ? "auction" : "mgmt";
+      setIsUpdating(updatingType);
+
+      const jacketDocRef = doc(db, "jackets", vin);
+      const originalValue = jacket?.[field] ?? false;
+
+      try {
+        await updateDoc(jacketDocRef, {
+          [field]: value,
+          updatedAt: serverTimestamp(),
+        });
+        toast({
+          title: "Status Updated",
+          description: `Jacket payment status has been successfully updated.`,
+        });
+      } catch (err: any) {
+        console.error("Failed to update jacket:", err);
+        // Revert UI state on error
+        setJacket((prev) => (prev ? { ...prev, [field]: originalValue } : null));
+        toast({
+          title: "Update Failed",
+          description:
+            err.message || "An error occurred. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsUpdating(null);
+      }
+    },
+    [vin, user, isAdmin, jacket, toast]
+  );
+
+  const fmtCurrency = (n?: number): string => {
+    if (n === null || typeof n === "undefined") {
+      return "$0.00";
+    }
+    return n.toLocaleString("en-US", {
+      style: "currency",
+      currency: "USD",
+    });
+  };
+
+  const financials = useMemo(() => {
+    if (!jacket) return null;
+    const auctionDue =
+      (jacket.itemPrice || 0) +
+      (jacket.buyerFee || 0) +
+      (jacket.onlineFee || 0);
+    const mgmtDue = jacket.managementFee || 0;
+    const miscTotal =
+      jacket.miscFees?.reduce((acc, fee) => acc + (fee.amount || 0), 0) || 0;
+    const subtotal = auctionDue + mgmtDue + miscTotal;
+    const outstanding =
+      (jacket.isAuctionPaid ? 0 : auctionDue) +
+      (jacket.isMgmtFeePaid ? 0 : mgmtDue) +
+      miscTotal; // Assuming miscFees are always outstanding until handled separately
+    return { auctionDue, mgmtDue, miscTotal, subtotal, outstanding };
+  }, [jacket]);
 
   if (loading) {
     return (
@@ -183,130 +212,175 @@ export default function JacketDetailPage() {
     );
   }
 
-  if (error || !jacket) {
-     return (
+  if (error) {
+    return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8">
-        <Card className="w-full max-w-4xl">
-           <CardHeader>
-            <CardTitle className="text-2xl font-bold text-destructive">Jacket Not Found</CardTitle>
+        <Card className="w-full max-w-lg text-center">
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold text-destructive">
+              Error
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <p>
-              No vehicle jacket was found with the VIN:{" "}
-              <span className="font-mono">{vin}</span>.
-            </p>
-            {error && <p className="text-destructive mt-2">{error}</p>}
+            <p>{error}</p>
           </CardContent>
         </Card>
       </main>
     );
   }
-  
-  const createdAt = jacket.createdAt?._seconds 
-    ? new Date(jacket.createdAt._seconds * 1000).toLocaleDateString() 
-    : 'N/A';
-    
-  const formatCurrency = (value?: number) => {
-    if (typeof value !== 'number') return '$0.00';
-    return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-  };
-  
-  const formatOdometer = (value?: number) => {
-      if (typeof value !== 'number') return 'N/A';
-      return value.toLocaleString();
+
+  if (!jacket) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8">
+        <Card className="w-full max-w-lg text-center">
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold">
+              Jacket Not Found
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>
+              No vehicle jacket was found with the VIN:{" "}
+              <span className="font-mono bg-muted px-2 py-1 rounded">
+                {vin}
+              </span>
+              .
+            </p>
+          </CardContent>
+        </Card>
+      </main>
+    );
   }
+
+  const PaymentSwitch = ({
+    id,
+    label,
+    checked,
+    updating,
+  }: {
+    id: "isAuctionPaid" | "isMgmtFeePaid";
+    label: string;
+    checked: boolean;
+    updating: boolean;
+  }) => (
+    <TooltipProvider>
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger disabled={isAdmin} asChild>
+          <div className="flex items-center space-x-3">
+            {updating ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Switch
+                id={id}
+                checked={checked}
+                onCheckedChange={(val) => handleStatusChange(id, val)}
+                disabled={!isAdmin || isUpdating !== null}
+                aria-readonly={!isAdmin}
+              />
+            )}
+            <Label htmlFor={id} className="text-base">
+              {label}
+            </Label>
+          </div>
+        </TooltipTrigger>
+        {!isAdmin && (
+          <TooltipContent>
+            <p>Admin only</p>
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
+  );
 
   return (
     <main className="flex min-h-screen flex-col items-center bg-background p-4 md:p-8 gap-8">
-       <Card className="w-full max-w-4xl">
-        <CardHeader>
-          <div className="flex justify-between items-start">
+      <div className="w-full max-w-4xl space-y-8">
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-start">
+              <div>
+                <CardTitle className="text-3xl font-bold">
+                  {jacket.year || ""} {jacket.make || "Unknown"}{" "}
+                  {jacket.model || "Vehicle"}
+                </CardTitle>
+                <CardDescription>
+                  VIN: <span className="font-mono">{jacket.vin}</span>
+                </CardDescription>
+              </div>
+              {jacket.jacketId && (
+                <Badge variant="secondary" className="text-lg">
+                  Jacket ID: {jacket.jacketId}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-6 text-sm">
             <div>
-              <CardTitle className="text-3xl font-bold">
-                {jacket.year || 'N/A'} {jacket.make || 'N/A'} {jacket.model || 'N/A'}
-              </CardTitle>
-              <CardDescription>
-                VIN: <span className="font-mono">{jacket.vin}</span>
-              </CardDescription>
+              <strong className="block text-muted-foreground">Color</strong>
+              {jacket.color || "N/A"}
             </div>
-             <Badge variant="secondary" className="text-lg">
-                Jacket ID: {jacket.jacketId}
-             </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
-          <div className="md:col-span-3 border-t pt-6">
-            <h4 className="text-lg font-semibold mb-4">Vehicle Information</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div><strong className="block text-muted-foreground">Color:</strong> {jacket.color || 'N/A'}</div>
-                <div><strong className="block text-muted-foreground">Odometer:</strong> {formatOdometer(jacket.odometer)}</div>
-                <div><strong className="block text-muted-foreground">Title State:</strong> {jacket.titleState || 'N/A'}</div>
-                <div><strong className="block text-muted-foreground">Title Number:</strong> {jacket.titleNumber || 'N/A'}</div>
+            <div>
+              <strong className="block text-muted-foreground">Odometer</strong>
+              {jacket.odometer ? jacket.odometer.toLocaleString() : "N/A"}
             </div>
-          </div>
+            <div>
+              <strong className="block text-muted-foreground">
+                Auction Date
+              </strong>
+              {jacket.auctionSaleDate
+                ? jacket.auctionSaleDate.toDate().toLocaleDateString()
+                : "N/A"}
+            </div>
+             <div>
+                <strong className="block text-muted-foreground">Created</strong>
+                {jacket.createdAt ? jacket.createdAt.toDate().toLocaleDateString() : 'N/A'}
+            </div>
+          </CardContent>
+        </Card>
 
-           <div className="md:col-span-3 border-t pt-6">
-            <h4 className="text-lg font-semibold mb-4">Financials & Assignment</h4>
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div><strong className="block text-muted-foreground">Auction Total:</strong> {formatCurrency(jacket.auctionInvoiceTotal)}</div>
-                <div className="col-span-2"><strong className="block text-muted-foreground">Assigned Dealer ID:</strong> <span className="font-mono text-xs">{jacket.dealerId || 'Not Assigned'}</span></div>
-             </div>
-          </div>
-          <div className="md:col-span-3 border-t pt-6">
-             <div className="text-xs text-muted-foreground">
-                Created on: {createdAt}
-             </div>
-          </div>
-        </CardContent>
-        <CardFooter className="border-t pt-6">
-            <Button size="lg" className="w-full md:w-auto">Process Jacket</Button>
-        </CardFooter>
-       </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Status</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row gap-8">
+            <PaymentSwitch
+              id="isAuctionPaid"
+              label="Auction Paid"
+              checked={jacket.isAuctionPaid ?? false}
+              updating={isUpdating === "auction"}
+            />
+            <PaymentSwitch
+              id="isMgmtFeePaid"
+              label="Management Fee Paid"
+              checked={jacket.isMgmtFeePaid ?? false}
+              updating={isUpdating === "mgmt"}
+            />
+          </CardContent>
+        </Card>
 
-       <Card className="w-full max-w-4xl">
-         <CardHeader>
-           <CardTitle>Jacket Processing</CardTitle>
-           <CardDescription>Upload required documents to process this jacket.</CardDescription>
-         </CardHeader>
-         <CardContent className="space-y-6">
-           <div className="space-y-4">
-             <Label htmlFor="title-upload" className="font-semibold text-base">Vehicle Title</Label>
-             {jacket.titleUrl ? (
-                <div className="flex items-center gap-3 text-green-600">
-                  <CheckCircle className="h-5 w-5" />
-                  <p className="font-medium">Title successfully uploaded.</p>
-                  <Button asChild variant="link">
-                    <a href={jacket.titleUrl} target="_blank" rel="noopener noreferrer">View Title</a>
-                  </Button>
-                </div>
-             ) : (
-                <div className="space-y-3">
-                  <div className="flex gap-4 items-center">
-                    <Input id="title-upload" type="file" onChange={(e) => setTitleFile(e.target.files ? e.target.files[0] : null)} disabled={isUploading} className="max-w-sm"/>
-                    <Button onClick={handleTitleUpload} disabled={!titleFile || isUploading}>
-                      {isUploading ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin"/>
-                      ) : (
-                        <UploadCloud className="mr-2 h-4 w-4"/>
-                      )}
-                      {isUploading ? 'Uploading...' : 'Upload Title'}
-                    </Button>
-                  </div>
-                  {isUploading && (
-                    <div className="flex items-center gap-2">
-                       <Progress value={uploadProgress} className="w-full max-w-sm h-2" />
-                       <span className="text-xs text-muted-foreground">{Math.round(uploadProgress)}%</span>
-                    </div>
-                  )}
-                </div>
-             )}
-           </div>
-         </CardContent>
-       </Card>
+        {financials && (
+           <Card>
+             <CardHeader>
+               <CardTitle>Financials</CardTitle>
+             </CardHeader>
+             <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
+                <div><strong className="block text-muted-foreground">Item Price</strong> {fmtCurrency(jacket.itemPrice)}</div>
+                <div><strong className="block text-muted-foreground">Buyer Fee</strong> {fmtCurrency(jacket.buyerFee)}</div>
+                <div><strong className="block text-muted-foreground">Online Fee</strong> {fmtCurrency(jacket.onlineFee)}</div>
+                <div className="font-bold"><strong className="block text-muted-foreground">Auction Due</strong> {fmtCurrency(financials.auctionDue)}</div>
+                
+                <div><strong className="block text-muted-foreground">Mgmt Fee</strong> {fmtCurrency(jacket.managementFee)}</div>
+                <div className="font-bold"><strong className="block text-muted-foreground">Mgmt Due</strong> {fmtCurrency(financials.mgmtDue)}</div>
+
+                <div><strong className="block text-muted-foreground">Misc Total</strong> {fmtCurrency(financials.miscTotal)}</div>
+                <div className="font-bold"><strong className="block text-muted-foreground">Subtotal</strong> {fmtCurrency(financials.subtotal)}</div>
+                <div className="col-span-full md:col-span-1 text-lg font-bold text-destructive"><strong className="block text-muted-foreground">Total Outstanding</strong> {fmtCurrency(financials.outstanding)}</div>
+             </CardContent>
+           </Card>
+        )}
+      </div>
     </main>
   );
 }
-
-    
 
     
