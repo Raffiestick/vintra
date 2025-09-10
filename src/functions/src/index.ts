@@ -4,6 +4,9 @@ import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
+import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
+
 
 // Secret to allow one dev UID to bypass claim check (only if set)
 const DEV_ADMIN_UID = defineSecret("DEV_ADMIN_UID");
@@ -91,3 +94,40 @@ export const generateJacketDocuments = onCall(
         };
     }
 );
+
+
+// --- BEGIN grantAdminRole (secure) ---
+/**
+ * POST https://us-central1-<PROJECT-ID>.cloudfunctions.net/grantAdminRole
+ * Headers:  x-admin-seed: <SECRET>
+ * Body:     { "targetUid": "<FIREBASE_UID>" }
+ */
+export const grantAdminRole = functions.https.onRequest(async (req, res) => {
+  try {
+    if (req.method !== "POST") {
+      return res.status(405).send("Method Not Allowed");
+    }
+
+    const cfg = functions.config();
+    const seed = (cfg.admin && cfg.admin.seed_token) ? String(cfg.admin.seed_token) : "";
+    const header = String(req.get("x-admin-seed") || "");
+
+    if (!seed || header !== seed) {
+      functions.logger.warn("Unauthorized attempt to grant admin role.");
+      return res.status(401).send("Unauthorized");
+    }
+
+    const { targetUid } = req.body || {};
+    if (!targetUid || typeof targetUid !== "string") {
+      return res.status(400).send("Missing targetUid");
+    }
+
+    await admin.auth().setCustomUserClaims(targetUid, { role: "admin", admin: true });
+    functions.logger.info(`Successfully granted admin role to ${targetUid}`);
+    return res.json({ ok: true, targetUid });
+  } catch (err: any) {
+    functions.logger.error("grantAdminRole error", err);
+    return res.status(500).send(err?.message || "Internal error");
+  }
+});
+// --- END grantAdminRole (secure) ---
