@@ -15,11 +15,13 @@ import {
   where,
   getDocs,
   deleteField,
+  getDoc,
 } from "firebase/firestore";
 import {
   ref,
   uploadBytesResumable,
   getDownloadURL,
+  deleteObject,
 } from "firebase/storage";
 import { useAuth } from "@/hooks/use-auth";
 import { db, storage } from "@/lib/firebase/client";
@@ -46,7 +48,7 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon } from "lucide-react";
+import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon, Trash2, Replace } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -85,6 +87,7 @@ interface MiscFee {
 }
 
 interface JacketDocument {
+    id: string; // Now mandatory
     name: string;
     type: "title" | "poa" | "addendum";
     url: string;
@@ -191,11 +194,16 @@ export default function JacketDetailPage() {
   const [feeError, setFeeError] = useState("");
   const [isAddingFee, setIsAddingFee] = useState(false);
 
+  // Document states
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docType, setDocType] = useState<JacketDocument['type'] | ''>('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [docError, setDocError] = useState('');
+  const [docToDelete, setDocToDelete] = useState<JacketDocument | null>(null);
+  const [isDeletingDoc, setIsDeletingDoc] = useState(false);
+  const [replacingDocId, setReplacingDocId] = useState<string | null>(null);
+
 
   const [approvedDealers, setApprovedDealers] = useState<ApprovedDealer[]>([]);
   const [isEditingDealer, setIsEditingDealer] = useState(false);
@@ -252,7 +260,7 @@ export default function JacketDetailPage() {
     return () => unsubscribe();
   }, [vin]);
 
-  // One-time migration effect for isMgmtPaid -> isMgmtFeePaid
+  // One-time migration for isMgmtPaid -> isMgmtFeePaid
   useEffect(() => {
     if (jacket && typeof jacket.isMgmtPaid === 'boolean' && typeof jacket.isMgmtFeePaid === 'undefined') {
         const jacketDocRef = doc(db, "jackets", jacket.vin);
@@ -266,6 +274,23 @@ export default function JacketDetailPage() {
         });
     }
   }, [jacket]);
+
+  // One-time migration for adding IDs to existing documents
+  useEffect(() => {
+    if (jacket?.documents && jacket.documents.some(d => !d.id)) {
+        console.log(`Migrating documents to add IDs for VIN ${jacket.vin}`);
+        const jacketDocRef = doc(db, "jackets", jacket.vin);
+        const updatedDocuments = jacket.documents.map((doc, index) => 
+            doc.id ? doc : { ...doc, id: `doc-${Date.now()}-${index}` }
+        );
+        updateDoc(jacketDocRef, {
+            documents: updatedDocuments,
+            updatedAt: serverTimestamp()
+        }).catch(err => {
+            console.error("Document ID migration failed:", err);
+        });
+    }
+  }, [jacket?.documents, jacket?.vin]);
 
 
   useEffect(() => {
@@ -465,45 +490,57 @@ export default function JacketDetailPage() {
     }
   };
 
+  const uploadFile = (file: File, type: JacketDocument['type'], onProgress: (p: number) => void): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const storagePath = `jacket-documents/${vin}/${type}/${file.name}`;
+      const storageRef = ref(storage, storagePath);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => onProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100),
+        (error) => {
+          console.error("Upload failed:", error);
+          toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
+          reject(error);
+        },
+        async () => {
+          try {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(downloadURL);
+          } catch (error) {
+            toast({ title: "Upload Failed", description: "Could not get download URL.", variant: "destructive" });
+            reject(error);
+          }
+        }
+      );
+    });
+  };
+
   const handleUploadDocument = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isAdmin || !docFile || !docType || !vin) {
-        setDocError("Please select a file and document type.");
-        return;
-    }
-    setDocError('');
-    setIsUploading(true);
-    setUploadProgress(0);
+      e.preventDefault();
+      if (!isAdmin || !docFile || !docType || !vin) {
+          setDocError("Please select a file and document type.");
+          return;
+      }
+      setDocError('');
+      setIsUploading(true);
+      setUploadProgress(0);
 
-    const storagePath = `jacket-documents/${vin}/${docType}/${docFile.name}`;
-    const storageRef = ref(storage, storagePath);
-    const uploadTask = uploadBytesResumable(storageRef, docFile);
-
-    uploadTask.on(
-      "state_changed",
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(progress);
-      },
-      (error) => {
-        console.error("Upload failed:", error);
-        toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
-        setIsUploading(false);
-      },
-      async () => {
-        try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+      try {
+          const downloadURL = await uploadFile(docFile, docType, setUploadProgress);
           const newDocument: JacketDocument = {
-            name: docFile.name,
-            type: docType,
-            url: downloadURL,
-            createdAt: Timestamp.fromDate(new Date()),
+              id: `doc-${Date.now()}`,
+              name: docFile.name,
+              type: docType,
+              url: downloadURL,
+              createdAt: Timestamp.fromDate(new Date()),
           };
 
           const jacketDocRef = doc(db, "jackets", vin);
           await updateDoc(jacketDocRef, {
-            documents: arrayUnion(newDocument),
-            updatedAt: Timestamp.fromDate(new Date()),
+              documents: arrayUnion(newDocument),
+              updatedAt: serverTimestamp(),
           });
 
           toast({ title: "Document Uploaded", description: `${docFile.name} has been added.` });
@@ -512,16 +549,89 @@ export default function JacketDetailPage() {
           setDocType('');
           const fileInput = document.getElementById('docFile') as HTMLInputElement;
           if(fileInput) fileInput.value = "";
-
-        } catch (err: any) {
-          console.error("Error updating Firestore:", err);
-          toast({ title: "Update Failed", description: err.message, variant: "destructive" });
-        } finally {
+      } catch (err: any) {
+          // Errors are already toasted in uploadFile
+      } finally {
           setIsUploading(false);
           setUploadProgress(0);
-        }
       }
-    );
+  };
+
+  const handleReplaceDocument = async (docId: string, newFile: File) => {
+    if (!isAdmin || !vin || !jacket?.documents) return;
+    
+    const docToReplace = jacket.documents.find(d => d.id === docId);
+    if (!docToReplace) {
+        toast({ title: "Error", description: "Document not found to replace.", variant: "destructive" });
+        return;
+    }
+    
+    setReplacingDocId(docId); // Shows progress in UI
+    setUploadProgress(0);
+
+    try {
+        const newUrl = await uploadFile(newFile, docToReplace.type, setUploadProgress);
+        
+        const updatedDocuments = jacket.documents.map(d => 
+            d.id === docId 
+            ? { ...d, name: newFile.name, url: newUrl, createdAt: Timestamp.fromDate(new Date()) } 
+            : d
+        );
+
+        const jacketDocRef = doc(db, "jackets", vin);
+        await updateDoc(jacketDocRef, {
+            documents: updatedDocuments,
+            updatedAt: serverTimestamp()
+        });
+
+        // Try to delete old file, but don't block on it
+        const oldFileRef = ref(storage, `jacket-documents/${vin}/${docToReplace.type}/${docToReplace.name}`);
+        deleteObject(oldFileRef).catch(err => console.warn("Could not delete old file, may be orphaned:", err));
+
+        toast({ title: "Document Replaced", description: `${newFile.name} is now uploaded.` });
+
+    } catch (err) {
+        // Errors already toasted
+    } finally {
+        setReplacingDocId(null);
+        setUploadProgress(0);
+    }
+  };
+
+  const handleDeleteDocument = async () => {
+    if (!isAdmin || !vin || !docToDelete) return;
+    
+    setIsDeletingDoc(true);
+
+    try {
+        const jacketDocRef = doc(db, "jackets", vin);
+        const currentDoc = await getDoc(jacketDocRef);
+        const currentData = currentDoc.data() as Jacket;
+
+        const updatedDocuments = (currentData.documents || []).filter(d => d.id !== docToDelete.id);
+
+        await updateDoc(jacketDocRef, {
+            documents: updatedDocuments,
+            updatedAt: serverTimestamp()
+        });
+
+        // Try to delete from storage. If this fails, the DB record is already gone, which is fine.
+        const storageRef = ref(storage, `jacket-documents/${vin}/${docToDelete.type}/${docToDelete.name}`);
+        await deleteObject(storageRef);
+
+        toast({ title: "Document Deleted", description: `${docToDelete.name} has been removed.` });
+
+    } catch(err: any) {
+        if (err.code === 'storage/object-not-found') {
+            toast({ title: "Document Deleted", description: "Metadata removed. File was not found in storage." });
+        } else {
+            console.error("Error deleting document:", err);
+            toast({ title: "Deletion Failed", description: err.message, variant: "destructive" });
+        }
+    } finally {
+        setIsDeletingDoc(false);
+        setDocToDelete(null);
+    }
   };
   
   const handleSaveDealer = async () => {
@@ -874,19 +984,55 @@ export default function JacketDetailPage() {
                                     <TableHead>File Name</TableHead>
                                     <TableHead>Type</TableHead>
                                     <TableHead>Added</TableHead>
+                                    {isAdmin && <TableHead className="text-right">Actions</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {jacket.documents.map((doc, index) => (
-                                    <TableRow key={index}>
+                                {jacket.documents.map((doc) => (
+                                    <TableRow key={doc.id}>
                                         <TableCell className="font-medium">
                                           <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:underline text-primary">
-                                            <Download className="h-4 w-4" />
                                             {doc.name}
                                           </a>
+                                          {replacingDocId === doc.id && (
+                                              <div className="flex items-center gap-2 pt-2">
+                                                  <Progress value={uploadProgress} className="w-full h-2" />
+                                                  <span className="text-xs text-muted-foreground">{Math.round(uploadProgress)}%</span>
+                                              </div>
+                                          )}
                                         </TableCell>
                                         <TableCell><Badge variant="outline" className="capitalize">{doc.type}</Badge></TableCell>
                                         <TableCell>{doc.createdAt ? doc.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
+                                        {isAdmin && (
+                                            <TableCell className="text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                  <Button asChild variant="outline" size="sm">
+                                                    <a href={doc.url} target="_blank" rel="noopener noreferrer"><Download className="h-4 w-4" /></a>
+                                                  </Button>
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => document.getElementById(`replace-input-${doc.id}`)?.click()}
+                                                    disabled={!!replacingDocId}
+                                                  >
+                                                    <Replace className="h-4 w-4"/>
+                                                    <input
+                                                      type="file"
+                                                      id={`replace-input-${doc.id}`}
+                                                      className="hidden"
+                                                      onChange={(e) => {
+                                                          if (e.target.files?.[0]) {
+                                                              handleReplaceDocument(doc.id, e.target.files[0]);
+                                                          }
+                                                      }}
+                                                    />
+                                                  </Button>
+                                                  <Button variant="destructive" size="sm" onClick={() => setDocToDelete(doc)} disabled={isDeletingDoc}>
+                                                      <Trash2 className="h-4 w-4" />
+                                                  </Button>
+                                                </div>
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -1089,8 +1235,25 @@ export default function JacketDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Alert Dialog for deleting document */}
+      <AlertDialog open={!!docToDelete} onOpenChange={(open) => !open && setDocToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the file <span className="font-medium">"{docToDelete?.name}"</span> from storage and remove its record from this jacket. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDocToDelete(null)} disabled={isDeletingDoc}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteDocument} disabled={isDeletingDoc} className="bg-destructive hover:bg-destructive/90">
+              {isDeletingDoc && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Yes, Delete Document
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </main>
   );
 }
-
-    
