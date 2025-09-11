@@ -10,6 +10,10 @@ import {
   serverTimestamp,
   Timestamp,
   arrayUnion,
+  query,
+  collection,
+  where,
+  getDocs,
 } from "firebase/firestore";
 import {
   ref,
@@ -41,7 +45,7 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UploadCloud, Download, FileText } from "lucide-react";
+import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -49,6 +53,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 interface MiscFee {
     description: string;
@@ -85,6 +92,13 @@ interface Jacket {
   dealerId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+}
+
+interface ApprovedDealer {
+  uid: string;
+  companyName: string;
+  contactName: string;
+  email: string;
 }
 
 function JacketDetailSkeleton() {
@@ -129,10 +143,9 @@ function JacketDetailSkeleton() {
 
 export default function JacketDetailPage() {
   const params = useParams<{ vin: string | string[] }>();
-  const vinParam = params?.vin;
   const vin = useMemo(
-    () => (Array.isArray(vinParam) ? vinParam[0] : vinParam),
-    [vinParam]
+    () => (Array.isArray(params?.vin) ? params.vin[0] : params?.vin),
+    [params?.vin]
   );
 
   const { toast } = useToast();
@@ -157,6 +170,17 @@ export default function JacketDetailPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [docError, setDocError] = useState('');
 
+  const [approvedDealers, setApprovedDealers] = useState<ApprovedDealer[]>([]);
+  const [isEditingDealer, setIsEditingDealer] = useState(false);
+  const [selectedDealer, setSelectedDealer] = useState('');
+  const [isSavingDealer, setIsSavingDealer] = useState(false);
+  const [comboboxOpen, setComboboxOpen] = useState(false);
+
+  const assignedDealer = useMemo(() => {
+    if (!jacket?.dealerId || approvedDealers.length === 0) return null;
+    return approvedDealers.find(d => d.uid === jacket.dealerId) || null;
+  }, [jacket?.dealerId, approvedDealers]);
+
   useEffect(() => {
     if (!vin || typeof vin !== "string") {
       setError("VIN not found in URL.");
@@ -169,7 +193,13 @@ export default function JacketDetailPage() {
       jacketDocRef,
       (docSnap) => {
         if (docSnap.exists()) {
-          setJacket({ vin: docSnap.id, ...docSnap.data() } as Jacket);
+          const jacketData = { vin: docSnap.id, ...docSnap.data() } as Jacket;
+          setJacket(jacketData);
+          if (!jacketData.dealerId) {
+            setIsEditingDealer(true); // Open editor if no dealer is assigned
+          } else {
+            setIsEditingDealer(false);
+          }
           setError(null);
         } else {
           setError("Jacket not found.");
@@ -186,6 +216,29 @@ export default function JacketDetailPage() {
 
     return () => unsubscribe();
   }, [vin]);
+
+  // Fetch approved dealers for the assignment combobox
+  useEffect(() => {
+      async function fetchDealers() {
+          if (!isAdmin) return;
+          try {
+              const q = query(collection(db, "users"), where("status", "==", "approved"));
+              const querySnapshot = await getDocs(q);
+              const dealers = querySnapshot.docs.map(doc => ({
+                  uid: doc.id,
+                  companyName: doc.data().companyName || 'N/A',
+                  contactName: doc.data().contactName || 'N/A',
+                  email: doc.data().email || 'N/A'
+              } as ApprovedDealer));
+              setApprovedDealers(dealers);
+          } catch (error) {
+              console.error("Failed to fetch dealers:", error);
+              toast({ title: "Error", description: "Could not load approved dealers.", variant: "destructive" });
+          }
+      }
+      fetchDealers();
+  }, [isAdmin, toast]);
+
 
   // When jacket data from Firestore changes, clear the local temporary URL
   useEffect(() => {
@@ -378,6 +431,28 @@ export default function JacketDetailPage() {
       }
     );
   };
+  
+  const handleSaveDealer = async () => {
+      if (!vin || !selectedDealer || !isAdmin) {
+          toast({ title: "Error", description: "No dealer selected.", variant: "destructive" });
+          return;
+      }
+      setIsSavingDealer(true);
+      try {
+          const jacketDocRef = doc(db, "jackets", vin);
+          await updateDoc(jacketDocRef, {
+              dealerId: selectedDealer,
+              updatedAt: serverTimestamp(),
+          });
+          toast({ title: "Success", description: "Dealer assigned successfully." });
+          setIsEditingDealer(false);
+      } catch (err: any) {
+          console.error("Failed to assign dealer:", err);
+          toast({ title: "Error", description: err.message, variant: "destructive" });
+      } finally {
+          setIsSavingDealer(false);
+      }
+  };
 
 
   const fmtCurrency = (n?: number): string => {
@@ -542,6 +617,86 @@ export default function JacketDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        {isAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Assign Dealer</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isEditingDealer ? (
+                <div className="flex items-center gap-2">
+                  <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={comboboxOpen}
+                        className="w-[300px] justify-between"
+                      >
+                        {selectedDealer
+                          ? approvedDealers.find((d) => d.uid === selectedDealer)?.companyName
+                          : "Select dealer..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-0">
+                      <Command>
+                        <CommandInput placeholder="Search dealer..." />
+                        <CommandEmpty>No dealer found.</CommandEmpty>
+                        <CommandGroup>
+                          {approvedDealers.map((dealer) => (
+                            <CommandItem
+                              key={dealer.uid}
+                              value={dealer.companyName}
+                              onSelect={() => {
+                                setSelectedDealer(dealer.uid);
+                                setComboboxOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedDealer === dealer.uid ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              <div>
+                                <div>{dealer.companyName}</div>
+                                <div className="text-xs text-muted-foreground">{dealer.email}</div>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <Button onClick={handleSaveDealer} disabled={isSavingDealer || !selectedDealer}>
+                    {isSavingDealer ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                    Save
+                  </Button>
+                   <Button variant="ghost" onClick={() => {setIsEditingDealer(false); setSelectedDealer(jacket.dealerId || '')}}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : assignedDealer ? (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{assignedDealer.companyName}</p>
+                    <p className="text-sm text-muted-foreground">{assignedDealer.email}</p>
+                  </div>
+                  <Button variant="outline" onClick={() => {setIsEditingDealer(true); setSelectedDealer(assignedDealer.uid)}}>
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  No dealer assigned.
+                   <Button variant="link" className="pl-1" onClick={() => setIsEditingDealer(true)}>Assign one</Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
@@ -766,7 +921,5 @@ export default function JacketDetailPage() {
     </main>
   );
 }
-
-
 
     
