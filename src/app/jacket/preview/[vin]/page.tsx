@@ -351,6 +351,7 @@ export default function JacketDetailPage() {
     
     try {
       await updateDoc(jacketDocRef, updateData);
+      console.log(`${type} Paid saved`);
       toast({ title: "Status Updated", description: `Marked as paid successfully.` });
       setPaymentDialog({ open: false, type: null });
     } catch (err: any) {
@@ -376,6 +377,7 @@ export default function JacketDetailPage() {
 
     try {
       await updateDoc(jacketDocRef, updateData);
+      console.log(`${type} Paid cleared`);
       toast({ title: "Status Updated", description: `Marked as unpaid.` });
       setUnpaidConfirmDialog({ open: false, type: null });
     } catch (err: any) {
