@@ -16,6 +16,8 @@ import {
   getDocs,
   deleteField,
   getDoc,
+  addDoc,
+  orderBy,
 } from "firebase/firestore";
 import {
   ref,
@@ -24,7 +26,7 @@ import {
   deleteObject,
 } from "firebase/storage";
 import { useAuth } from "@/hooks/use-auth";
-import { db, storage } from "@/lib/firebase/client";
+import { db, storage, auth } from "@/lib/firebase/client";
 import {
   Card,
   CardContent,
@@ -133,6 +135,39 @@ interface ApprovedDealer {
 
 type PaymentType = 'auction' | 'mgmt';
 
+interface Activity {
+  id: string;
+  ts: Timestamp;
+  actorUid: string;
+  actorEmail?: string;
+  actorName?: string;
+  type: "assignDealer" | "auctionPaidOn" | "auctionPaidOff" | "mgmtPaidOn" | "mgmtPaidOff" | "miscFeeAdded" | "docAdded" | "docReplaced" | "docDeleted" | "invoiceGenerated";
+  message: string;
+  meta?: any;
+}
+
+
+async function logActivity(vin: string, entry: Omit<Activity, "id" | "ts" | "actorUid" | "actorEmail" | "actorName"> & { ts?: any }) {
+    const user = auth.currentUser;
+    if (!user || !vin) return;
+
+    const base = {
+        actorUid: user.uid,
+        actorEmail: user.email || "",
+        actorName: user.displayName || "",
+    };
+    
+    try {
+        await addDoc(collection(db, "jackets", vin, "activity"), {
+            ...base,
+            ...entry,
+            ts: entry.ts ?? Timestamp.fromDate(new Date()),
+        });
+    } catch (error) {
+        console.error("Failed to log activity:", error);
+    }
+}
+
 function JacketDetailSkeleton() {
   return (
     <div className="w-full max-w-4xl space-y-8">
@@ -221,6 +256,10 @@ export default function JacketDetailPage() {
   const [paymentRef, setPaymentRef] = useState("");
   const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
 
+  // Activity Log State
+  const [activityLog, setActivityLog] = useState<Activity[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(true);
+
 
   const assignedDealer = useMemo(() => {
     if (!jacket?.dealerId || approvedDealers.length === 0) return null;
@@ -259,8 +298,23 @@ export default function JacketDetailPage() {
         setLoading(false);
       }
     );
+    
+    // Subscribe to activity log
+    const activityQuery = query(collection(db, "jackets", vin, "activity"), orderBy("ts", "desc"));
+    const unsubscribeActivity = onSnapshot(activityQuery, (snapshot) => {
+        const activities = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Activity));
+        setActivityLog(activities);
+        setLoadingActivity(false);
+    }, (err) => {
+        console.error("Error fetching activity log:", err);
+        setLoadingActivity(false);
+    });
 
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribe();
+      unsubscribeActivity();
+    };
   }, [vin]);
 
   // One-time migration for isMgmtPaid -> isMgmtFeePaid
@@ -359,6 +413,7 @@ export default function JacketDetailPage() {
                     </a>
                 )
             });
+            await logActivity(vin, { type: "invoiceGenerated", message: `Invoice generated ${result?.invoiceId ? " — " + result.invoiceId : ""}`, meta: { invoiceId: result?.invoiceId } });
         } else {
             toast({
                 title: "Invoice Generation Started",
@@ -415,6 +470,14 @@ export default function JacketDetailPage() {
       await updateDoc(jacketDocRef, updateData);
       console.log(`${type} Paid saved`);
       toast({ title: "Status Updated", description: `Marked as paid successfully.` });
+      
+      const logMessage = `${type === 'auction' ? 'Auction' : 'Mgmt fee'} marked PAID (${paymentDate.toLocaleDateString()}${paymentRef ? " — " + paymentRef : ""})`;
+      await logActivity(vin, {
+          type: type === 'auction' ? 'auctionPaidOn' : 'mgmtPaidOn',
+          message: logMessage,
+          meta: { date: paymentDate, note: paymentRef }
+      });
+      
       setPaymentDialog({ open: false, type: null });
     } catch (err: any) {
       console.error("Failed to update jacket:", err);
@@ -449,6 +512,12 @@ export default function JacketDetailPage() {
       await updateDoc(jacketDocRef, updateData);
       console.log(`${type} Paid cleared`);
       toast({ title: "Status Updated", description: `Marked as unpaid.` });
+      
+      await logActivity(vin, {
+          type: type === 'auction' ? 'auctionPaidOff' : 'mgmtPaidOff',
+          message: `${type === 'auction' ? 'Auction' : 'Mgmt fee'} marked UNPAID`
+      });
+
       setUnpaidConfirmDialog({ open: false, type: null });
     } catch (err: any) {
       console.error("Failed to update jacket:", err);
@@ -461,7 +530,7 @@ export default function JacketDetailPage() {
   
   const handleAddFee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!isAdmin || !vin) return;
 
     const parsedAmount = parseFloat(feeAmount);
     if (feeDescription.trim() === "") {
@@ -482,12 +551,19 @@ export default function JacketDetailPage() {
     };
 
     try {
-        const jacketDocRef = doc(db, "jackets", vin as string);
+        const jacketDocRef = doc(db, "jackets", vin);
         await updateDoc(jacketDocRef, {
             miscFees: arrayUnion(newFee),
             updatedAt: Timestamp.fromDate(new Date()),
         });
         toast({ title: "Fee Added", description: "The miscellaneous fee has been added." });
+        
+        await logActivity(vin, {
+            type: "miscFeeAdded",
+            message: `Misc fee added: ${feeDescription.trim()} — ${fmtCurrency(parsedAmount)}`,
+            meta: { description: feeDescription.trim(), amount: parsedAmount }
+        });
+
         setFeeDescription("");
         setFeeAmount("");
     } catch (err: any) {
@@ -557,6 +633,12 @@ export default function JacketDetailPage() {
 
           toast({ title: "Document Uploaded", description: `${docFile.name} has been added.` });
           
+          await logActivity(vin, {
+              type: "docAdded",
+              message: `${docType.toUpperCase()} uploaded: ${docFile.name}`,
+              meta: { type: docType, name: docFile.name }
+          });
+          
           setDocFile(null);
           setDocType('');
           const fileInput = document.getElementById('docFile') as HTMLInputElement;
@@ -601,6 +683,12 @@ export default function JacketDetailPage() {
         deleteObject(oldFileRef).catch(err => console.warn("Could not delete old file, may be orphaned:", err));
 
         toast({ title: "Document Replaced", description: `${newFile.name} is now uploaded.` });
+        
+        await logActivity(vin, {
+            type: "docReplaced",
+            message: `${docToReplace.type.toUpperCase()} replaced: ${newFile.name}`,
+            meta: { type: docToReplace.type, name: newFile.name }
+        });
 
     } catch (err) {
         // Errors already toasted
@@ -632,6 +720,12 @@ export default function JacketDetailPage() {
         await deleteObject(storageRef);
 
         toast({ title: "Document Deleted", description: `${docToDelete.name} has been removed.` });
+        
+        await logActivity(vin, {
+            type: "docDeleted",
+            message: `${(docToDelete.type || "DOC").toUpperCase()} deleted: ${docToDelete.name || "file"}`,
+            meta: { type: docToDelete.type, name: docToDelete.name }
+        });
 
     } catch(err: any) {
         if (err.code === 'storage/object-not-found') {
@@ -653,12 +747,20 @@ export default function JacketDetailPage() {
       }
       setIsSavingDealer(true);
       try {
+          const dealer = approvedDealers.find(d => d.uid === selectedDealer);
           const jacketDocRef = doc(db, "jackets", vin);
           await updateDoc(jacketDocRef, {
               dealerId: selectedDealer,
               updatedAt: serverTimestamp(),
           });
           toast({ title: "Success", description: "Dealer assigned successfully." });
+          
+          await logActivity(vin, {
+              type: "assignDealer",
+              message: `Assigned to dealer ${dealer?.companyName || selectedDealer}`,
+              meta: { dealerUid: selectedDealer, dealerEmail: dealer?.email, dealerName: dealer?.companyName }
+          });
+          
           setIsEditingDealer(false);
       } catch (err: any) {
           console.error("Failed to assign dealer:", err);
@@ -1167,6 +1269,32 @@ export default function JacketDetailPage() {
                 </CardFooter>
             )}
         </Card>
+        
+        {isAdmin && (
+          <Card>
+            <CardHeader><CardTitle>Activity</CardTitle></CardHeader>
+            <CardContent>
+              {loadingActivity ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+                  </div>
+              ) : activityLog.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No activity yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {activityLog.map(activity => (
+                    <div key={activity.id} className="text-sm">
+                      <p className="font-medium">{activity.message}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {activity.ts.toDate().toLocaleString()} by {activity.actorName || activity.actorEmail || activity.actorUid}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {financials && (
            <Card>

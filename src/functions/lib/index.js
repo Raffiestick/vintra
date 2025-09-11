@@ -79,13 +79,57 @@ export const generateJacketInvoice = onRequest({
             return;
         }
         const docRef = db.collection("jackets").doc(vin);
-        const snap = await docRef.get();
+        let snap = await docRef.get();
         if (!snap.exists) {
             res.status(404).send("Jacket not found");
             return;
         }
-        const j = snap.data() || {};
-        // null-safe helpers
+        let j = snap.data() || {};
+        let invoiceId = j.invoiceId;
+        // If no invoice ID, generate one transactionally
+        if (!invoiceId) {
+            const counterRef = db.collection("counters").doc("invoices");
+            await db.runTransaction(async (transaction) => {
+                const counterDoc = await transaction.get(counterRef);
+                const newSeq = (counterDoc.data()?.seq || 0) + 1;
+                transaction.set(counterRef, { seq: newSeq }, { merge: true });
+                const now = new Date();
+                const yyyy = now.getUTCFullYear();
+                const mm = (now.getUTCMonth() + 1).toString().padStart(2, '0');
+                const paddedSeq = newSeq.toString().padStart(4, '0');
+                invoiceId = `INV-${yyyy}${mm}-${paddedSeq}`;
+                transaction.update(docRef, { invoiceId: invoiceId });
+            });
+            // Re-fetch the doc to get the updated data with invoiceId
+            snap = await docRef.get();
+            j = snap.data() || {};
+        }
+        // Fetch buyer/dealer data if dealerId exists
+        let buyerData = {};
+        if (j.dealerId) {
+            const userSnap = await db.collection("users").doc(j.dealerId).get();
+            if (userSnap.exists) {
+                const u = userSnap.data() || {};
+                buyerData.name = u.companyName || u.contactName || u.email || u.uid;
+                buyerData.line1 = u.streetAddress || "";
+                buyerData.line2 = [u.city, u.state, u.zip].filter(Boolean).join(", ");
+                buyerData.phone = u.phone || "";
+                buyerData.email = u.email || "";
+            }
+        }
+        else {
+            buyerData.name = "Dealer (unassigned)";
+        }
+        // Constants for seller
+        const seller = {
+            name: "RizeUp Ventures, LLC",
+            dba: "DBA Dolphin Chasers",
+            addr1: "PO BOX 66741",
+            addr2: "St Pete Beach, FL 33706",
+            phone: "616-318-1991",
+            email: "admin@rizeupventures.com"
+        };
+        // null-safe numeric helpers
         const num = (x) => (typeof x === "number" ? x : Number(x || 0));
         const auctionDue = num(j.itemPrice) + num(j.buyerFee) + num(j.onlineFee);
         const mgmtDue = num(j.managementFee);
@@ -93,9 +137,9 @@ export const generateJacketInvoice = onRequest({
             ? j.miscFees.reduce((s, f) => s + num(f?.amount), 0)
             : 0;
         const subtotal = auctionDue + mgmtDue + miscTotal;
-        const outstanding = (j.isAuctionPaid ? 0 : auctionDue) +
-            (j.isMgmtFeePaid ? 0 : mgmtDue) +
-            miscTotal;
+        const isMgmtFeePaid = j.isMgmtFeePaid ?? j.isMgmtPaid ?? false;
+        const amountPaid = (j.isAuctionPaid ? auctionDue : 0) + (isMgmtFeePaid ? mgmtDue : 0);
+        const balanceDue = Math.max(0, subtotal - amountPaid);
         const fmtUSD = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
         const safe = (s) => String(s ?? "")
             .replace(/&/g, "&amp;")
@@ -109,45 +153,119 @@ export const generateJacketInvoice = onRequest({
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: Arial, sans-serif; font-size: 12px; color: #111; padding: 32px; }
-    h1 { font-size: 18px; margin: 0 0 8px; }
-    .sub { color: #555; margin: 0 0 12px; }
-    .badges span { display: inline-block; padding: 4px 8px; border-radius: 6px; margin-right: 8px; font-weight: 600; font-size: 11px; }
-    .paid { background: #e6ffed; color: #036c3e; border: 1px solid #a7f3d0; }
-    .unpaid { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
-    table { border-collapse: collapse; width: 100%; margin-top: 16px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
-    th.right, td.right { text-align: right; }
-    tfoot th { background: #fafafa; }
-    .muted { color: #666; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; font-size: 10px; color: #333; }
+    .page { padding: 40px; }
+    .header { text-align: left; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
+    .header .company-name { font-size: 16px; font-weight: bold; }
+    .header .company-dba { font-size: 11px; color: #777; }
+    .header .company-contact { font-size: 9px; color: #555; margin-top: 4px; }
+    .invoice-title { text-align: center; margin: 20px 0; }
+    .invoice-title h1 { font-size: 28px; font-weight: 300; letter-spacing: 2px; margin: 0; }
+    .invoice-meta { text-align: right; margin-bottom: 20px; font-size: 11px; }
+    .meta-item { margin-bottom: 3px; }
+    .addresses { display: -webkit-box; display: flex; -webkit-box-pack: justify; justify-content: space-between; margin-bottom: 30px; }
+    .address-block { width: 48%; }
+    .address-block h3 { margin: 0 0 5px; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+    .address-block p { margin: 0; line-height: 1.6; }
+    .item-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+    .item-table thead { background-color: #222; color: #fff; }
+    .item-table th, .item-table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+    .item-table th:last-child, .item-table td:last-child { text-align: right; }
+    .item-table .vehicle-desc { font-weight: bold; }
+    .summary-table { width: 40%; margin-left: 60%; border-collapse: collapse; }
+    .summary-table td { padding: 8px; }
+    .summary-table td:last-child { text-align: right; }
+    .summary-table .total-row td { font-weight: bold; border-top: 2px solid #333; font-size: 12px; }
+    .signatures { margin: 40px 0; }
+    .signatures p { font-size: 10px; color: #555; }
+    .footer { position: fixed; bottom: 40px; left: 40px; right: 40px; text-align: center; font-size: 9px; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
+    .footer p { margin: 2px 0; }
   </style>
 </head>
 <body>
-  <h1>Invoice — ${safe(vin)}</h1>
-  <div class="sub">${safe(yearMakeModel)}${j.color ? " · " + safe(j.color) : ""}</div>
-  <div class="badges">
-    <span class="${j.isAuctionPaid ? "paid" : "unpaid"}">Auction ${j.isAuctionPaid ? "Paid" : "Unpaid"}</span>
-    <span class="${j.isMgmtFeePaid ? "paid" : "unpaid"}">Mgmt ${j.isMgmtFeePaid ? "Paid" : "Unpaid"}</span>
+<div class="page">
+  <div class="header">
+    <div class="company-name">${safe(seller.name)}</div>
+    <div class="company-dba">${safe(seller.dba)}</div>
+    <div class="company-contact">${safe(seller.phone)} | ${safe(seller.email)}</div>
   </div>
 
-  <table>
-    <thead><tr><th>Description</th><th class="right">Amount</th></tr></thead>
+  <div class="invoice-title">
+    <h1>INVOICE</h1>
+    <div class="invoice-meta">
+      <div class="meta-item"><strong>Invoice ID:</strong> ${safe(invoiceId)}</div>
+      <div class="meta-item"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
+      <div class="meta-item"><strong>VIN:</strong> ${safe(vin)}</div>
+    </div>
+  </div>
+
+  <div class="addresses">
+    <div class="address-block">
+      <h3>SOLD FROM</h3>
+      <p><strong>${safe(seller.name)}</strong></p>
+      <p>${safe(seller.addr1)}</p>
+      <p>${safe(seller.addr2)}</p>
+      <p>Phone: ${safe(seller.phone)}</p>
+      <p>Email: ${safe(seller.email)}</p>
+    </div>
+    <div class="address-block">
+      <h3>SOLD TO</h3>
+      <p><strong>${safe(buyerData.name)}</strong></p>
+      ${buyerData.line1 ? `<p>${safe(buyerData.line1)}</p>` : ''}
+      ${buyerData.line2 ? `<p>${safe(buyerData.line2)}</p>` : ''}
+      ${buyerData.phone ? `<p>Phone: ${safe(buyerData.phone)}</p>` : ''}
+      ${buyerData.email ? `<p>Email: <a href="mailto:${safe(buyerData.email)}">${safe(buyerData.email)}</a></p>` : ''}
+    </div>
+  </div>
+
+  <table class="item-table">
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Amount</th>
+      </tr>
+    </thead>
     <tbody>
-      <tr><td>Item Price</td><td class="right">${fmtUSD(num(j.itemPrice))}</td></tr>
-      <tr><td>Buyer Fee</td><td class="right">${fmtUSD(num(j.buyerFee))}</td></tr>
-      <tr><td>Online Fee</td><td class="right">${fmtUSD(num(j.onlineFee))}</td></tr>
-      <tr><td>Management Fee</td><td class="right">${fmtUSD(num(j.managementFee))}</td></tr>
-      ${Array.isArray(j.miscFees)
-            ? j.miscFees
-                .map((f) => `<tr><td>Misc — ${safe(f?.description || "Item")}</td><td class="right">${fmtUSD(num(f?.amount))}</td></tr>`)
-                .join("")
-            : ""}
+      <tr>
+        <td class="vehicle-desc">${safe(yearMakeModel)} — VIN: ${safe(vin)}</td>
+        <td>${fmtUSD(num(j.itemPrice))}</td>
+      </tr>
+      ${num(j.buyerFee) > 0 ? `<tr><td>Buyer Fee</td><td>${fmtUSD(num(j.buyerFee))}</td></tr>` : ''}
+      ${num(j.onlineFee) > 0 ? `<tr><td>Online Fee</td><td>${fmtUSD(num(j.onlineFee))}</td></tr>` : ''}
+      <tr><td>Management Fee</td><td>${fmtUSD(num(j.managementFee))}</td></tr>
+      ${Array.isArray(j.miscFees) ? j.miscFees.map((f) => `<tr><td>${safe(f?.description || "Misc Fee")}</td><td>${fmtUSD(num(f?.amount))}</td></tr>`).join('') : ''}
     </tbody>
-    <tfoot>
-      <tr><th>Subtotal</th><th class="right">${fmtUSD(subtotal)}</th></tr>
-      <tr><th>Outstanding</th><th class="right">${fmtUSD(outstanding)}</th></tr>
-    </tfoot>
   </table>
+
+  <table class="summary-table">
+    <tbody>
+      <tr>
+        <td>Total</td>
+        <td>${fmtUSD(subtotal)}</td>
+      </tr>
+      <tr>
+        <td>Amount Paid</td>
+        <td>${fmtUSD(amountPaid)}</td>
+      </tr>
+      <tr class="total-row">
+        <td>Balance Due</td>
+        <td>${fmtUSD(balanceDue)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="signatures">
+      <p>Authorized Seller Signature: _________________________ &nbsp;&nbsp;&nbsp;&nbsp; Authorized Buyer Signature: _________________________</p>
+      <p style="margin-top: 5px;">(Signature on File)</p>
+  </div>
+
+  <div class="footer">
+    <p>${safe(seller.name)} • ${safe(seller.addr1)}, ${safe(seller.addr2)} • ${safe(seller.phone)} • ${safe(seller.email)}</p>
+    <p>ALL SALES FINAL. ALL UNITS ARE SOLD AS-IS, WHERE-IS. NO RETURNS/EXCHANGES.</p>
+    <p>ALL PAYMENTS MUST BE MADE BY WIRE, PAYABLE TO: RIZEUP VENTURES, LLC.</p>
+    <p>Unit purchase price and other fees applicable to unit sale are due immediately. A late payment fee of 3% will be applied to any overdue invoice. If units are not picked up within 10 business days, a storage fee will be applied to each unit, per day.</p>
+  </div>
+</div>
 </body>
 </html>`;
         // Launch Chromium that works on Firebase
@@ -158,7 +276,7 @@ export const generateJacketInvoice = onRequest({
         });
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: "networkidle0" });
-        const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
+        const pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } });
         await browser.close();
         // Save to Storage
         const filePath = `jacket-documents/${vin}/invoice.pdf`;
@@ -175,7 +293,7 @@ export const generateJacketInvoice = onRequest({
             invoiceUrl: signedUrl,
             updatedAt: FieldValue.serverTimestamp(),
         });
-        res.status(200).json({ ok: true, vin, url: signedUrl });
+        res.status(200).json({ ok: true, vin, url: signedUrl, invoiceId });
     }
     catch (err) {
         console.error("generateJacketInvoice error:", err);
