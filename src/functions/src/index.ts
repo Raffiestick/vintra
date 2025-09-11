@@ -1,12 +1,12 @@
+
 // src/functions/src/index.ts
 
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, Transaction } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
-import * as admin from "firebase-admin";
 
 // Use Chromium bundle that works on Firebase (no Chrome install needed)
 import chromium from "@sparticuz/chromium";
@@ -104,12 +104,40 @@ export const generateJacketInvoice = onRequest(
       }
 
       const docRef = db.collection("jackets").doc(vin);
-      const snap = await docRef.get();
+      let snap = await docRef.get();
       if (!snap.exists) {
         res.status(404).send("Jacket not found");
         return;
       }
-      const j: any = snap.data() || {};
+      let j: any = snap.data() || {};
+      let invoiceId = j.invoiceId;
+
+      // If no invoice ID, generate one transactionally
+      if (!invoiceId) {
+        const counterRef = db.collection("counters").doc("invoices");
+        await db.runTransaction(async (transaction: Transaction) => {
+          const counterDoc = await transaction.get(counterRef);
+          let newSeq = 0;
+          if (counterDoc.exists) {
+            newSeq = (counterDoc.data()?.seq || 0) + 1;
+          } else {
+            newSeq = 1;
+          }
+          transaction.set(counterRef, { seq: newSeq }, { merge: true });
+
+          const now = new Date();
+          const yyyy = now.getUTCFullYear();
+          const mm = (now.getUTCMonth() + 1).toString().padStart(2, '0');
+          const paddedSeq = newSeq.toString().padStart(4, '0');
+          invoiceId = `INV-${yyyy}${mm}-${paddedSeq}`;
+
+          transaction.update(docRef, { invoiceId: invoiceId });
+        });
+        // Re-fetch the doc to get the updated data with invoiceId
+        snap = await docRef.get();
+        j = snap.data() || {};
+      }
+
 
       // null-safe helpers
       const num = (x: any) => (typeof x === "number" ? x : Number(x || 0));
@@ -145,6 +173,7 @@ export const generateJacketInvoice = onRequest(
     body { font-family: Arial, sans-serif; font-size: 12px; color: #111; padding: 32px; }
     h1 { font-size: 18px; margin: 0 0 8px; }
     .sub { color: #555; margin: 0 0 12px; }
+    .invoice-id { font-weight: bold; margin-bottom: 4px; }
     .badges span { display: inline-block; padding: 4px 8px; border-radius: 6px; margin-right: 8px; font-weight: 600; font-size: 11px; }
     .paid { background: #e6ffed; color: #036c3e; border: 1px solid #a7f3d0; }
     .unpaid { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
@@ -156,6 +185,7 @@ export const generateJacketInvoice = onRequest(
   </style>
 </head>
 <body>
+  ${invoiceId ? `<div class="invoice-id">Invoice ID: ${safe(invoiceId)}</div>` : ''}
   <h1>Invoice — ${safe(vin)}</h1>
   <div class="sub">${safe(yearMakeModel)}${j.color ? " · " + safe(j.color) : ""}</div>
   <div class="badges">
@@ -218,10 +248,12 @@ export const generateJacketInvoice = onRequest(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      res.status(200).json({ ok: true, vin, url: signedUrl });
+      res.status(200).json({ ok: true, vin, url: signedUrl, invoiceId });
     } catch (err: any) {
       console.error("generateJacketInvoice error:", err);
       res.status(500).send(err?.message || "Internal error");
     }
   }
 );
+
+    
