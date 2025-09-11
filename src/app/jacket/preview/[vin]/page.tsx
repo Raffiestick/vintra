@@ -14,6 +14,7 @@ import {
   collection,
   where,
   getDocs,
+  deleteField,
 } from "firebase/firestore";
 import {
   ref,
@@ -45,7 +46,7 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown } from "lucide-react";
+import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -55,7 +56,27 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+
 
 interface MiscFee {
     description: string;
@@ -92,6 +113,10 @@ interface Jacket {
   dealerId?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+  auctionPaidAt?: Timestamp;
+  auctionPaymentRef?: string;
+  mgmtPaidAt?: Timestamp;
+  mgmtPaymentRef?: string;
 }
 
 interface ApprovedDealer {
@@ -100,6 +125,8 @@ interface ApprovedDealer {
   contactName: string;
   email: string;
 }
+
+type PaymentType = 'auction' | 'mgmt';
 
 function JacketDetailSkeleton() {
   return (
@@ -154,7 +181,6 @@ export default function JacketDetailPage() {
   const [jacket, setJacket] = useState<Jacket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isUpdating, setIsUpdating] = useState<"auction" | "mgmt" | null>(null);
   
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [invoiceUrlLocal, setInvoiceUrlLocal] = useState<string | null>(null);
@@ -176,6 +202,14 @@ export default function JacketDetailPage() {
   const [isSavingDealer, setIsSavingDealer] = useState(false);
   const [comboboxOpen, setComboboxOpen] = useState(false);
 
+  // State for payment modals
+  const [paymentDialog, setPaymentDialog] = useState<{ open: boolean, type: PaymentType | null }>({ open: false, type: null });
+  const [unpaidConfirmDialog, setUnpaidConfirmDialog] = useState<{ open: boolean, type: PaymentType | null }>({ open: false, type: null });
+  const [paymentDate, setPaymentDate] = useState<Date | undefined>(new Date());
+  const [paymentRef, setPaymentRef] = useState("");
+  const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
+
+
   const assignedDealer = useMemo(() => {
     if (!jacket?.dealerId || approvedDealers.length === 0) return null;
     return approvedDealers.find(d => d.uid === jacket.dealerId) || null;
@@ -196,7 +230,7 @@ export default function JacketDetailPage() {
           const jacketData = { vin: docSnap.id, ...docSnap.data() } as Jacket;
           setJacket(jacketData);
           if (!jacketData.dealerId) {
-            setIsEditingDealer(true); // Open editor if no dealer is assigned
+            setIsEditingDealer(true); 
           } else {
             setIsEditingDealer(false);
           }
@@ -217,7 +251,6 @@ export default function JacketDetailPage() {
     return () => unsubscribe();
   }, [vin]);
 
-  // Fetch approved dealers for the assignment combobox
   useEffect(() => {
       async function fetchDealers() {
           if (!isAdmin) return;
@@ -239,8 +272,6 @@ export default function JacketDetailPage() {
       fetchDealers();
   }, [isAdmin, toast]);
 
-
-  // When jacket data from Firestore changes, clear the local temporary URL
   useEffect(() => {
       if (jacket?.invoiceUrl) {
           setInvoiceUrlLocal(null);
@@ -294,40 +325,67 @@ export default function JacketDetailPage() {
   }, [vin, isAdmin, toast]);
 
 
-  const handleStatusChange = useCallback(
-    async (field: "isAuctionPaid" | "isMgmtFeePaid", value: boolean) => {
-      if (!vin || !user || !isAdmin) return;
+  const handlePaymentStatusChange = (type: PaymentType, value: boolean) => {
+    if (!isAdmin) return;
+    if (value) {
+      setPaymentDate(new Date());
+      setPaymentRef("");
+      setPaymentDialog({ open: true, type });
+    } else {
+      setUnpaidConfirmDialog({ open: true, type });
+    }
+  };
 
-      const updatingType = field === "isAuctionPaid" ? "auction" : "mgmt";
-      setIsUpdating(updatingType);
+  const handleConfirmPaid = async () => {
+    if (!vin || !paymentDialog.type || !paymentDate) return;
+    setIsUpdatingPayment(true);
+    const jacketDocRef = doc(db, "jackets", vin);
+    const type = paymentDialog.type;
+    
+    const updateData = {
+      [`is${type.charAt(0).toUpperCase() + type.slice(1)}Paid`]: true,
+      [`${type}PaidAt`]: Timestamp.fromDate(paymentDate),
+      [`${type}PaymentRef`]: paymentRef.trim(),
+      updatedAt: serverTimestamp(),
+    };
+    
+    try {
+      await updateDoc(jacketDocRef, updateData);
+      toast({ title: "Status Updated", description: `Marked as paid successfully.` });
+      setPaymentDialog({ open: false, type: null });
+    } catch (err: any) {
+      console.error("Failed to update jacket:", err);
+      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsUpdatingPayment(false);
+    }
+  };
 
-      const jacketDocRef = doc(db, "jackets", vin);
-      const originalValue = jacket?.[field] ?? false;
+  const handleConfirmUnpaid = async () => {
+    if (!vin || !unpaidConfirmDialog.type) return;
+    setIsUpdatingPayment(true);
+    const jacketDocRef = doc(db, "jackets", vin);
+    const type = unpaidConfirmDialog.type;
 
-      try {
-        await updateDoc(jacketDocRef, {
-          [field]: value,
-          updatedAt: serverTimestamp(),
-        });
-        toast({
-          title: "Status Updated",
-          description: `Jacket payment status has been successfully updated.`,
-        });
-      } catch (err: any) {
-        console.error("Failed to update jacket:", err);
-        setJacket((prev) => (prev ? { ...prev, [field]: originalValue } : null));
-        toast({
-          title: "Update Failed",
-          description:
-            err.message || "An error occurred. Please try again.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsUpdating(null);
-      }
-    },
-    [vin, user, isAdmin, jacket, toast]
-  );
+    const updateData = {
+      [`is${type.charAt(0).toUpperCase() + type.slice(1)}Paid`]: false,
+      [`${type}PaidAt`]: deleteField(),
+      [`${type}PaymentRef`]: deleteField(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await updateDoc(jacketDocRef, updateData);
+      toast({ title: "Status Updated", description: `Marked as unpaid.` });
+      setUnpaidConfirmDialog({ open: false, type: null });
+    } catch (err: any) {
+      console.error("Failed to update jacket:", err);
+      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsUpdatingPayment(false);
+    }
+  };
+
   
   const handleAddFee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -417,7 +475,6 @@ export default function JacketDetailPage() {
           
           setDocFile(null);
           setDocType('');
-          // Manually reset file input
           const fileInput = document.getElementById('docFile') as HTMLInputElement;
           if(fileInput) fileInput.value = "";
 
@@ -536,40 +593,46 @@ export default function JacketDetailPage() {
     id,
     label,
     checked,
-    updating,
+    paidAt,
+    paymentRef,
   }: {
-    id: "isAuctionPaid" | "isMgmtFeePaid";
+    id: PaymentType;
     label: string;
     checked: boolean;
-    updating: boolean;
+    paidAt?: Timestamp;
+    paymentRef?: string;
   }) => (
-    <TooltipProvider>
-      <Tooltip delayDuration={0}>
-        <TooltipTrigger disabled={!isAdmin} asChild>
-          <div className="flex items-center space-x-3">
-            {updating ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Switch
-                id={id}
-                checked={checked}
-                onCheckedChange={(val) => handleStatusChange(id, val)}
-                disabled={!isAdmin || isUpdating !== null}
-                aria-readonly={!isAdmin}
-              />
+    <div>
+        <TooltipProvider>
+        <Tooltip delayDuration={0}>
+            <TooltipTrigger disabled={!isAdmin} asChild>
+            <div className="flex items-center space-x-3">
+                <Switch
+                    id={`is${id.charAt(0).toUpperCase() + id.slice(1)}Paid`}
+                    checked={checked}
+                    onCheckedChange={(val) => handlePaymentStatusChange(id, val)}
+                    disabled={!isAdmin || isUpdatingPayment}
+                    aria-readonly={!isAdmin}
+                />
+                <Label htmlFor={`is${id.charAt(0).toUpperCase() + id.slice(1)}Paid`} className="text-base">
+                {label}
+                </Label>
+            </div>
+            </TooltipTrigger>
+            {!isAdmin && (
+            <TooltipContent>
+                <p>Admin only</p>
+            </TooltipContent>
             )}
-            <Label htmlFor={id} className="text-base">
-              {label}
-            </Label>
-          </div>
-        </TooltipTrigger>
-        {!isAdmin && (
-          <TooltipContent>
-            <p>Admin only</p>
-          </TooltipContent>
+        </Tooltip>
+        </TooltipProvider>
+        {checked && paidAt && (
+            <div className="text-xs text-muted-foreground mt-2 pl-12">
+                Paid on {paidAt.toDate().toLocaleDateString()}
+                {paymentRef && <p className="font-mono text-xs mt-1 p-1 bg-muted rounded w-fit">Ref: {paymentRef}</p>}
+            </div>
         )}
-      </Tooltip>
-    </TooltipProvider>
+    </div>
   );
 
   return (
@@ -699,23 +762,25 @@ export default function JacketDetailPage() {
         )}
 
         <Card>
-          <CardHeader>
-            <CardTitle>Payment Status</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col sm:flex-row gap-8">
-            <PaymentSwitch
-              id="isAuctionPaid"
-              label="Auction Paid"
-              checked={jacket.isAuctionPaid ?? false}
-              updating={isUpdating === "auction"}
-            />
-            <PaymentSwitch
-              id="isMgmtFeePaid"
-              label="Management Fee Paid"
-              checked={jacket.isMgmtFeePaid ?? false}
-              updating={isUpdating === "mgmt"}
-            />
-          </CardContent>
+            <CardHeader>
+                <CardTitle>Payment Status</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col sm:flex-row gap-8">
+                <PaymentSwitch
+                    id="auction"
+                    label="Auction Paid"
+                    checked={jacket.isAuctionPaid ?? false}
+                    paidAt={jacket.auctionPaidAt}
+                    paymentRef={jacket.auctionPaymentRef}
+                />
+                <PaymentSwitch
+                    id="mgmt"
+                    label="Management Fee Paid"
+                    checked={jacket.isMgmtFeePaid ?? false}
+                    paidAt={jacket.mgmtPaidAt}
+                    paymentRef={jacket.mgmtPaymentRef}
+                />
+            </CardContent>
         </Card>
         
         <Card>
@@ -918,6 +983,70 @@ export default function JacketDetailPage() {
            </Card>
         )}
       </div>
+
+      {/* Dialog for marking as Paid */}
+      <Dialog open={paymentDialog.open} onOpenChange={(open) => setPaymentDialog({ ...paymentDialog, open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Payment for {paymentDialog.type === 'auction' ? 'Auction' : 'Management Fee'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Payment Date</Label>
+                <Popover>
+                    <PopoverTrigger asChild>
+                    <Button
+                        variant={"outline"}
+                        className={cn("w-full justify-start text-left font-normal", !paymentDate && "text-muted-foreground")}
+                    >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {paymentDate ? format(paymentDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                    <Calendar
+                        mode="single"
+                        selected={paymentDate}
+                        onSelect={setPaymentDate}
+                        initialFocus
+                    />
+                    </PopoverContent>
+                </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label>Reference / Note (Optional)</Label>
+              <Input value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} placeholder="e.g. Check #12345"/>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentDialog({ open: false, type: null })}>Cancel</Button>
+            <Button onClick={handleConfirmPaid} disabled={isUpdatingPayment || !paymentDate}>
+              {isUpdatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Alert Dialog for marking as Unpaid */}
+      <AlertDialog open={unpaidConfirmDialog.open} onOpenChange={(open) => setUnpaidConfirmDialog({ ...unpaidConfirmDialog, open })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark the {unpaidConfirmDialog.type} fee as unpaid and clear its payment date and reference. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setUnpaidConfirmDialog({ open: false, type: null })}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmUnpaid} disabled={isUpdatingPayment} className="bg-destructive hover:bg-destructive/90">
+              {isUpdatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Yes, Mark as Unpaid
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </main>
   );
 }
