@@ -116,6 +116,7 @@ interface Jacket {
   documents?: JacketDocument[];
   invoiceId?: string;
   invoiceUrl?: string;
+  bosUrl?: string;
   creatorId?: string;
   dealerId?: string;
   createdAt?: Timestamp;
@@ -225,6 +226,9 @@ export default function JacketDetailPage() {
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [invoiceUrlLocal, setInvoiceUrlLocal] = useState<string | null>(null);
   const [invoiceIdLocal, setInvoiceIdLocal] = useState<string | null>(null);
+  
+  const [isGeneratingBos, setIsGeneratingBos] = useState(false);
+  const [bosUrlLocal, setBosUrlLocal] = useState<string | null>(null);
 
 
   const [feeDescription, setFeeDescription] = useState("");
@@ -378,7 +382,10 @@ export default function JacketDetailPage() {
       if(jacket?.invoiceId) {
           setInvoiceIdLocal(null);
       }
-  }, [jacket?.invoiceUrl, jacket?.invoiceId]);
+      if(jacket?.bosUrl) {
+          setBosUrlLocal(null);
+      }
+  }, [jacket?.invoiceUrl, jacket?.invoiceId, jacket?.bosUrl]);
   
   const handleGenerateInvoice = useCallback(async () => {
     if (!vin || !isAdmin) return;
@@ -430,6 +437,53 @@ export default function JacketDetailPage() {
         });
     } finally {
         setIsGeneratingInvoice(false);
+    }
+  }, [vin, isAdmin, toast]);
+
+
+  const handleGenerateBos = useCallback(async () => {
+    if (!vin || !isAdmin) return;
+    setIsGeneratingBos(true);
+    try {
+        const response = await fetch("https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/generateBillOfSale", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vin: vin })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to generate Bill of Sale: ${errorText}`);
+        }
+
+        const result = await response.json();
+        
+        if (result?.url) {
+            setBosUrlLocal(result.url);
+            toast({
+                title: "Bill of Sale Ready!",
+                description: (
+                    <a href={result.url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
+                        Click here to open the BOS.
+                    </a>
+                )
+            });
+        } else {
+            toast({
+                title: "BOS Generation Started",
+                description: "The Bill of Sale is being generated and will appear here shortly.",
+            });
+        }
+        
+    } catch (err: any) {
+        console.error("Error generating Bill of Sale:", err);
+        toast({
+            title: "BOS Generation Failed",
+            description: err.message,
+            variant: "destructive",
+        });
+    } finally {
+        setIsGeneratingBos(false);
     }
   }, [vin, isAdmin, toast]);
 
@@ -855,6 +909,7 @@ export default function JacketDetailPage() {
   
   const effectiveInvoiceUrl = invoiceUrlLocal ?? jacket?.invoiceUrl ?? "";
   const effectiveInvoiceId = invoiceIdLocal ?? jacket?.invoiceId;
+  const effectiveBosUrl = bosUrlLocal ?? jacket?.bosUrl ?? "";
 
 
   const PaymentSwitch = ({
@@ -1082,6 +1137,44 @@ export default function JacketDetailPage() {
                             <>
                                 <FileText className="mr-2 h-4 w-4" />
                                 Generate Invoice
+                            </>
+                        )}
+                    </Button>
+                </CardFooter>
+            )}
+        </Card>
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Bill of Sale</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                 <div>
+                  <span className="text-sm text-muted-foreground">BOS: </span>
+                  <span className="font-semibold">{effectiveBosUrl ? "Ready" : "Not generated"}</span>
+                </div>
+                {effectiveBosUrl ? (
+                    <Button asChild>
+                        <a href={effectiveBosUrl} target="_blank" rel="noopener noreferrer">
+                            <Download className="mr-2 h-4 w-4" /> Open Bill of Sale PDF
+                        </a>
+                    </Button>
+                ) : (
+                    <p className="text-sm text-muted-foreground">No Bill of Sale has been generated yet.</p>
+                )}
+            </CardContent>
+            {isAdmin && (
+                <CardFooter className="border-t pt-6">
+                    <Button onClick={handleGenerateBos} disabled={isGeneratingBos}>
+                        {isGeneratingBos ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                <FileText className="mr-2 h-4 w-4" />
+                                Generate Bill of Sale
                             </>
                         )}
                     </Button>
