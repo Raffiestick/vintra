@@ -210,7 +210,7 @@ export const generateJacketInvoice = onRequest({
     <h1>INVOICE</h1>
     <div class="invoice-meta">
       <div class="meta-item"><strong>Invoice ID:</strong> ${safe(j.invoiceId)}</div>
-      ${j.jacketId ? `<div class="meta-item"><strong>Jacket #:</strong> ${safe(j.jacketId)}</div>` : ''}
+      <div class="meta-item"><strong>Jacket #:</strong> ${safe(j.jacketId || '—')}</div>
       <div class="meta-item"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
       <div class="meta-item"><strong>VIN:</strong> ${safe(vin)}</div>
     </div>
@@ -399,9 +399,8 @@ export const generateBillOfSale = onRequest({
   <div class="title-block">
     <h1>BILL OF SALE</h1>
     <div class="meta-id">
-      ${j.invoiceId ? `Invoice ID: ${safe(j.invoiceId)}` : ''}
-      ${j.invoiceId && j.jacketId ? ` &nbsp;•&nbsp; ` : ''}
-      ${j.jacketId ? `Jacket #: ${safe(j.jacketId)}` : ''}
+      Jacket #: ${safe(j.jacketId || '—')}
+      ${j.invoiceId ? ` &nbsp;•&nbsp; Invoice ID: ${safe(j.invoiceId)}` : ''}
     </div>
   </div>
 
@@ -519,43 +518,89 @@ export const generateJacketPacket = onRequest({
             res.status(404).send("Jacket not found");
             return;
         }
-        // Ensure invoice is generated first if it doesn't exist
-        if (!snap.data()?.invoiceUrl) {
-            console.log(`Invoice for ${vin} not found, generating it first...`);
-            // This is a simplified call. In a real scenario, you might redirect
-            // or invoke the other function. For now, we'll just error out.
-            // A better approach would be to refactor PDF generation into helpers.
+        const j = snap.data() || {};
+        // Ensure invoice and BOS exist
+        if (!j.invoiceUrl) {
             res.status(400).send("Invoice must be generated before creating a packet.");
             return;
         }
-        if (!snap.data()?.bosUrl) {
+        if (!j.bosUrl) {
             res.status(400).send("Bill of Sale must be generated before creating a packet.");
             return;
         }
-        // Fetch the PDFs from storage
+        const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
+        // 1. Generate Cover Page PDF
+        const coverHtml = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #111; padding: 80px; display: flex; flex-direction: column; justify-content: center; height: 100vh; text-align: center; }
+    .title { font-size: 26px; font-weight: 800; letter-spacing: 1px; text-align:center; margin: 40px 0 20px; }
+    .box { max-width: 520px; margin: 0 auto; border:1px solid #e5e7eb; border-radius:10px; padding: 24px 28px; text-align: left; }
+    .label { color:#6b7280; text-transform:uppercase; font-size:11px; letter-spacing:.06em; margin-top:14px; }
+    .value { font-size:16px; font-weight:600; margin-top:2px; }
+    .footer { text-align:center; color:#6b7280; font-size:11px; position: absolute; bottom: 60px; left: 0; right: 0; line-height:1.5; }
+  </style>
+</head>
+<body>
+  <div>
+    <h1 class="title">RIZEUP VENTURES DEALER JACKET</h1>
+    <div class="box">
+        <div class="label">Jacket #</div>
+        <div class="value">${safe(j.jacketId || '—')}</div>
+        <div class="label">Vehicle</div>
+        <div class="value">${safe(yearMakeModel || '—')}</div>
+        <div class="label">VIN</div>
+        <div class="value">${safe(vin)}</div>
+        <div class="label">Make</div>
+        <div class="value">${safe(j.make || '—')}</div>
+        <div class="label">Model</div>
+        <div class="value">${safe(j.model || '—')}</div>
+        <div class="label">Year</div>
+        <div class="value">${safe(j.year || '—')}</div>
+    </div>
+  </div>
+  <div class="footer">
+    RizeUp Ventures, LLC • PO BOX 66741 • St Pete Beach, FL 33706<br/>616-318-1991 • admin@rizeupventures.com
+  </div>
+</body>
+</html>`;
+        const browser = await puppeteer.launch({
+            args: chromium.args,
+            executablePath: await chromium.executablePath(),
+            headless: true,
+        });
+        const page = await browser.newPage();
+        await page.setContent(coverHtml, { waitUntil: "networkidle0" });
+        const coverPdfBuffer = await page.pdf({ format: "A4", printBackground: true });
+        await browser.close();
+        // 2. Fetch existing PDFs from storage
         const invoicePath = `jacket-documents/${vin}/invoice.pdf`;
         const bosPath = `jacket-documents/${vin}/bill-of-sale.pdf`;
         const [invoiceFile] = await bucket.file(invoicePath).download();
         const [bosFile] = await bucket.file(bosPath).download();
-        // Merge PDFs using pdf-lib
+        // 3. Merge PDFs using pdf-lib
         const packetDoc = await PDFDocument.create();
+        // Cover Page
+        const coverPdf = await PDFDocument.load(coverPdfBuffer);
+        const [coverPage] = await packetDoc.copyPages(coverPdf, [0]);
+        packetDoc.addPage(coverPage);
+        // Invoice
         const invoicePdf = await PDFDocument.load(invoiceFile);
-        const bosPdf = await PDFDocument.load(bosFile);
         const [invoicePage] = await packetDoc.copyPages(invoicePdf, [0]);
         packetDoc.addPage(invoicePage);
+        // Bill of Sale
+        const bosPdf = await PDFDocument.load(bosFile);
         const [bosPage] = await packetDoc.copyPages(bosPdf, [0]);
         packetDoc.addPage(bosPage);
         // Add other documents from the jacket's `documents` array
-        const jacketData = snap.data();
-        if (jacketData?.documents && Array.isArray(jacketData.documents)) {
-            for (const doc of jacketData.documents) {
+        if (j.documents && Array.isArray(j.documents)) {
+            for (const doc of j.documents) {
                 if (doc.url && doc.name.toLowerCase().endsWith('.pdf')) {
                     try {
-                        // GCS URLs need to be parsed to get the file path
                         const url = new URL(doc.url);
                         const pathName = url.pathname;
-                        // The path is usually /v0/b/bucket-name.appspot.com/o/file...
-                        // We need to decode and extract from after "/o/".
                         const prefix = `/v0/b/${bucket.name}/o/`;
                         if (pathName.startsWith(prefix)) {
                             const filePath = decodeURIComponent(pathName.substring(prefix.length));
@@ -573,7 +618,7 @@ export const generateJacketPacket = onRequest({
             }
         }
         const packetBytes = await packetDoc.save();
-        // Save the merged PDF to storage
+        // 4. Save the merged PDF to storage
         const packetPath = `jacket-documents/${vin}/packet.pdf`;
         const packetFile = bucket.file(packetPath);
         await packetFile.save(packetBytes, {
@@ -581,6 +626,7 @@ export const generateJacketPacket = onRequest({
             resumable: false,
             metadata: { cacheControl: "private, max-age=0, no-store" },
         });
+        // 5. Get signed URL and update Firestore
         const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
         const [signedUrl] = await packetFile.getSignedUrl({ action: "read", expires });
         await docRef.update({
@@ -589,7 +635,7 @@ export const generateJacketPacket = onRequest({
         });
         await logActivity(vin, {
             type: "packetGenerated",
-            message: "Jacket Packet PDF generated",
+            message: "Packet generated (cover + invoice + BOS)",
             meta: { url: signedUrl }
         });
         res.status(200).json({ ok: true, vin, url: signedUrl });
