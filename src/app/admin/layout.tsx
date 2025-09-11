@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -6,7 +7,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Power, UserCheck, UserCog, FilePlus } from "lucide-react";
+import { Power, UserCheck, UserCog, FilePlus, FileText } from "lucide-react";
 
 export default function AdminLayout({
   children,
@@ -29,6 +30,7 @@ export default function AdminLayout({
   const navItems = [
     { href: "/admin/dealer-management", label: "Dealer Management", icon: UserCog },
     { href: "/admin/approved-dealers", label: "Approved Dealers", icon: UserCheck },
+    { href: "/admin/jackets", label: "All Jackets", icon: FileText },
     { href: "/admin/jackets/new", label: "New Jacket", icon: FilePlus },
   ];
 
@@ -50,8 +52,9 @@ export default function AdminLayout({
                   href={item.href}
                   className={cn(
                     "flex items-center w-full text-left px-4 py-2 rounded-md transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    pathname === item.href &&
-                      "bg-primary text-primary-foreground"
+                    pathname.startsWith(item.href) && item.href !== '/admin/jackets/new' && !pathname.includes('new') || pathname === item.href ?
+                      "bg-primary text-primary-foreground" : "",
+                    pathname === item.href && "bg-primary text-primary-foreground"
                   )}
                 >
                   <item.icon className="mr-2 h-4 w-4" />
