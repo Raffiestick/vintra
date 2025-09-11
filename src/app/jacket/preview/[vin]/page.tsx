@@ -142,7 +142,9 @@ export default function JacketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState<"auction" | "mgmt" | null>(null);
+  
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+  const [invoiceUrlLocal, setInvoiceUrlLocal] = useState<string | null>(null);
 
   const [feeDescription, setFeeDescription] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
@@ -184,6 +186,13 @@ export default function JacketDetailPage() {
 
     return () => unsubscribe();
   }, [vin]);
+
+  // When jacket data from Firestore changes, clear the local temporary URL
+  useEffect(() => {
+      if (jacket?.invoiceUrl) {
+          setInvoiceUrlLocal(null);
+      }
+  }, [jacket?.invoiceUrl]);
   
   const handleGenerateInvoice = useCallback(async () => {
     if (!vin || !isAdmin) return;
@@ -201,11 +210,24 @@ export default function JacketDetailPage() {
         }
 
         const result = await response.json();
-        toast({
-            title: "Invoice Generation Started",
-            description: "The invoice is being generated and will appear here shortly.",
-        });
-        // The onSnapshot listener will automatically update the UI with the new URL.
+        
+        if (result?.url) {
+            setInvoiceUrlLocal(result.url);
+             toast({
+                title: "Invoice Ready!",
+                description: (
+                    <a href={result.url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
+                        Click here to open the invoice.
+                    </a>
+                )
+            });
+        } else {
+            toast({
+                title: "Invoice Generation Started",
+                description: "The invoice is being generated and will appear here shortly.",
+            });
+        }
+        
     } catch (err: any) {
         console.error("Error generating invoice:", err);
         toast({
@@ -432,6 +454,8 @@ export default function JacketDetailPage() {
       </main>
     );
   }
+  
+  const effectiveInvoiceUrl = invoiceUrlLocal ?? jacket?.invoiceUrl ?? "";
 
   const PaymentSwitch = ({
     id,
@@ -544,9 +568,9 @@ export default function JacketDetailPage() {
                 <CardTitle>Invoice</CardTitle>
             </CardHeader>
             <CardContent>
-                {jacket.invoiceUrl ? (
+                {effectiveInvoiceUrl ? (
                     <Button asChild>
-                        <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer">
+                        <a href={effectiveInvoiceUrl} target="_blank" rel="noopener noreferrer">
                             <Download className="mr-2 h-4 w-4" /> Open Invoice PDF
                         </a>
                     </Button>
@@ -743,3 +767,6 @@ export default function JacketDetailPage() {
   );
 }
 
+
+
+    

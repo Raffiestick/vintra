@@ -8,11 +8,11 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import * as admin from "firebase-admin";
 
-// ✅ Use Chromium bundle that works on Firebase
+// Use Chromium bundle that works on Firebase (no Chrome install needed)
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 
-/** Optional dev bypass: set a secret named DEV_ADMIN_UID if you want a single UID to bypass admin claims */
+/** Optional dev bypass: set secret DEV_ADMIN_UID if you want one UID to bypass admin claims */
 const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID");
 
 // Init Admin SDK once
@@ -78,14 +78,16 @@ export const generateJacketId = onCall(
 /**
  * Generate invoice PDF and store to:
  *   jacket-documents/{vin}/invoice.pdf
- * Update Firestore jacket with a 7-day signed URL in `invoiceUrl`.
+ * Update Firestore jacket with a 7-day URL in `invoiceUrl`.
  * Gen 2 HTTP function (v2) named generateJacketInvoice.
+ * ✅ CORS enabled so your workspace URL can call it from the browser.
  */
 export const generateJacketInvoice = onRequest(
   {
     region: "us-central1",
     timeoutSeconds: 120,
     memory: "1GiB",
+    cors: true, // <— THIS fixes the CORS “failed to fetch”
   },
   async (req, res) => {
     try {
@@ -187,7 +189,7 @@ export const generateJacketInvoice = onRequest(
 </body>
 </html>`;
 
-      // ✅ Launch Chromium that works on Firebase (no external install)
+      // Launch Chromium that works on Firebase
       const browser = await puppeteer.launch({
         args: chromium.args,
         executablePath: await chromium.executablePath(),
