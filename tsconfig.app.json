@@ -1,13 +1,21 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/**/*", "next-env.d.ts"],
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "preserve",
+    "skipLibCheck": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
   "exclude": [
-    "src/functions",
+    "node_modules",
+    ".next",
     "src/functions/**",
-    "src/ai",
-    "src/ai/**",
-    "functions",
     "functions/**",
-    "node_modules"
+    "**/*.test.ts",
+    "**/*.spec.ts"
   ]
 }
