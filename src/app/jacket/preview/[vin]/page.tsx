@@ -101,7 +101,8 @@ interface Jacket {
   jacketId?: string;
   auctionSaleDate?: Timestamp;
   isAuctionPaid?: boolean;
-  isMgmtFeePaid?: boolean;
+  isMgmtPaid?: boolean; // Legacy field
+  isMgmtFeePaid?: boolean; // New field
   itemPrice?: number;
   buyerFee?: number;
   onlineFee?: number;
@@ -251,6 +252,22 @@ export default function JacketDetailPage() {
     return () => unsubscribe();
   }, [vin]);
 
+  // One-time migration effect for isMgmtPaid -> isMgmtFeePaid
+  useEffect(() => {
+    if (jacket && typeof jacket.isMgmtPaid === 'boolean' && typeof jacket.isMgmtFeePaid === 'undefined') {
+        const jacketDocRef = doc(db, "jackets", jacket.vin);
+        console.info(`Migrating isMgmtPaid -> isMgmtFeePaid for VIN ${jacket.vin}`);
+        updateDoc(jacketDocRef, {
+            isMgmtFeePaid: jacket.isMgmtPaid,
+            isMgmtPaid: deleteField(),
+            updatedAt: serverTimestamp()
+        }).catch(err => {
+            console.error("One-time migration failed:", err);
+        });
+    }
+  }, [jacket]);
+
+
   useEffect(() => {
       async function fetchDealers() {
           if (!isAdmin) return;
@@ -342,13 +359,21 @@ export default function JacketDetailPage() {
     const jacketDocRef = doc(db, "jackets", vin);
     const type = paymentDialog.type;
     
-    const updateData = {
-      [`is${type.charAt(0).toUpperCase() + type.slice(1)}Paid`]: true,
-      [`${type}PaidAt`]: Timestamp.fromDate(paymentDate),
-      [`${type}PaymentRef`]: paymentRef.trim(),
+    let updateData: any = {
       updatedAt: serverTimestamp(),
     };
     
+    if (type === 'auction') {
+      updateData.isAuctionPaid = true;
+      updateData.auctionPaidAt = Timestamp.fromDate(paymentDate);
+      updateData.auctionPaymentRef = paymentRef.trim();
+    } else if (type === 'mgmt') {
+      updateData.isMgmtFeePaid = true;
+      updateData.mgmtPaidAt = Timestamp.fromDate(paymentDate);
+      updateData.mgmtPaymentRef = paymentRef.trim();
+      updateData.isMgmtPaid = deleteField(); // Clean up legacy field
+    }
+
     try {
       await updateDoc(jacketDocRef, updateData);
       console.log(`${type} Paid saved`);
@@ -368,12 +393,20 @@ export default function JacketDetailPage() {
     const jacketDocRef = doc(db, "jackets", vin);
     const type = unpaidConfirmDialog.type;
 
-    const updateData = {
-      [`is${type.charAt(0).toUpperCase() + type.slice(1)}Paid`]: false,
-      [`${type}PaidAt`]: deleteField(),
-      [`${type}PaymentRef`]: deleteField(),
+    let updateData: any = {
       updatedAt: serverTimestamp(),
     };
+    
+    if (type === 'auction') {
+      updateData.isAuctionPaid = false;
+      updateData.auctionPaidAt = deleteField();
+      updateData.auctionPaymentRef = deleteField();
+    } else if (type === 'mgmt') {
+        updateData.isMgmtFeePaid = false;
+        updateData.mgmtPaidAt = deleteField();
+        updateData.mgmtPaymentRef = deleteField();
+        updateData.isMgmtPaid = deleteField(); // Clean up legacy field
+    }
 
     try {
       await updateDoc(jacketDocRef, updateData);
@@ -524,6 +557,11 @@ export default function JacketDetailPage() {
     });
   };
 
+  const isMgmtFeeActuallyPaid = useMemo(() => {
+    if (!jacket) return false;
+    return jacket.isMgmtFeePaid ?? jacket.isMgmtPaid ?? false;
+  }, [jacket]);
+
   const financials = useMemo(() => {
     if (!jacket) return null;
     const auctionDue =
@@ -534,12 +572,14 @@ export default function JacketDetailPage() {
     const miscTotal =
       jacket.miscFees?.reduce((acc, fee) => acc + (fee?.amount || 0), 0) || 0;
     const subtotal = auctionDue + mgmtDue + miscTotal;
+    
     const outstanding =
       (jacket.isAuctionPaid ? 0 : auctionDue) +
-      (jacket.isMgmtFeePaid ? 0 : mgmtDue) +
+      (isMgmtFeeActuallyPaid ? 0 : mgmtDue) +
       miscTotal; 
+
     return { auctionDue, mgmtDue, miscTotal, subtotal, outstanding };
-  }, [jacket]);
+  }, [jacket, isMgmtFeeActuallyPaid]);
 
   if (loading) {
     return (
@@ -778,7 +818,7 @@ export default function JacketDetailPage() {
                 <PaymentSwitch
                     id="mgmt"
                     label="Management Fee Paid"
-                    checked={jacket.isMgmtFeePaid ?? false}
+                    checked={isMgmtFeeActuallyPaid}
                     paidAt={jacket.mgmtPaidAt}
                     paymentRef={jacket.mgmtPaymentRef}
                 />
