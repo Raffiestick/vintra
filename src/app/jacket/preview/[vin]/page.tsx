@@ -112,6 +112,7 @@ interface Jacket {
   managementFee?: number;
   miscFees?: MiscFee[];
   documents?: JacketDocument[];
+  invoiceId?: string;
   invoiceUrl?: string;
   creatorId?: string;
   dealerId?: string;
@@ -188,6 +189,8 @@ export default function JacketDetailPage() {
   
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [invoiceUrlLocal, setInvoiceUrlLocal] = useState<string | null>(null);
+  const [invoiceIdLocal, setInvoiceIdLocal] = useState<string | null>(null);
+
 
   const [feeDescription, setFeeDescription] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
@@ -318,7 +321,10 @@ export default function JacketDetailPage() {
       if (jacket?.invoiceUrl) {
           setInvoiceUrlLocal(null);
       }
-  }, [jacket?.invoiceUrl]);
+      if(jacket?.invoiceId) {
+          setInvoiceIdLocal(null);
+      }
+  }, [jacket?.invoiceUrl, jacket?.invoiceId]);
   
   const handleGenerateInvoice = useCallback(async () => {
     if (!vin || !isAdmin) return;
@@ -339,6 +345,12 @@ export default function JacketDetailPage() {
         
         if (result?.url) {
             setInvoiceUrlLocal(result.url);
+        }
+        if (result?.invoiceId) {
+            setInvoiceIdLocal(result.invoiceId);
+        }
+        
+        if (result?.url) {
              toast({
                 title: "Invoice Ready!",
                 description: (
@@ -740,6 +752,8 @@ export default function JacketDetailPage() {
   }
   
   const effectiveInvoiceUrl = invoiceUrlLocal ?? jacket?.invoiceUrl ?? "";
+  const effectiveInvoiceId = invoiceIdLocal ?? jacket?.invoiceId;
+
 
   const PaymentSwitch = ({
     id,
@@ -939,7 +953,11 @@ export default function JacketDetailPage() {
             <CardHeader>
                 <CardTitle>Invoice</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+                <div>
+                  <span className="text-sm text-muted-foreground">Invoice ID: </span>
+                  <span className="font-semibold">{effectiveInvoiceId || "Not issued yet"}</span>
+                </div>
                 {effectiveInvoiceUrl ? (
                     <Button asChild>
                         <a href={effectiveInvoiceUrl} target="_blank" rel="noopener noreferrer">
@@ -1257,3 +1275,5 @@ export default function JacketDetailPage() {
     </main>
   );
 }
+
+    
