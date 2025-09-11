@@ -50,7 +50,7 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon, Trash2, Replace } from "lucide-react";
+import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon, Trash2, Replace, Printer } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -117,6 +117,7 @@ interface Jacket {
   invoiceId?: string;
   invoiceUrl?: string;
   bosUrl?: string;
+  packetUrl?: string;
   creatorId?: string;
   dealerId?: string;
   createdAt?: Timestamp;
@@ -142,7 +143,7 @@ interface Activity {
   actorUid: string;
   actorEmail?: string;
   actorName?: string;
-  type: "assignDealer" | "auctionPaidOn" | "auctionPaidOff" | "mgmtPaidOn" | "mgmtPaidOff" | "miscFeeAdded" | "docAdded" | "docReplaced" | "docDeleted" | "invoiceGenerated";
+  type: "assignDealer" | "auctionPaidOn" | "auctionPaidOff" | "mgmtPaidOn" | "mgmtPaidOff" | "miscFeeAdded" | "docAdded" | "docReplaced" | "docDeleted" | "invoiceGenerated" | "bosGenerated" | "packetGenerated";
   message: string;
   meta?: any;
 }
@@ -229,6 +230,9 @@ export default function JacketDetailPage() {
   
   const [isGeneratingBos, setIsGeneratingBos] = useState(false);
   const [bosUrlLocal, setBosUrlLocal] = useState<string | null>(null);
+
+  const [isGeneratingPacket, setIsGeneratingPacket] = useState(false);
+  const [packetUrlLocal, setPacketUrlLocal] = useState<string | null>(null);
 
 
   const [feeDescription, setFeeDescription] = useState("");
@@ -376,16 +380,11 @@ export default function JacketDetailPage() {
   }, [isAdmin, toast]);
 
   useEffect(() => {
-      if (jacket?.invoiceUrl) {
-          setInvoiceUrlLocal(null);
-      }
-      if(jacket?.invoiceId) {
-          setInvoiceIdLocal(null);
-      }
-      if(jacket?.bosUrl) {
-          setBosUrlLocal(null);
-      }
-  }, [jacket?.invoiceUrl, jacket?.invoiceId, jacket?.bosUrl]);
+      if (jacket?.invoiceUrl) setInvoiceUrlLocal(null);
+      if(jacket?.invoiceId) setInvoiceIdLocal(null);
+      if(jacket?.bosUrl) setBosUrlLocal(null);
+      if(jacket?.packetUrl) setPacketUrlLocal(null);
+  }, [jacket?.invoiceUrl, jacket?.invoiceId, jacket?.bosUrl, jacket?.packetUrl]);
   
   const handleGenerateInvoice = useCallback(async () => {
     if (!vin || !isAdmin) return;
@@ -404,12 +403,8 @@ export default function JacketDetailPage() {
 
         const result = await response.json();
         
-        if (result?.url) {
-            setInvoiceUrlLocal(result.url);
-        }
-        if (result?.invoiceId) {
-            setInvoiceIdLocal(result.invoiceId);
-        }
+        if (result?.url) setInvoiceUrlLocal(result.url);
+        if (result?.invoiceId) setInvoiceIdLocal(result.invoiceId);
         
         if (result?.url) {
              toast({
@@ -468,6 +463,7 @@ export default function JacketDetailPage() {
                     </a>
                 )
             });
+            await logActivity(vin, { type: "bosGenerated", message: "Bill of Sale generated", meta: { url: result.url } });
         } else {
             toast({
                 title: "BOS Generation Started",
@@ -484,6 +480,54 @@ export default function JacketDetailPage() {
         });
     } finally {
         setIsGeneratingBos(false);
+    }
+  }, [vin, isAdmin, toast]);
+
+
+  const handleGeneratePacket = useCallback(async () => {
+    if (!vin || !isAdmin) return;
+    setIsGeneratingPacket(true);
+    try {
+        const response = await fetch("https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/generateJacketPacket", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vin: vin })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to generate packet: ${errorText}`);
+        }
+
+        const result = await response.json();
+        
+        if (result?.url) {
+            setPacketUrlLocal(result.url);
+            toast({
+                title: "Jacket Packet Ready!",
+                description: (
+                    <a href={result.url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
+                        Click here to open the packet.
+                    </a>
+                )
+            });
+            await logActivity(vin, { type: "packetGenerated", message: "Jacket Packet generated", meta: { url: result.url } });
+        } else {
+            toast({
+                title: "Packet Generation Started",
+                description: "The jacket packet is being generated and will appear here shortly.",
+            });
+        }
+        
+    } catch (err: any) {
+        console.error("Error generating jacket packet:", err);
+        toast({
+            title: "Packet Generation Failed",
+            description: err.message,
+            variant: "destructive",
+        });
+    } finally {
+        setIsGeneratingPacket(false);
     }
   }, [vin, isAdmin, toast]);
 
@@ -733,8 +777,12 @@ export default function JacketDetailPage() {
         });
 
         // Try to delete old file, but don't block on it
-        const oldFileRef = ref(storage, `jacket-documents/${vin}/${docToReplace.type}/${docToReplace.name}`);
-        deleteObject(oldFileRef).catch(err => console.warn("Could not delete old file, may be orphaned:", err));
+        try {
+          const oldFileRef = ref(storage, docToReplace.url);
+          await deleteObject(oldFileRef);
+        } catch (err) {
+            console.warn("Could not delete old file, may be orphaned:", err);
+        }
 
         toast({ title: "Document Replaced", description: `${newFile.name} is now uploaded.` });
         
@@ -770,8 +818,17 @@ export default function JacketDetailPage() {
         });
 
         // Try to delete from storage. If this fails, the DB record is already gone, which is fine.
-        const storageRef = ref(storage, `jacket-documents/${vin}/${docToDelete.type}/${docToDelete.name}`);
-        await deleteObject(storageRef);
+        try {
+            const storageRef = ref(storage, docToDelete.url);
+            await deleteObject(storageRef);
+        } catch (err: any) {
+           if (err.code === 'storage/object-not-found') {
+             console.warn("File to delete was not found in storage, but metadata was removed.");
+           } else {
+             throw err;
+           }
+        }
+
 
         toast({ title: "Document Deleted", description: `${docToDelete.name} has been removed.` });
         
@@ -910,6 +967,7 @@ export default function JacketDetailPage() {
   const effectiveInvoiceUrl = invoiceUrlLocal ?? jacket?.invoiceUrl ?? "";
   const effectiveInvoiceId = invoiceIdLocal ?? jacket?.invoiceId;
   const effectiveBosUrl = bosUrlLocal ?? jacket?.bosUrl ?? "";
+  const effectivePacketUrl = packetUrlLocal ?? jacket?.packetUrl ?? "";
 
 
   const PaymentSwitch = ({
@@ -1112,6 +1170,10 @@ export default function JacketDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
+                  <span className="text-sm text-muted-foreground">Jacket #: </span>
+                  <span className="font-semibold">{jacket?.jacketId || '—'}</span>
+                </div>
+                <div>
                   <span className="text-sm text-muted-foreground">Invoice ID: </span>
                   <span className="font-semibold">{effectiveInvoiceId || "Not issued yet"}</span>
                 </div>
@@ -1150,6 +1212,10 @@ export default function JacketDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
                  <div>
+                  <span className="text-sm text-muted-foreground">Jacket #: </span>
+                  <span className="font-semibold">{jacket?.jacketId || '—'}</span>
+                </div>
+                 <div>
                   <span className="text-sm text-muted-foreground">BOS: </span>
                   <span className="font-semibold">{effectiveBosUrl ? "Ready" : "Not generated"}</span>
                 </div>
@@ -1175,6 +1241,54 @@ export default function JacketDetailPage() {
                             <>
                                 <FileText className="mr-2 h-4 w-4" />
                                 Generate Bill of Sale
+                            </>
+                        )}
+                    </Button>
+                </CardFooter>
+            )}
+        </Card>
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Jacket Packet (Invoice + BOS)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div>
+                  <span className="text-sm text-muted-foreground">Jacket #: </span>
+                  <span className="font-semibold">{jacket?.jacketId || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-sm text-muted-foreground">Packet: </span>
+                  <span className="font-semibold">{effectivePacketUrl ? "Ready" : "Not generated"}</span>
+                </div>
+                {effectivePacketUrl ? (
+                  <div className="flex items-center gap-2">
+                    <Button asChild>
+                        <a href={effectivePacketUrl} target="_blank" rel="noopener noreferrer">
+                            <Download className="mr-2 h-4 w-4" /> Open Packet PDF
+                        </a>
+                    </Button>
+                    <Button variant="secondary" onClick={() => window.open(effectivePacketUrl, '_blank')}>
+                      <Printer className="mr-2 h-4 w-4" />
+                      Print
+                    </Button>
+                  </div>
+                ) : (
+                    <p className="text-sm text-muted-foreground">No packet has been generated yet.</p>
+                )}
+            </CardContent>
+            {isAdmin && (
+                <CardFooter className="border-t pt-6">
+                    <Button onClick={handleGeneratePacket} disabled={isGeneratingPacket}>
+                        {isGeneratingPacket ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                <FileText className="mr-2 h-4 w-4" />
+                                Generate Packet
                             </>
                         )}
                     </Button>

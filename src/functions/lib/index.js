@@ -4,6 +4,7 @@ import { defineSecret } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { PDFDocument } from "pdf-lib";
 // Use Chromium bundle that works on Firebase (no Chrome install needed)
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
@@ -15,6 +16,57 @@ if (getApps().length === 0) {
 }
 const db = getFirestore();
 const bucket = getStorage().bucket();
+// --- SHARED HELPERS ---
+const seller = {
+    name: "RizeUp Ventures, LLC",
+    dba: "DBA Dolphin Chasers",
+    addr1: "PO BOX 66741",
+    addr2: "St Pete Beach, FL 33706",
+    phone: "616-318-1991",
+    email: "admin@rizeupventures.com"
+};
+const num = (x) => (typeof x === "number" ? x : Number(x || 0));
+const fmtUSD = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+const fmtDateUTC = (d) => d ? d.toLocaleDateString('en-US', { timeZone: 'UTC' }) : '';
+const safe = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+async function getBuyerData(dealerId) {
+    if (!dealerId)
+        return { name: "Dealer (unassigned)" };
+    try {
+        const userSnap = await db.collection("users").doc(dealerId).get();
+        if (userSnap.exists) {
+            const u = userSnap.data() || {};
+            return {
+                name: u.companyName || u.contactName || u.displayName || u.email || u.uid,
+                line1: u.streetAddress || u.address || u.street || "",
+                line2: [u.city, u.state, u.zip].filter(Boolean).join(", "),
+                phone: u.phone || "",
+                email: u.email || "",
+            };
+        }
+    }
+    catch (error) {
+        console.warn(`Could not fetch buyer data for dealerId ${dealerId}:`, error);
+    }
+    return { name: `Dealer ${dealerId} (not found)` };
+}
+async function logActivity(vin, entry) {
+    if (!vin)
+        return;
+    try {
+        const activityCol = db.collection("jackets").doc(vin).collection("activity");
+        await activityCol.add({
+            ...entry,
+            ts: FieldValue.serverTimestamp(),
+            // In a Cloud Function, there is no `auth` context unless it's a Callable function.
+            // We can't log the actor automatically here for onRequest functions.
+            actor: "System"
+        });
+    }
+    catch (error) {
+        console.error(`Failed to log activity for VIN ${vin}:`, error);
+    }
+}
 /** Require admin privileges (claims), with optional DEV UID bypass via secret. */
 function assertAdmin(request) {
     if (!request.auth) {
@@ -85,9 +137,8 @@ export const generateJacketInvoice = onRequest({
             return;
         }
         let j = snap.data() || {};
-        let invoiceId = j.invoiceId;
         // If no invoice ID, generate one transactionally
-        if (!invoiceId) {
+        if (!j.invoiceId) {
             const counterRef = db.collection("counters").doc("invoices");
             await db.runTransaction(async (transaction) => {
                 const counterDoc = await transaction.get(counterRef);
@@ -97,40 +148,12 @@ export const generateJacketInvoice = onRequest({
                 const yyyy = now.getUTCFullYear();
                 const mm = (now.getUTCMonth() + 1).toString().padStart(2, '0');
                 const paddedSeq = newSeq.toString().padStart(4, '0');
-                invoiceId = `INV-${yyyy}${mm}-${paddedSeq}`;
-                transaction.update(docRef, { invoiceId: invoiceId });
+                const newInvoiceId = `INV-${yyyy}${mm}-${paddedSeq}`;
+                transaction.update(docRef, { invoiceId: newInvoiceId });
+                j.invoiceId = newInvoiceId; // Update local object
             });
-            // Re-fetch the doc to get the updated data with invoiceId
-            snap = await docRef.get();
-            j = snap.data() || {};
         }
-        // Fetch buyer/dealer data if dealerId exists
-        let buyerData = {};
-        if (j.dealerId) {
-            const userSnap = await db.collection("users").doc(j.dealerId).get();
-            if (userSnap.exists) {
-                const u = userSnap.data() || {};
-                buyerData.name = u.companyName || u.contactName || u.email || u.uid;
-                buyerData.line1 = u.streetAddress || "";
-                buyerData.line2 = [u.city, u.state, u.zip].filter(Boolean).join(", ");
-                buyerData.phone = u.phone || "";
-                buyerData.email = u.email || "";
-            }
-        }
-        else {
-            buyerData.name = "Dealer (unassigned)";
-        }
-        // Constants for seller
-        const seller = {
-            name: "RizeUp Ventures, LLC",
-            dba: "DBA Dolphin Chasers",
-            addr1: "PO BOX 66741",
-            addr2: "St Pete Beach, FL 33706",
-            phone: "616-318-1991",
-            email: "admin@rizeupventures.com"
-        };
-        // null-safe numeric helpers
-        const num = (x) => (typeof x === "number" ? x : Number(x || 0));
+        const buyerData = await getBuyerData(j.dealerId);
         const auctionDue = num(j.itemPrice) + num(j.buyerFee) + num(j.onlineFee);
         const mgmtDue = num(j.managementFee);
         const miscTotal = Array.isArray(j.miscFees)
@@ -140,13 +163,6 @@ export const generateJacketInvoice = onRequest({
         const isMgmtFeePaid = j.isMgmtFeePaid ?? j.isMgmtPaid ?? false;
         const amountPaid = (j.isAuctionPaid ? auctionDue : 0) + (isMgmtFeePaid ? mgmtDue : 0);
         const balanceDue = Math.max(0, subtotal - amountPaid);
-        const fmtUSD = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
-        const safe = (s) => String(s ?? "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
         const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
         const html = `<!doctype html>
 <html>
@@ -193,7 +209,8 @@ export const generateJacketInvoice = onRequest({
   <div class="invoice-title">
     <h1>INVOICE</h1>
     <div class="invoice-meta">
-      <div class="meta-item"><strong>Invoice ID:</strong> ${safe(invoiceId)}</div>
+      <div class="meta-item"><strong>Invoice ID:</strong> ${safe(j.invoiceId)}</div>
+      ${j.jacketId ? `<div class="meta-item"><strong>Jacket #:</strong> ${safe(j.jacketId)}</div>` : ''}
       <div class="meta-item"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
       <div class="meta-item"><strong>VIN:</strong> ${safe(vin)}</div>
     </div>
@@ -293,7 +310,12 @@ export const generateJacketInvoice = onRequest({
             invoiceUrl: signedUrl,
             updatedAt: FieldValue.serverTimestamp(),
         });
-        res.status(200).json({ ok: true, vin, url: signedUrl, invoiceId });
+        await logActivity(vin, {
+            type: "invoiceGenerated",
+            message: `Invoice generated ${j.invoiceId ? "— " + j.invoiceId : ""}`,
+            meta: { invoiceId: j.invoiceId, url: signedUrl }
+        });
+        res.status(200).json({ ok: true, vin, url: signedUrl, invoiceId: j.invoiceId });
     }
     catch (err) {
         console.error("generateJacketInvoice error:", err);
@@ -328,39 +350,11 @@ export const generateBillOfSale = onRequest({
             return;
         }
         const j = snap.data() || {};
-        // Fetch buyer/dealer data if dealerId exists
-        let buyerData = {};
-        if (j.dealerId) {
-            const userSnap = await db.collection("users").doc(j.dealerId).get();
-            if (userSnap.exists) {
-                const u = userSnap.data() || {};
-                buyerData.name = u.companyName || u.contactName || u.email || u.uid;
-                buyerData.line1 = u.streetAddress || "";
-                buyerData.line2 = [u.city, u.state, u.zip].filter(Boolean).join(", ");
-                buyerData.phone = u.phone || "";
-                buyerData.email = u.email || "";
-            }
-        }
-        else {
-            buyerData.name = "Dealer (unassigned)";
-        }
-        // Constants for seller
-        const seller = {
-            name: "RizeUp Ventures, LLC",
-            dba: "DBA Dolphin Chasers",
-            addr1: "PO BOX 66741",
-            addr2: "St Pete Beach, FL 33706",
-            phone: "616-318-1991",
-            email: "admin@rizeupventures.com"
-        };
-        // null-safe numeric helpers
-        const num = (x) => (typeof x === "number" ? x : Number(x || 0));
+        const buyerData = await getBuyerData(j.dealerId);
         const auctionDue = num(j.itemPrice) + num(j.buyerFee) + num(j.onlineFee);
         const mgmtDue = num(j.managementFee);
         const miscTotal = Array.isArray(j.miscFees) ? j.miscFees.reduce((s, f) => s + num(f?.amount), 0) : 0;
         const subtotal = auctionDue + mgmtDue + miscTotal;
-        const fmtUSD = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
-        const safe = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         const saleDate = j.auctionSaleDate?.toDate()?.toLocaleDateString() || new Date().toLocaleDateString();
         const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
         const html = `<!doctype html>
@@ -376,7 +370,7 @@ export const generateBillOfSale = onRequest({
     .header .company-contact { font-size: 10px; color: #555; margin-top: 5px; }
     .title-block { text-align: center; margin: 20px 0; }
     .title-block h1 { font-size: 24px; font-weight: 500; letter-spacing: 1px; margin: 0; }
-    .title-block .invoice-id { font-size: 12px; color: #555; margin-top: 4px; }
+    .title-block .meta-id { font-size: 12px; color: #555; margin-top: 4px; }
     .party-block { display: -webkit-box; display: flex; -webkit-box-pack: justify; justify-content: space-between; margin: 30px 0; }
     .party { width: 48%; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
     .party h3 { margin: 0 0 10px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
@@ -404,7 +398,11 @@ export const generateBillOfSale = onRequest({
 
   <div class="title-block">
     <h1>BILL OF SALE</h1>
-    ${j.invoiceId ? `<div class="invoice-id">Invoice ID: ${safe(j.invoiceId)}</div>` : ''}
+    <div class="meta-id">
+      ${j.invoiceId ? `Invoice ID: ${safe(j.invoiceId)}` : ''}
+      ${j.invoiceId && j.jacketId ? ` &nbsp;•&nbsp; ` : ''}
+      ${j.jacketId ? `Jacket #: ${safe(j.jacketId)}` : ''}
+    </div>
   </div>
 
   <div class="party-block">
@@ -486,10 +484,118 @@ export const generateBillOfSale = onRequest({
             bosUrl: signedUrl,
             updatedAt: FieldValue.serverTimestamp(),
         });
+        await logActivity(vin, {
+            type: "bosGenerated",
+            message: "Bill of Sale generated",
+            meta: { url: signedUrl }
+        });
         res.status(200).json({ ok: true, vin, url: signedUrl });
     }
     catch (err) {
         console.error("generateBillOfSale error:", err);
+        res.status(500).send(err?.message || "Internal error");
+    }
+});
+export const generateJacketPacket = onRequest({
+    region: "us-central1",
+    timeoutSeconds: 180,
+    memory: "1GiB",
+    cors: true,
+}, async (req, res) => {
+    try {
+        if (req.method !== "POST" && req.method !== "GET") {
+            res.status(405).send("Method Not Allowed");
+            return;
+        }
+        const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim();
+        const vin = rawVin.toUpperCase();
+        if (!vin) {
+            res.status(400).send("Missing 'vin'");
+            return;
+        }
+        const docRef = db.collection("jackets").doc(vin);
+        const snap = await docRef.get();
+        if (!snap.exists) {
+            res.status(404).send("Jacket not found");
+            return;
+        }
+        // Ensure invoice is generated first if it doesn't exist
+        if (!snap.data()?.invoiceUrl) {
+            console.log(`Invoice for ${vin} not found, generating it first...`);
+            // This is a simplified call. In a real scenario, you might redirect
+            // or invoke the other function. For now, we'll just error out.
+            // A better approach would be to refactor PDF generation into helpers.
+            res.status(400).send("Invoice must be generated before creating a packet.");
+            return;
+        }
+        if (!snap.data()?.bosUrl) {
+            res.status(400).send("Bill of Sale must be generated before creating a packet.");
+            return;
+        }
+        // Fetch the PDFs from storage
+        const invoicePath = `jacket-documents/${vin}/invoice.pdf`;
+        const bosPath = `jacket-documents/${vin}/bill-of-sale.pdf`;
+        const [invoiceFile] = await bucket.file(invoicePath).download();
+        const [bosFile] = await bucket.file(bosPath).download();
+        // Merge PDFs using pdf-lib
+        const packetDoc = await PDFDocument.create();
+        const invoicePdf = await PDFDocument.load(invoiceFile);
+        const bosPdf = await PDFDocument.load(bosFile);
+        const [invoicePage] = await packetDoc.copyPages(invoicePdf, [0]);
+        packetDoc.addPage(invoicePage);
+        const [bosPage] = await packetDoc.copyPages(bosPdf, [0]);
+        packetDoc.addPage(bosPage);
+        // Add other documents from the jacket's `documents` array
+        const jacketData = snap.data();
+        if (jacketData?.documents && Array.isArray(jacketData.documents)) {
+            for (const doc of jacketData.documents) {
+                if (doc.url && doc.name.toLowerCase().endsWith('.pdf')) {
+                    try {
+                        // GCS URLs need to be parsed to get the file path
+                        const url = new URL(doc.url);
+                        const pathName = url.pathname;
+                        // The path is usually /v0/b/bucket-name.appspot.com/o/file...
+                        // We need to decode and extract from after "/o/".
+                        const prefix = `/v0/b/${bucket.name}/o/`;
+                        if (pathName.startsWith(prefix)) {
+                            const filePath = decodeURIComponent(pathName.substring(prefix.length));
+                            console.log(`Adding ${filePath} to packet...`);
+                            const [fileBuffer] = await bucket.file(filePath).download();
+                            const docPdf = await PDFDocument.load(fileBuffer);
+                            const copiedPages = await packetDoc.copyPages(docPdf, docPdf.getPageIndices());
+                            copiedPages.forEach(page => packetDoc.addPage(page));
+                        }
+                    }
+                    catch (e) {
+                        console.warn(`Could not add document ${doc.name} to packet:`, e);
+                    }
+                }
+            }
+        }
+        const packetBytes = await packetDoc.save();
+        // Save the merged PDF to storage
+        const packetPath = `jacket-documents/${vin}/packet.pdf`;
+        const packetFile = bucket.file(packetPath);
+        await packetFile.save(packetBytes, {
+            contentType: "application/pdf",
+            resumable: false,
+            metadata: { cacheControl: "private, max-age=0, no-store" },
+        });
+        const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        const [signedUrl] = await packetFile.getSignedUrl({ action: "read", expires });
+        await docRef.update({
+            packetUrl: signedUrl,
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+        await logActivity(vin, {
+            type: "packetGenerated",
+            message: "Jacket Packet PDF generated",
+            meta: { url: signedUrl }
+        });
+        res.status(200).json({ ok: true, vin, url: signedUrl });
+    }
+    catch (err) {
+        console.error("generateJacketPacket error:", err);
         res.status(500).send(err?.message || "Internal error");
     }
 });
