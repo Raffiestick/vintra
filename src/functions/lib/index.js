@@ -29,6 +29,114 @@ const num = (x) => (typeof x === "number" ? x : Number(x || 0));
 const fmtUSD = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 const fmtDateUTC = (d) => d ? d.toLocaleDateString('en-US', { timeZone: 'UTC' }) : '';
 const safe = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+function buildCoverHtml(opts) {
+    const { jacketId, vin, year, make, model } = opts;
+    const ymm = [year, make, model].filter(Boolean).join(" ") || "—";
+    const safe = (s) => String(s ?? "")
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    const jn = jacketId || "—";
+    return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    html, body { height:100%; }
+    body { margin:0; font-family: Arial, sans-serif; color:#111; }
+    .page {
+      min-height: 100vh;
+      padding: 72px;
+      display:flex; align-items:center; justify-content:center;
+      box-sizing: border-box;
+    }
+    .grid {
+      width: 82%;
+      max-width: 700px;
+      border: 2px solid #111;
+      border-radius: 12px;
+      padding: 32px 40px;
+      box-sizing: border-box;
+      background-image:
+        linear-gradient(#eef2f7 1px, transparent 1px),
+        linear-gradient(90deg, #eef2f7 1px, transparent 1px);
+      background-size: 24px 24px;
+      background-position: center center;
+    }
+    .title {
+      text-align:center; font-size: 26px; font-weight: 800; letter-spacing: .8px;
+      margin: 0 0 14px 0;
+    }
+    .subtitle {
+      text-align:center; font-size: 12px; color:#6b7280; margin: 0 0 22px 0;
+    }
+    .kv {
+      margin: 8px auto 10px auto; max-width: 520px;
+      display:grid; grid-template-columns: 1fr; row-gap: 10px;
+    }
+    .label { font-size: 11px; color:#6b7280; text-transform:uppercase; letter-spacing:.06em; }
+    .value { font-size: 16px; font-weight: 600; color:#111; margin-top: 2px; }
+    .toc { margin: 18px auto 0 auto; max-width: 520px; text-align:left; }
+    .toc h3 {
+      margin: 8px 0 4px 0; font-size: 12px; color:#6b7280; text-transform:uppercase; letter-spacing:.06em; text-align:center;
+    }
+    .toc ul { list-style: disc; padding-left: 24px; margin: 8px auto 0 auto; width: fit-content; }
+    .footer {
+      margin: 28px auto 0 auto; max-width: 520px;
+      text-align:center; color:#6b7280; font-size: 11px; line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="grid">
+      <div class="title">RIZEUP VENTURES DEALER JACKET</div>
+      <div class="subtitle">Professional packet for your records</div>
+
+      <div class="kv">
+        <div>
+          <div class="label">Jacket Number</div>
+          <div class="value">${safe(jn)}</div>
+        </div>
+        <div>
+          <div class="label">Vehicle</div>
+          <div class="value">${safe(ymm)}</div>
+        </div>
+        <div>
+          <div class="label">VIN</div>
+          <div class="value">${safe(vin)}</div>
+        </div>
+        <div>
+          <div class="label">Make</div>
+          <div class="value">${safe(make || "—")}</div>
+        </div>
+        <div>
+          <div class="label">Model</div>
+          <div class="value">${safe(model || "—")}</div>
+        </div>
+        <div>
+          <div class="label">Year</div>
+          <div class="value">${year ? safe(year) : "—"}</div>
+        </div>
+      </div>
+
+      <div class="toc">
+        <h3>Jacket Includes</h3>
+        <ul>
+          <li>Invoice</li>
+          <li>Bill of Sale</li>
+        </ul>
+      </div>
+
+      <div class="footer">
+        RizeUp Ventures, LLC • PO BOX 66741 • St Pete Beach, FL 33706 • 616-318-1991 • admin@rizeupventures.com<br/>
+        ALL SALES FINAL. ALL UNITS ARE SOLD AS-IS, WHERE-IS. NO RETURNS/EXCHANGES.<br/>
+        ALL PAYMENTS MUST BE MADE BY WIRE, PAYABLE TO: RIZEUP VENTURES, LLC.
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
 async function getBuyerData(dealerId) {
     if (!dealerId)
         return { name: "Dealer (unassigned)" };
@@ -530,42 +638,13 @@ export const generateJacketPacket = onRequest({
         }
         const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
         // 1. Generate Cover Page PDF
-        const coverHtml = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #111; padding: 80px; display: flex; flex-direction: column; justify-content: center; height: 100vh; text-align: center; }
-    .title { font-size: 26px; font-weight: 800; letter-spacing: 1px; text-align:center; margin: 40px 0 20px; }
-    .box { max-width: 520px; margin: 0 auto; border:1px solid #e5e7eb; border-radius:10px; padding: 24px 28px; text-align: left; }
-    .label { color:#6b7280; text-transform:uppercase; font-size:11px; letter-spacing:.06em; margin-top:14px; }
-    .value { font-size:16px; font-weight:600; margin-top:2px; }
-    .footer { text-align:center; color:#6b7280; font-size:11px; position: absolute; bottom: 60px; left: 0; right: 0; line-height:1.5; }
-  </style>
-</head>
-<body>
-  <div>
-    <h1 class="title">RIZEUP VENTURES DEALER JACKET</h1>
-    <div class="box">
-        <div class="label">Jacket #</div>
-        <div class="value">${safe(j.jacketId || '—')}</div>
-        <div class="label">Vehicle</div>
-        <div class="value">${safe(yearMakeModel || '—')}</div>
-        <div class="label">VIN</div>
-        <div class="value">${safe(vin)}</div>
-        <div class="label">Make</div>
-        <div class="value">${safe(j.make || '—')}</div>
-        <div class="label">Model</div>
-        <div class="value">${safe(j.model || '—')}</div>
-        <div class="label">Year</div>
-        <div class="value">${safe(j.year || '—')}</div>
-    </div>
-  </div>
-  <div class="footer">
-    RizeUp Ventures, LLC • PO BOX 66741 • St Pete Beach, FL 33706<br/>616-318-1991 • admin@rizeupventures.com
-  </div>
-</body>
-</html>`;
+        const coverHtml = buildCoverHtml({
+            jacketId: j.jacketId,
+            vin,
+            year: j.year,
+            make: j.make,
+            model: j.model,
+        });
         const browser = await puppeteer.launch({
             args: chromium.args,
             executablePath: await chromium.executablePath(),

@@ -211,7 +211,7 @@ export default function MyJacketsPage() {
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-2">
                                         <Button asChild variant="outline" size="sm">
-                                            <Link href={`/jacket/preview/${jacket.id}`}>
+                                            <Link href={`/admin/jackets/${jacket.id}`}>
                                                 Open Details
                                             </Link>
                                         </Button>
@@ -239,3 +239,5 @@ export default function MyJacketsPage() {
     </div>
   );
 }
+
+    
