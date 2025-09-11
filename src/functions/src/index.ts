@@ -345,3 +345,213 @@ export const generateJacketInvoice = onRequest(
     }
   }
 );
+
+
+/**
+ * Generate Bill of Sale PDF.
+ * This function is very similar to the invoice generator but creates a BoS.
+ */
+export const generateBillOfSale = onRequest(
+  {
+    region: "us-central1",
+    timeoutSeconds: 120,
+    memory: "1GiB",
+    cors: true,
+  },
+  async (req, res) => {
+    try {
+      if (req.method !== "POST" && req.method !== "GET") {
+        res.status(405).send("Method Not Allowed");
+        return;
+      }
+
+      const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim();
+      const vin = rawVin.toUpperCase();
+      if (!vin) {
+        res.status(400).send("Missing 'vin'");
+        return;
+      }
+
+      const docRef = db.collection("jackets").doc(vin);
+      const snap = await docRef.get();
+      if (!snap.exists) {
+        res.status(404).send("Jacket not found");
+        return;
+      }
+      const j: any = snap.data() || {};
+      
+      // Fetch buyer/dealer data if dealerId exists
+      let buyerData: any = {};
+      if (j.dealerId) {
+        const userSnap = await db.collection("users").doc(j.dealerId).get();
+        if (userSnap.exists) {
+            const u = userSnap.data() || {};
+            buyerData.name = u.companyName || u.contactName || u.email || u.uid;
+            buyerData.line1 = u.streetAddress || "";
+            buyerData.line2 = [u.city, u.state, u.zip].filter(Boolean).join(", ");
+            buyerData.phone = u.phone || "";
+            buyerData.email = u.email || "";
+        }
+      } else {
+          buyerData.name = "Dealer (unassigned)";
+      }
+
+      // Constants for seller
+      const seller = {
+          name: "RizeUp Ventures, LLC",
+          dba: "DBA Dolphin Chasers",
+          addr1: "PO BOX 66741",
+          addr2: "St Pete Beach, FL 33706",
+          phone: "616-318-1991",
+          email: "admin@rizeupventures.com"
+      };
+
+      // null-safe numeric helpers
+      const num = (x: any) => (typeof x === "number" ? x : Number(x || 0));
+      const auctionDue = num(j.itemPrice) + num(j.buyerFee) + num(j.onlineFee);
+      const mgmtDue = num(j.managementFee);
+      const miscTotal = Array.isArray(j.miscFees) ? j.miscFees.reduce((s: number, f: any) => s + num(f?.amount), 0) : 0;
+      const subtotal = auctionDue + mgmtDue + miscTotal;
+      const fmtUSD = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+      const safe = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+
+      const saleDate = j.auctionSaleDate?.toDate()?.toLocaleDateString() || new Date().toLocaleDateString();
+      const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
+      
+      const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: #333; }
+    .page { padding: 40px; }
+    .header { text-align: center; margin-bottom: 20px; }
+    .header .company-name { font-size: 18px; font-weight: bold; }
+    .header .company-dba { font-size: 12px; color: #777; }
+    .header .company-contact { font-size: 10px; color: #555; margin-top: 5px; }
+    .title-block { text-align: center; margin: 20px 0; }
+    .title-block h1 { font-size: 24px; font-weight: 500; letter-spacing: 1px; margin: 0; }
+    .title-block .invoice-id { font-size: 12px; color: #555; margin-top: 4px; }
+    .party-block { display: -webkit-box; display: flex; -webkit-box-pack: justify; justify-content: space-between; margin: 30px 0; }
+    .party { width: 48%; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
+    .party h3 { margin: 0 0 10px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+    .party p { margin: 0 0 4px; line-height: 1.5; }
+    .vehicle-block { margin-bottom: 30px; }
+    .vehicle-block table { width: 100%; border-collapse: collapse; border: 1px solid #ddd; }
+    .vehicle-block th, .vehicle-block td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    .vehicle-block th { background-color: #f9f9f9; width: 150px; }
+    .consideration-block { margin-bottom: 30px; }
+    .consideration-block p { line-height: 1.6; }
+    .signatures { margin: 40px 0; padding-top: 20px; border-top: 1px solid #eee; }
+    .signatures .sig-line { display: inline-block; width: 45%; margin-top: 40px; border-top: 1px solid #000; padding-top: 5px; font-size: 10px; color: #555; }
+    .signatures .sig-label { display: block; }
+    .footer { position: fixed; bottom: 40px; left: 40px; right: 40px; text-align: center; font-size: 9px; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
+    .footer p { margin: 2px 0; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="company-name">${safe(seller.name)}</div>
+    <div class="company-dba">${safe(seller.dba)}</div>
+    <div class="company-contact">${safe(seller.phone)} | ${safe(seller.email)}</div>
+  </div>
+
+  <div class="title-block">
+    <h1>BILL OF SALE</h1>
+    ${j.invoiceId ? `<div class="invoice-id">Invoice ID: ${safe(j.invoiceId)}</div>` : ''}
+  </div>
+
+  <div class="party-block">
+    <div class="party">
+      <h3>SELLER</h3>
+      <p><strong>${safe(seller.name)}</strong></p>
+      <p>${safe(seller.addr1)}</p>
+      <p>${safe(seller.addr2)}</p>
+      <p>Phone: ${safe(seller.phone)}</p>
+      <p>Email: ${safe(seller.email)}</p>
+    </div>
+    <div class="party">
+      <h3>BUYER ("SOLD TO")</h3>
+      <p><strong>${safe(buyerData.name)}</strong></p>
+      ${buyerData.line1 ? `<p>${safe(buyerData.line1)}</p>` : ''}
+      ${buyerData.line2 ? `<p>${safe(buyerData.line2)}</p>` : ''}
+      ${buyerData.phone ? `<p>Phone: ${safe(buyerData.phone)}</p>` : ''}
+      ${buyerData.email ? `<p>Email: ${safe(buyerData.email)}</p>` : ''}
+    </div>
+  </div>
+
+  <div class="vehicle-block">
+    <h3>VEHICLE INFORMATION</h3>
+    <table>
+      <tr><th>Vehicle</th><td>${safe(yearMakeModel)}</td></tr>
+      <tr><th>VIN</th><td>${safe(vin)}</td></tr>
+      <tr><th>Color</th><td>${safe(j.color)}</td></tr>
+      <tr><th>Odometer</th><td>${j.odometer ? j.odometer.toLocaleString() : 'N/A'}</td></tr>
+    </table>
+  </div>
+  
+  <div class="consideration-block">
+    <h3>CONSIDERATION</h3>
+    <p>For the sum of <strong>${fmtUSD(subtotal)}</strong>, receipt of which is hereby acknowledged, the Seller sells and transfers to the Buyer the vehicle described above.</p>
+    <p><strong>Date of Sale:</strong> ${safe(saleDate)}</p>
+  </div>
+
+  <div class="signatures">
+    <div style="float: left;" class="sig-line">
+      <span class="sig-label">Authorized Seller Signature</span>
+      (Signature on File)
+    </div>
+    <div style="float: right;" class="sig-line">
+      <span class="sig-label">Authorized Buyer Signature</span>
+      (Signature on File)
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>ALL SALES FINAL. ALL UNITS ARE SOLD AS-IS, WHERE-IS. NO RETURNS/EXCHANGES.</p>
+    <p>The undersigned seller affirms that they are the legal owner of the vehicle and have full authority to sell it. The vehicle is sold free and clear of all liens and encumbrances.</p>
+  </div>
+</div>
+</body>
+</html>`;
+
+      // Launch Chromium
+      const browser = await puppeteer.launch({
+        args: chromium.args,
+        executablePath: await chromium.executablePath(),
+        headless: true,
+      });
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "networkidle0" });
+      const pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } });
+      await browser.close();
+
+      // Save to Storage
+      const filePath = `jacket-documents/${vin}/bill-of-sale.pdf`;
+      const file = bucket.file(filePath);
+      await file.save(pdfBuffer, {
+        contentType: "application/pdf",
+        resumable: false,
+        metadata: { cacheControl: "private, max-age=0, no-store" },
+      });
+
+      // Get Signed URL
+      const expires = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+      const [signedUrl] = await file.getSignedUrl({ action: "read", expires });
+
+      // Update Firestore
+      await docRef.update({
+        bosUrl: signedUrl,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      res.status(200).json({ ok: true, vin, url: signedUrl });
+    } catch (err: any) {
+      console.error("generateBillOfSale error:", err);
+      res.status(500).send(err?.message || "Internal error");
+    }
+  }
+);
+
+    
