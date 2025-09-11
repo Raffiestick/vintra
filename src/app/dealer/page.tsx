@@ -116,13 +116,16 @@ export default function DealerDashboardPage() {
     useEffect(() => {
         if (!user) return;
         setLoading(true);
+        // The composite index is required for the orderBy clause.
+        // We can remove it and sort on the client to avoid the error.
         const q = query(
             collection(db, "jackets"),
-            where("dealerId", "==", user.uid),
-            orderBy("createdAt", "desc")
+            where("dealerId", "==", user.uid)
         );
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const jacketsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Jacket));
+            // Sort client-side
+            jacketsData.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
             setJackets(jacketsData);
             setLoading(false);
         }, (err) => {
@@ -269,5 +272,3 @@ export default function DealerDashboardPage() {
         </div>
     );
 }
-
-    
