@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UploadCloud, Download } from "lucide-react";
+import { Loader2, UploadCloud, Download, FileText } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -80,6 +80,7 @@ interface Jacket {
   managementFee?: number;
   miscFees?: MiscFee[];
   documents?: JacketDocument[];
+  invoiceUrl?: string;
   creatorId?: string;
   dealerId?: string;
   createdAt?: Timestamp;
@@ -141,6 +142,7 @@ export default function JacketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState<"auction" | "mgmt" | null>(null);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
 
   const [feeDescription, setFeeDescription] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
@@ -182,6 +184,40 @@ export default function JacketDetailPage() {
 
     return () => unsubscribe();
   }, [vin]);
+  
+  const handleGenerateInvoice = useCallback(async () => {
+    if (!vin || !isAdmin) return;
+    setIsGeneratingInvoice(true);
+    try {
+        const response = await fetch("https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/generateJacketInvoice", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vin: vin })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to generate invoice: ${errorText}`);
+        }
+
+        const result = await response.json();
+        toast({
+            title: "Invoice Generation Started",
+            description: "The invoice is being generated and will appear here shortly.",
+        });
+        // The onSnapshot listener will automatically update the UI with the new URL.
+    } catch (err: any) {
+        console.error("Error generating invoice:", err);
+        toast({
+            title: "Invoice Generation Failed",
+            description: err.message,
+            variant: "destructive",
+        });
+    } finally {
+        setIsGeneratingInvoice(false);
+    }
+  }, [vin, isAdmin, toast]);
+
 
   const handleStatusChange = useCallback(
     async (field: "isAuctionPaid" | "isMgmtFeePaid", value: boolean) => {
@@ -503,6 +539,40 @@ export default function JacketDetailPage() {
           </CardContent>
         </Card>
         
+        <Card>
+            <CardHeader>
+                <CardTitle>Invoice</CardTitle>
+            </CardHeader>
+            <CardContent>
+                {jacket.invoiceUrl ? (
+                    <Button asChild>
+                        <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer">
+                            <Download className="mr-2 h-4 w-4" /> Open Invoice PDF
+                        </a>
+                    </Button>
+                ) : (
+                    <p className="text-sm text-muted-foreground">No invoice has been generated yet.</p>
+                )}
+            </CardContent>
+            {isAdmin && (
+                <CardFooter className="border-t pt-6">
+                    <Button onClick={handleGenerateInvoice} disabled={isGeneratingInvoice}>
+                        {isGeneratingInvoice ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                <FileText className="mr-2 h-4 w-4" />
+                                Generate Invoice
+                            </>
+                        )}
+                    </Button>
+                </CardFooter>
+            )}
+        </Card>
+
         <Card>
             <CardHeader>
                 <CardTitle>Documents</CardTitle>
