@@ -73,7 +73,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
           } else if (userData.status === 'pending') {
             router.push('/pending-review');
           } else if (userData.status === 'approved') {
-            router.push('/reports');
+            router.push('/dealer');
           } else {
              toast({
               title: "Login Issue",
