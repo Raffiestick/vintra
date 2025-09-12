@@ -4,13 +4,14 @@
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
-import { defineSecret } from "firebase-functions/params";
+import { defineSecret, defineString } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Transaction, DocumentData } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { getVertexAI } from 'firebase-admin/vertex-ai';
 import { PDFDocument } from "pdf-lib";
 import { ImageAnnotatorClient } from '@google-cloud/vision';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 
 // Use Chromium bundle that works on Firebase (no Chrome install needed)
@@ -19,6 +20,8 @@ import puppeteer from "puppeteer-core";
 
 /** Optional dev bypass: set secret DEV_ADMIN_UID if you want one UID to bypass admin claims */
 const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID");
+const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+
 
 // Init Admin SDK once
 if (getApps().length === 0) {
@@ -437,6 +440,139 @@ export const onDocUpload = onObjectFinalized({
 
 
 // --- ADMIN CALLABLE FUNCTIONS ---
+
+export const startInvoiceParse = onRequest(
+  {
+    region: "us-central1",
+    cors: true,
+    timeoutSeconds: 120,
+    memory: "1GiB",
+    secrets: [GEMINI_API_KEY],
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+    const { gcsPath } = req.body;
+    if (!gcsPath) {
+      res.status(400).send({ error: "Missing gcsPath" });
+      return;
+    }
+
+    try {
+      const file = bucket.file(gcsPath);
+      const [exists] = await file.exists();
+      if (!exists) {
+        res.status(404).send({ error: "File not found at gcsPath" });
+        return;
+      }
+      
+      const [metadata] = await file.getMetadata();
+      const contentType = metadata.contentType || "application/pdf";
+
+      let text = "";
+      if (contentType.includes("pdf")) {
+        const pdf = await import("pdf-parse/lib/pdf-parse.js");
+        const [buffer] = await file.download();
+        const data = await pdf.default(buffer);
+        text = data.text;
+      } else if (contentType.includes("image")) {
+        res.status(400).send({ error: "Image files are not supported yet" });
+        return;
+      } else {
+        res.status(400).send({ error: `Unsupported content type: ${contentType}` });
+        return;
+      }
+
+      if (!text.trim()) {
+        throw new Error("Extracted text is empty.");
+      }
+
+      // Call Gemini
+      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY.value());
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const prompt = `You are an invoice extraction agent for NPA-style invoices. Your output must be ONLY the JSON object, matching this exact schema. Do not add markdown backticks or any other text.
+
+SCHEMA:
+{
+  "invoiceMeta": { "aucNo": "string?", "saleLocation": "string?" },
+  "units": [{
+    "vin": "string", "year": "number?", "make": "string?", "model": "string?",
+    "color": "string?", "hours": "number?", "odometer": "number?",
+    "saleLocation": "string?", "itemPrice": "number?", "buyerFee": "number?",
+    "onlineFee": "number?", "titleInfo": "string?", "stockNo": "string?", "aucNo": "string?"
+  }]
+}
+
+TEXT:
+${text.substring(0, 30000)}
+`;
+
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+      const responseText = response.text();
+      
+      let parsedData;
+      try {
+        parsedData = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Failed to parse JSON from LLM:", responseText);
+        throw new Error("LLM did not return valid JSON.");
+      }
+
+      if (!parsedData || !parsedData.units || !Array.isArray(parsedData.units)) {
+        throw new Error("Parsed data does not contain a 'units' array.");
+      }
+      
+      // Write to Firestore
+      const stagingId = db.collection("stagingInvoices").doc().id;
+      const [fileUrl] = await file.getSignedUrl({ action: 'read', expires: '03-09-2491' });
+      
+      const uploaderUid = gcsPath.split('/')[1];
+
+      await db.collection("stagingInvoices").doc(stagingId).set({
+        source: "npa",
+        gcsPath,
+        fileUrl,
+        createdAt: FieldValue.serverTimestamp(),
+        uploaderUid: uploaderUid || null,
+        ...(parsedData.invoiceMeta || {}),
+      });
+
+      const unitsCollection = db.collection("stagingInvoices").doc(stagingId).collection("units");
+      for (const unit of parsedData.units) {
+        if (!unit.vin) continue;
+        const normalizedUnit = {
+          ...unit,
+          vin: unit.vin.trim().toUpperCase(),
+          itemPrice: num(unit.itemPrice),
+          buyerFee: num(unit.buyerFee),
+          onlineFee: num(unit.onlineFee),
+          managementFee: 100, // Default value
+          rawText: text, // For reference
+        };
+        await unitsCollection.add(normalizedUnit);
+      }
+
+      res.status(200).json({ ok: true, stagingId, unitsCount: parsedData.units.length });
+
+    } catch (err: any) {
+      console.error(`Error in startInvoiceParse for ${gcsPath}:`, err);
+      res.status(500).send({ error: err.message || "An internal error occurred." });
+    }
+  }
+);
+
+export const startDocParse = onRequest(
+  {
+    region: "us-central1",
+    cors: true
+  },
+  (req, res) => {
+    res.status(501).send({ error: "Not implemented yet" });
+  }
+);
 
 export const createJacketFromUnit = onCall({
     region: "us-central1",
