@@ -252,7 +252,7 @@ export const startInvoiceParse = onRequest(
 
       let text = "";
       if (contentType.includes("pdf")) {
-        const pdfParse = (await import("pdf-parse")).default as any;
+        const pdfParse = (await import("pdf-parse")).default;
         const [buffer] = await file.download();
         const data = await pdfParse(buffer);
         text = data.text;
