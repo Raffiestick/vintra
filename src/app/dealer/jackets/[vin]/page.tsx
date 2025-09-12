@@ -19,7 +19,18 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Download, FileText, Package } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+
+interface MiscFee {
+    id: string;
+    description: string;
+    amount: number;
+    paid?: boolean;
+    paidAt?: Timestamp | null;
+    note?: string;
+    createdAt?: Timestamp;
+}
 
 interface JacketDocument {
     id: string;
@@ -39,7 +50,7 @@ interface Jacket {
   buyerFee?: number;
   onlineFee?: number;
   managementFee?: number;
-  miscFees?: { amount?: number }[];
+  miscFees?: MiscFee[];
   documents?: JacketDocument[];
   invoiceUrl?: string;
   bosUrl?: string;
@@ -125,14 +136,21 @@ export default function DealerJacketDetailPage() {
 
   const financials = useMemo(() => {
     if (!jacket) return null;
-    const num = (x: any) => (typeof x === 'number' ? x : 0);
+    const num = (x: any): number => (typeof x === 'number' ? x : 0);
     const auctionDue = num(jacket.itemPrice) + num(jacket.buyerFee) + num(jacket.onlineFee);
     const mgmtDue = num(jacket.managementFee);
-    const miscTotal = jacket.miscFees?.reduce((acc, fee) => acc + num(fee?.amount), 0) || 0;
-    const subtotal = auctionDue + mgmtDue + miscTotal;
-    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtFeeActuallyPaid ? mgmtDue : 0);
+    
+    const miscFees = jacket.miscFees || [];
+    const paidMisc = miscFees.filter(f => f.paid).reduce((acc, fee) => acc + num(fee.amount), 0);
+    const unpaidMisc = miscFees.filter(f => !f.paid).reduce((acc, fee) => acc + num(fee.amount), 0);
+
+    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtFeeActuallyPaid ? mgmtDue : 0) + paidMisc;
+    const subtotal = auctionDue + mgmtDue + paidMisc + unpaidMisc;
     const balanceDue = subtotal - amountPaid;
-    return { subtotal, amountPaid, balanceDue };
+
+    const isFullyPaid = jacket.isAuctionPaid && isMgmtFeeActuallyPaid && unpaidMisc === 0;
+
+    return { subtotal, amountPaid, balanceDue, isFullyPaid };
   }, [jacket, isMgmtFeeActuallyPaid]);
 
 
@@ -196,73 +214,126 @@ export default function DealerJacketDetailPage() {
             </div>
         </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-              <CardHeader><CardTitle>Files & Downloads</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                  {jacket.invoiceUrl && (
-                      <Button asChild variant="outline" className="w-full justify-start">
-                          <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer">
-                              <Download className="mr-2" /> Open Invoice PDF
-                          </a>
-                      </Button>
-                  )}
-                   {jacket.bosUrl && (
-                      <Button asChild variant="outline" className="w-full justify-start">
-                          <a href={jacket.bosUrl} target="_blank" rel="noopener noreferrer">
-                              <Download className="mr-2" /> Open Bill of Sale PDF
-                          </a>
-                      </Button>
-                  )}
-                  {jacket.packetUrl && (
-                      <Button asChild className="w-full justify-start">
-                          <a href={jacket.packetUrl} target="_blank" rel="noopener noreferrer">
-                              <Package className="mr-2" /> Open Full Packet (Invoice + BOS)
-                          </a>
-                      </Button>
-                  )}
-                  {!jacket.invoiceUrl && !jacket.bosUrl && !jacket.packetUrl && (
-                    <p className="text-sm text-muted-foreground text-center py-4">No generated files available yet.</p>
-                  )}
-              </CardContent>
-          </Card>
-
-          <Card>
-              <CardHeader>
-                  <CardTitle>Documents</CardTitle>
-                  <CardDescription>Supporting documents for this jacket.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                  {(!jacket.documents || jacket.documents.length === 0) ? (
-                      <p className="text-sm text-muted-foreground p-4 text-center">No documents uploaded.</p>
-                  ) : (
-                      <Table>
-                          <TableHeader>
-                              <TableRow>
-                                  <TableHead>File Name</TableHead>
-                                  <TableHead>Type</TableHead>
-                                  <TableHead>Added</TableHead>
-                              </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                              {jacket.documents.map((doc) => (
-                                  <TableRow key={doc.id}>
-                                      <TableCell>
-                                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:underline text-primary">
-                                            <FileText className="h-4 w-4" />
-                                            {doc.name}
-                                        </a>
-                                      </TableCell>
-                                      <TableCell><Badge variant="outline" className="capitalize">{doc.type}</Badge></TableCell>
-                                      <TableCell>{doc.createdAt ? doc.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
-                                  </TableRow>
-                              ))}
-                          </TableBody>
-                      </Table>
-                  )}
-              </CardContent>
-          </Card>
-      </div>
+        <Tabs defaultValue="overview">
+            <TabsList>
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="misc-fees">
+                    Misc Fees <Badge variant="secondary" className="ml-2">{jacket.miscFees?.length || 0}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="documents">
+                    Documents <Badge variant="secondary" className="ml-2">{jacket.documents?.length || 0}</Badge>
+                </TabsTrigger>
+            </TabsList>
+            <TabsContent value="overview" className="mt-4">
+                 <Card>
+                    <CardHeader><CardTitle>Files & Downloads</CardTitle></CardHeader>
+                    <CardContent className="space-y-3">
+                        {jacket.invoiceUrl && (
+                            <Button asChild variant="outline" className="w-full justify-start">
+                                <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer">
+                                    <Download className="mr-2" /> Open Invoice PDF
+                                </a>
+                            </Button>
+                        )}
+                        {jacket.bosUrl && (
+                            <Button asChild variant="outline" className="w-full justify-start">
+                                <a href={jacket.bosUrl} target="_blank" rel="noopener noreferrer">
+                                    <Download className="mr-2" /> Open Bill of Sale PDF
+                                </a>
+                            </Button>
+                        )}
+                        {jacket.packetUrl && (
+                            <Button asChild className="w-full justify-start">
+                                <a href={jacket.packetUrl} target="_blank" rel="noopener noreferrer">
+                                    <Package className="mr-2" /> Open Full Packet (Invoice + BOS)
+                                </a>
+                            </Button>
+                        )}
+                        {!jacket.invoiceUrl && !jacket.bosUrl && !jacket.packetUrl && (
+                            <p className="text-sm text-muted-foreground text-center py-4">No generated files available yet.</p>
+                        )}
+                    </CardContent>
+                </Card>
+            </TabsContent>
+            <TabsContent value="misc-fees">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Miscellaneous Fees</CardTitle>
+                        <CardDescription>Additional fees associated with this jacket.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                         {(!jacket.miscFees || jacket.miscFees.length === 0) ? (
+                            <p className="text-sm text-muted-foreground p-4 text-center">No miscellaneous fees have been added.</p>
+                         ) : (
+                             <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Description</TableHead>
+                                        <TableHead>Amount</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>Paid On</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {jacket.miscFees.map((fee) => (
+                                        <TableRow key={fee.id}>
+                                            <TableCell className="font-medium">{fee.description}</TableCell>
+                                            <TableCell>{fmtCurrency(fee.amount)}</TableCell>
+                                            <TableCell>
+                                                <Badge variant={fee.paid ? 'default' : 'destructive'}>
+                                                    {fee.paid ? 'Paid' : 'Unpaid'}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                {fee.paid && fee.paidAt ? fee.paidAt.toDate().toLocaleDateString() : '—'}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                         )}
+                    </CardContent>
+                </Card>
+            </TabsContent>
+            <TabsContent value="documents">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Documents</CardTitle>
+                        <CardDescription>Supporting documents for this jacket.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {(!jacket.documents || jacket.documents.length === 0) ? (
+                            <p className="text-sm text-muted-foreground p-4 text-center">No documents uploaded.</p>
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>File Name</TableHead>
+                                        <TableHead>Type</TableHead>
+                                        <TableHead>Added</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {jacket.documents.map((doc) => (
+                                        <TableRow key={doc.id}>
+                                            <TableCell>
+                                                <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:underline text-primary">
+                                                    <FileText className="h-4 w-4" />
+                                                    {doc.name}
+                                                </a>
+                                            </TableCell>
+                                            <TableCell><Badge variant="outline" className="capitalize">{doc.type}</Badge></TableCell>
+                                            <TableCell>{doc.createdAt ? doc.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </CardContent>
+                </Card>
+            </TabsContent>
+        </Tabs>
     </div>
   );
-}
+
+    
