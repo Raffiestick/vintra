@@ -3,7 +3,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { collection, query, where, onSnapshot, doc, getDoc, Timestamp, DocumentData, orderBy } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, getDoc, Timestamp, DocumentData } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { useSafeSnapshot } from "@/hooks/useSafeSnapshot";
 import { useAuth } from "@/hooks/use-auth";
@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Printer, FileText, Download, Package, Car } from "lucide-react";
+import { Printer, Download, Package, Car } from "lucide-react";
 import { useWindowSize } from 'react-use';
 
 const ITEMS_PER_PAGE = 10;
@@ -131,11 +131,12 @@ export default function DealerDashboardPage() {
         setLoadingData(true);
         const q = query(
             collection(db, "jackets"),
-            orderBy("createdAt", "desc"),
             where("dealerId", "==", user.uid)
         );
         return onSnapshot(q, (snapshot) => {
-            const jacketsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Jacket));
+            const jacketsData = snapshot.docs
+                .map(d => ({ id: d.id, ...d.data() } as Jacket))
+                .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0)); // Sort client-side
             setJackets(jacketsData);
             setLoadingData(false);
             setError(null);
@@ -383,7 +384,3 @@ export default function DealerDashboardPage() {
         </div>
     );
 }
-
-    
-
-    
