@@ -335,5 +335,4 @@ export default function DealerJacketDetailPage() {
         </Tabs>
     </div>
   );
-
-    
+}
