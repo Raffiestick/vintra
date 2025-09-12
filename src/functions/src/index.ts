@@ -1,3 +1,4 @@
+
 // src/functions/src/index.ts
 
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
