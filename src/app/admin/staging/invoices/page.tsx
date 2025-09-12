@@ -91,15 +91,15 @@ export default function StagedInvoicesPage() {
 
     }, [isAdmin, authLoading]);
 
-    const filteredInvoices = useMemo(() => {
-        if (!hideProcessed) return invoices;
-        return invoices.filter(invoice => getStatus(invoice) !== 'processed');
-    }, [invoices, hideProcessed]);
-
     const getStatus = (invoice: StagedInvoice) => {
         if (invoice.status) return invoice.status;
         return invoice.unitsCount > 0 ? 'in-progress' : 'new';
     }
+
+    const filteredInvoices = useMemo(() => {
+        if (!hideProcessed) return invoices;
+        return invoices.filter(invoice => getStatus(invoice) !== 'processed');
+    }, [invoices, hideProcessed]);
 
     if (loading || authLoading) {
         return <StagingSkeleton />;
