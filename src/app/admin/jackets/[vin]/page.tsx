@@ -89,7 +89,7 @@ interface MiscFee {
     description: string;
     amount: number;
     paid?: boolean;
-    paidAt?: Timestamp;
+    paidAt?: Timestamp | null;
     note?: string;
     createdAt?: Timestamp;
 }
@@ -706,19 +706,19 @@ export default function JacketDetailPage() {
 
   const handleModifyFee = async () => {
     if (!isAdmin || !vin || !feeToModify) return;
-
+  
     const { fee, action } = feeToModify;
     setIsModifyingFee(true);
-
+  
     try {
       const jacketDocRef = doc(db, "jackets", vin);
       const currentDoc = await getDoc(jacketDocRef);
       const currentFees = (currentDoc.data() as Jacket)?.miscFees || [];
-
+  
       let updatedFees: MiscFee[] = [];
       let logMessage = "";
       let logType: Activity['type'] = "miscFeeDeleted"; // Default
-
+  
       if (action === "delete") {
         updatedFees = currentFees.filter(f => f.id !== fee.id);
         logMessage = `Misc fee deleted: ${fee.description} — ${fmtCurrency(fee.amount)}`;
@@ -729,20 +729,21 @@ export default function JacketDetailPage() {
             const isPaid = action === 'pay';
             logMessage = `Misc fee "${f.description}" marked ${isPaid ? 'PAID' : 'UNPAID'}`;
             logType = isPaid ? 'miscFeePaidOn' : 'miscFeePaidOff';
-            return { ...f, paid: isPaid, paidAt: isPaid ? Timestamp.now() : deleteField() };
+            // Use null for unpaid instead of deleteField()
+            return { ...f, paid: isPaid, paidAt: isPaid ? Timestamp.now() : null };
           }
           return f;
         });
       }
-
+  
       await updateDoc(jacketDocRef, {
         miscFees: updatedFees,
         updatedAt: serverTimestamp(),
       });
-
+  
       toast({ title: "Fee Updated", description: "The fee status has been changed." });
       await logActivity(vin, { type: logType, message: logMessage, meta: { feeId: fee.id } });
-
+  
     } catch (err: any) {
       console.error("Failed to modify fee:", err);
       toast({ title: "Update Failed", description: err.message, variant: "destructive" });
