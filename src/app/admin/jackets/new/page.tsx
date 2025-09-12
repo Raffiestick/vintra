@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -13,11 +12,12 @@ import {
 import {
   ref,
   uploadBytesResumable,
-  getDownloadURL,
 } from "firebase/storage";
+
 import { useAuth } from "@/hooks/use-auth";
 import { db, storage } from "@/lib/firebase/client";
 import { useToast } from "@/hooks/use-toast";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +39,13 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, Loader2, UploadCloud } from "lucide-react";
+
+/** Optional: env override for the function URL (handy for staging) */
+const START_PARSE_FN =
+  process.env.NEXT_PUBLIC_START_PARSE_URL ||
+  "https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/startInvoiceParse";
+
+/* -------------------------- Manual Create Card -------------------------- */
 
 function ManualCreateCard() {
   const router = useRouter();
@@ -62,7 +69,6 @@ function ManualCreateCard() {
   const [submitError, setSubmitError] = useState("");
   const { user } = useAuth();
 
-
   const validateForm = () => {
     let isValid = true;
     if (vin.trim().length < 6) {
@@ -83,15 +89,18 @@ function ManualCreateCard() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError("");
-    if (!validateForm()) {
-      return;
-    }
-    if (!user) {
-      toast({ title: "Authentication Error", description: "You must be logged in to create a jacket.", variant: "destructive" });
-      return;
-    }
-    setLoading(true);
+    if (!validateForm()) return;
 
+    if (!user) {
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in to create a jacket.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
     const normalizedVin = vin.trim().toUpperCase();
     const jacketRef = doc(db, "jackets", normalizedVin);
 
@@ -130,14 +139,11 @@ function ManualCreateCard() {
 
       await setDoc(jacketRef, payload, { merge: false });
 
-      toast({
-        title: "Success!",
-        description: "Jacket created successfully.",
-      });
+      toast({ title: "Success!", description: "Jacket created successfully." });
       router.push(`/admin/jackets/${normalizedVin}`);
     } catch (error: any) {
       console.error("Error creating jacket:", error);
-      const errorMessage = error.message || "An unexpected error occurred.";
+      const errorMessage = error?.message || "An unexpected error occurred.";
       setSubmitError(errorMessage);
       toast({
         title: "Error Creating Jacket",
@@ -153,9 +159,7 @@ function ManualCreateCard() {
     <Card>
       <CardHeader>
         <CardTitle>Create New Jacket (Manual)</CardTitle>
-        <CardDescription>
-          Fill out the form below to create a new vehicle jacket.
-        </CardDescription>
+        <CardDescription>Fill out the form below to create a new vehicle jacket.</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-6">
@@ -177,18 +181,14 @@ function ManualCreateCard() {
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
-                    variant={"outline"}
+                    variant="outline"
                     className={cn(
                       "w-full justify-start text-left font-normal",
                       !auctionSaleDate && "text-muted-foreground"
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {auctionSaleDate ? (
-                      format(auctionSaleDate, "PPP")
-                    ) : (
-                      <span>Pick a date</span>
-                    )}
+                    {auctionSaleDate ? format(auctionSaleDate, "PPP") : <span>Pick a date</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
@@ -203,70 +203,67 @@ function ManualCreateCard() {
               {dateError && <p className="text-sm text-destructive">{dateError}</p>}
             </div>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="space-y-2">
-                <Label htmlFor="year">Year</Label>
-                <Input id="year" type="number" placeholder="e.g. 2023" value={year} onChange={(e) => setYear(e.target.value)} />
+              <Label htmlFor="year">Year</Label>
+              <Input id="year" type="number" placeholder="e.g. 2023" value={year} onChange={(e) => setYear(e.target.value)} />
             </div>
             <div className="space-y-2">
-                <Label htmlFor="make">Make</Label>
-                <Input id="make" placeholder="e.g. Toyota" value={make} onChange={(e) => setMake(e.target.value)} />
+              <Label htmlFor="make">Make</Label>
+              <Input id="make" placeholder="e.g. Toyota" value={make} onChange={(e) => setMake(e.target.value)} />
             </div>
             <div className="space-y-2">
-                <Label htmlFor="model">Model</Label>
-                <Input id="model" placeholder="e.g. Camry" value={model} onChange={(e) => setModel(e.target.value)} />
-            </div>
-             <div className="space-y-2">
-                <Label htmlFor="color">Color</Label>
-                <Input id="color" placeholder="e.g. Super White" value={color} onChange={(e) => setColor(e.target.value)} />
-            </div>
-             <div className="space-y-2">
-                <Label htmlFor="odometer">Odometer</Label>
-                <Input id="odometer" type="number" placeholder="e.g. 25000" value={odometer} onChange={(e) => setOdometer(e.target.value)} />
+              <Label htmlFor="model">Model</Label>
+              <Input id="model" placeholder="e.g. Camry" value={model} onChange={(e) => setModel(e.target.value)} />
             </div>
             <div className="space-y-2">
-                <Label htmlFor="saleLocation">Sale Location</Label>
-                <Input id="saleLocation" placeholder="e.g. Dallas, TX" value={saleLocation} onChange={(e) => setSaleLocation(e.target.value)} />
+              <Label htmlFor="color">Color</Label>
+              <Input id="color" placeholder="e.g. Super White" value={color} onChange={(e) => setColor(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="odometer">Odometer</Label>
+              <Input id="odometer" type="number" placeholder="e.g. 25000" value={odometer} onChange={(e) => setOdometer(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="saleLocation">Sale Location</Label>
+              <Input id="saleLocation" placeholder="e.g. Dallas, TX" value={saleLocation} onChange={(e) => setSaleLocation(e.target.value)} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-             <div className="space-y-2">
-                <Label htmlFor="itemPrice">Item Price ($)</Label>
-                <Input id="itemPrice" type="number" placeholder="12000.00" step="0.01" value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} />
-            </div>
-             <div className="space-y-2">
-                <Label htmlFor="buyerFee">Buyer Fee ($)</Label>
-                <Input id="buyerFee" type="number" placeholder="500.00" step="0.01" value={buyerFee} onChange={(e) => setBuyerFee(e.target.value)} />
-            </div>
-             <div className="space-y-2">
-                <Label htmlFor="onlineFee">Online Fee ($)</Label>
-                <Input id="onlineFee" type="number" placeholder="50.00" step="0.01" value={onlineFee} onChange={(e) => setOnlineFee(e.target.value)} />
+            <div className="space-y-2">
+              <Label htmlFor="itemPrice">Item Price ($)</Label>
+              <Input id="itemPrice" type="number" placeholder="12000.00" step="0.01" value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} />
             </div>
             <div className="space-y-2">
-                <Label htmlFor="managementFee">Management Fee ($)</Label>
-                <Input id="managementFee" type="number" placeholder="100.00" step="0.01" value={managementFee} onChange={(e) => setManagementFee(e.target.value)} />
+              <Label htmlFor="buyerFee">Buyer Fee ($)</Label>
+              <Input id="buyerFee" type="number" placeholder="500.00" step="0.01" value={buyerFee} onChange={(e) => setBuyerFee(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="onlineFee">Online Fee ($)</Label>
+              <Input id="onlineFee" type="number" placeholder="50.00" step="0.01" value={onlineFee} onChange={(e) => setOnlineFee(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="managementFee">Management Fee ($)</Label>
+              <Input id="managementFee" type="number" placeholder="100.00" step="0.01" value={managementFee} onChange={(e) => setManagementFee(e.target.value)} />
             </div>
           </div>
+
           {submitError && <p className="text-sm text-destructive">{submitError}</p>}
         </CardContent>
+
         <CardFooter>
           <Button type="submit" disabled={loading}>
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              "Create Jacket"
-            )}
+            {loading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...</>) : ("Create Jacket")}
           </Button>
         </CardFooter>
       </form>
     </Card>
   );
 }
+
+/* ------------------------------ AI Parse Card ------------------------------ */
 
 function AiParseCard() {
   const { user, isAdmin } = useAuth();
@@ -278,8 +275,7 @@ function AiParseCard() {
   const [progress, setProgress] = useState(0);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0] || null;
-    setFile(selectedFile);
+    setFile(e.target.files?.[0] || null);
   };
 
   const handleUpload = async () => {
@@ -290,7 +286,7 @@ function AiParseCard() {
 
     setUploading(true);
     setProgress(0);
-    
+
     const storagePath = `incoming/invoices/${user.uid}/${Date.now()}-${file.name}`;
     const storageRef = ref(storage, storagePath);
     const uploadTask = uploadBytesResumable(storageRef, file);
@@ -298,8 +294,8 @@ function AiParseCard() {
     uploadTask.on(
       "state_changed",
       (snapshot) => {
-        const currentProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setProgress(currentProgress);
+        const pct = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setProgress(pct);
       },
       (error) => {
         console.error("Upload failed:", error);
@@ -307,32 +303,40 @@ function AiParseCard() {
         setUploading(false);
       },
       async () => {
-        // Upload complete, now call the function
-        toast({ title: "Upload Complete", description: "Now parsing file..." });
-        const gcsPath = uploadTask.snapshot.ref.fullPath;
+        // Upload complete, now call the parse function
+        toast({ title: "Upload Complete", description: "Parsing invoice..." });
+
+        /** IMPORTANT: this is the Storage object path the function expects */
+        const gcsPath = uploadTask.snapshot.ref.fullPath; // e.g. incoming/invoices/<uid>/<ts>-invoice.pdf
+
         try {
-          const response = await fetch("https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/startInvoiceParse", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gcsPath: gcsPath }),
+          const response = await fetch(START_PARSE_FN, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ gcsPath }),
           });
 
           if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Function returned status ${response.status}`);
+            let msg = `Function returned status ${response.status}`;
+            try {
+              const j = await response.json();
+              msg = j?.error || j?.message || msg;
+            } catch {
+              msg = await response.text();
+            }
+            throw new Error(msg);
           }
-          
-          const result = await response.json();
 
-          if (result.ok && result.stagingId) {
-            toast({ title: "Parse Complete!", description: `Found ${result.unitsCount || 0} units. Redirecting...` });
+          const result = await response.json();
+          if (result?.ok && result?.stagingId) {
+            toast({ title: "Parse Complete!", description: `Found ${result.unitsCount || 0} unit(s). Redirecting...` });
             router.push(`/admin/staging/invoices/${result.stagingId}`);
           } else {
-             throw new Error("Function did not return a valid staging ID.");
+            throw new Error("Function did not return a valid staging ID.");
           }
-        } catch (error: any) {
-          console.error("Function call failed:", error);
-          toast({ title: "Parsing Failed", description: error.message, variant: "destructive" });
+        } catch (err: any) {
+          console.error("Parse call failed:", err);
+          toast({ title: "Parsing Failed", description: err?.message || "Unknown error", variant: "destructive" });
           setUploading(false);
         }
       }
@@ -356,14 +360,18 @@ function AiParseCard() {
     <Card>
       <CardHeader>
         <CardTitle>AI Parse (Upload Invoice)</CardTitle>
-        <CardDescription>
-          Upload an auction invoice to automatically parse vehicle data.
-        </CardDescription>
+        <CardDescription>Upload an auction invoice to automatically parse vehicle data.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="invoice-upload">Invoice File</Label>
-          <Input id="invoice-upload" type="file" accept="application/pdf" onChange={handleFileChange} disabled={uploading} />
+          <Input
+            id="invoice-upload"
+            type="file"
+            accept="application/pdf"
+            onChange={handleFileChange}
+            disabled={uploading}
+          />
           <p className="text-xs text-muted-foreground">PDF only for MVP (images next).</p>
         </div>
         {uploading && (
@@ -376,11 +384,7 @@ function AiParseCard() {
       </CardContent>
       <CardFooter>
         <Button onClick={handleUpload} disabled={uploading || !file}>
-          {uploading ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...</>
-          ) : (
-            <><UploadCloud className="mr-2 h-4 w-4" /> Upload & Parse</>
-          )}
+          {uploading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...</>) : (<><UploadCloud className="mr-2 h-4 w-4" /> Upload & Parse</>)}
         </Button>
       </CardFooter>
     </Card>
@@ -395,3 +399,4 @@ export default function NewJacketPage() {
     </div>
   );
 }
+

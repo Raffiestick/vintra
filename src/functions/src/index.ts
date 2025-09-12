@@ -16,6 +16,7 @@ import puppeteer from "puppeteer-core";
 const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID");
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
+
 /* ───────────────────── Admin init ───────────────────── */
 if (getApps().length === 0) {
   initializeApp();
@@ -100,6 +101,19 @@ function getGeminiModel() {
   return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 }
 
+/** Strip code fences and slice to outermost JSON so JSON.parse succeeds. */
+function extractJsonStrict(raw: string): any {
+  const trimmed = (raw || "").trim()
+    .replace(/^```json/i, "")
+    .replace(/^```/, "")
+    .replace(/```$/, "")
+    .trim();
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  const slice = start >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed;
+  return JSON.parse(slice);
+}
+
 /* ───────────────────── Cover Page Builder ───────────────────── */
 function buildCoverHtml(opts: { jacketId?: string; vin: string; year?: number; make?: string; model?: string }) {
   const { jacketId, vin, year, make, model } = opts;
@@ -112,19 +126,10 @@ function buildCoverHtml(opts: { jacketId?: string; vin: string; year?: number; m
   <style>
     html, body { height:100%; }
     body { margin:0; font-family: Arial, sans-serif; color:#111; }
-    .page {
-      min-height: 100vh; padding: 72px;
-      display:flex; align-items:center; justify-content:center;
-      box-sizing: border-box;
-    }
-    .grid {
-      width: 82%; max-width: 700px; border: 2px solid #111; border-radius: 12px;
-      padding: 32px 40px; box-sizing: border-box;
-      background-image:
-        linear-gradient(#eef2f7 1px, transparent 1px),
-        linear-gradient(90deg, #eef2f7 1px, transparent 1px);
-      background-size: 24px 24px; background-position: center center;
-    }
+    .page { min-height: 100vh; padding: 72px; display:flex; align-items:center; justify-content:center; box-sizing: border-box; }
+    .grid { width: 82%; max-width: 700px; border: 2px solid #111; border-radius: 12px; padding: 32px 40px; box-sizing: border-box;
+      background-image: linear-gradient(#eef2f7 1px, transparent 1px), linear-gradient(90deg, #eef2f7 1px, transparent 1px);
+      background-size: 24px 24px; background-position: center center; }
     .title { text-align:center; font-size: 26px; font-weight: 800; letter-spacing: .8px; margin: 0 0 14px 0; }
     .subtitle { text-align:center; font-size: 12px; color:#6b7280; margin: 0 0 22px 0; }
     .kv { margin: 8px auto 10px auto; max-width: 520px; display:grid; grid-template-columns: 1fr; row-gap: 10px; }
@@ -141,24 +146,15 @@ function buildCoverHtml(opts: { jacketId?: string; vin: string; year?: number; m
     <div class="grid">
       <div class="title">RIZEUP VENTURES DEALER JACKET</div>
       <div class="subtitle">Professional packet for your records</div>
-
       <div class="kv">
-        <div><div class="label">Jacket Number</div><div class="value">${safe(jn)}</div></div>
-        <div><div class="label">Vehicle</div><div class="value">${safe(ymm)}</div></div>
-        <div><div class="label">VIN</div><div class="value">${safe(vin)}</div></div>
-        <div><div class="label">Make</div><div class="value">${safe(make || "—")}</div></div>
-        <div><div class="label">Model</div><div class="value">${safe(model || "—")}</div></div>
-        <div><div class="label">Year</div><div class="value">${year ? safe(year) : "—"}</div></div>
+        <div><div class="label">Jacket Number</div><div class="value">${jn}</div></div>
+        <div><div class="label">Vehicle</div><div class="value">${ymm}</div></div>
+        <div><div class="label">VIN</div><div class="value">${vin}</div></div>
+        <div><div class="label">Make</div><div class="value">${make || "—"}</div></div>
+        <div><div class="label">Model</div><div class="value">${model || "—"}</div></div>
+        <div><div class="label">Year</div><div class="value">${year || "—"}</div></div>
       </div>
-
-      <div class="toc">
-        <h3>Jacket Includes</h3>
-        <ul>
-          <li>Invoice</li>
-          <li>Bill of Sale</li>
-        </ul>
-      </div>
-
+      <div class="toc"><h3>Jacket Includes</h3><ul><li>Invoice</li><li>Bill of Sale</li></ul></div>
       <div class="footer">
         RizeUp Ventures, LLC • PO BOX 66741 • St Pete Beach, FL 33706 • 616-318-1991 • admin@rizeupventures.com<br/>
         ALL SALES FINAL. ALL UNITS ARE SOLD AS-IS, WHERE-IS. NO RETURNS/EXCHANGES.<br/>
@@ -203,38 +199,41 @@ export const startInvoiceParse = onRequest(
 
       const [meta] = await file.getMetadata();
       const contentType = (meta?.contentType || "").toLowerCase();
+
+      if (contentType.startsWith("image/")) {
+        res.status(415).send("Image uploads are not yet supported for parsing.");
+        return;
+      }
+
       if (!contentType.includes("pdf")) {
         res.status(415).json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only for MVP)` });
         return;
       }
 
-      // Download bytes (force a real Node Buffer)
-const [downloaded] = await file.download();
-const nodeBuffer: Buffer = Buffer.isBuffer(downloaded)
-  ? downloaded
-  : Buffer.from(downloaded as any);
+      // 2) Download bytes (force a real Node Buffer)
+      const [downloaded] = await file.download();
+      const nodeBuffer: Buffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded as any);
+      console.log("startInvoiceParse", { gcsPath, contentType, length: nodeBuffer?.length || 0 });
 
-if (!nodeBuffer || nodeBuffer.length === 0) {
-  console.error("Downloaded buffer empty for", gcsPath, meta?.contentType);
-  res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
-  return;
-}
+      if (!nodeBuffer || nodeBuffer.length === 0) {
+        res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
+        return;
+      }
 
-// Parse PDF -> text
-const pdfParseMod: any = await import("pdf-parse");
-const pdfParse = pdfParseMod.default || pdfParseMod;
-const parsed = await pdfParse(nodeBuffer);
-const text: string = parsed?.text || "";
-if (!text.trim()) {
-  res.status(500).json({ error: "Extracted text is empty." });
-  return;
-}
+      // 3) Extract text with pdf-parse (internal entry avoids ENOENT)
+      const pdfParse = (await import("pdf-parse")).default;
+      const { text } = await pdfParse(nodeBuffer);
+      
+      if (!text || !text.trim()) {
+        res.status(500).json({ error: "Extracted text is empty." });
+        return;
+      }
 
-      // 3) Gemini extract (strict JSON)
+      // 4) Gemini extract (strict JSON)
       const model = getGeminiModel();
       const prompt = `
 You are an invoice extraction agent for NPA-style auction invoices.
-Return STRICT JSON only with this schema (no prose):
+Return STRICT JSON ONLY with this schema (no prose, no extra keys):
 {
   "invoiceMeta": { "aucNo": string?, "saleLocation": string? },
   "units": [{
@@ -256,17 +255,17 @@ TEXT:
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });
 
-      const raw = ai.response?.text() || "{}";
       let extracted: any;
       try {
-        extracted = JSON.parse(raw);
-      } catch {
-        console.error("LLM non-JSON output:", raw);
+        const raw = ai.response?.text() || "{}";
+        extracted = extractJsonStrict(raw);
+      } catch (err) {
+        console.error("LLM JSON parse error:", (err as any)?.message);
         res.status(500).json({ error: "LLM output was not valid JSON." });
         return;
       }
 
-      // 4) Normalize units + default management fee
+      // 5) Normalize units + default management fee
       const units: any[] = Array.isArray(extracted?.units) ? extracted.units : [];
       for (const u of units) {
         if (!u) continue;
@@ -275,16 +274,18 @@ TEXT:
         u.itemPrice = num(u.itemPrice);
         u.buyerFee = num(u.buyerFee);
         u.onlineFee = num(u.onlineFee);
+        if (u.hours != null) u.hours = num(u.hours);
+        if (u.odometer != null) u.odometer = num(u.odometer);
       }
 
-      // 5) Write staging docs
+      // 6) Write staging docs
       const now = FieldValue.serverTimestamp();
       const stagingId = db.collection("stagingInvoices").doc().id;
-      const [fileUrl] = await file.getSignedUrl({
-        action: "read",
-        expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-      });
-      const uploaderUid = gcsPath.split("/")[1] || null;
+      const [fileUrl] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+
+      // incoming/invoices/{uid}/filename.pdf  -> uid is index 2
+      const pathParts = gcsPath.split("/");
+      const uploaderUid = pathParts.length >= 3 ? pathParts[2] : null;
 
       await db.collection("stagingInvoices").doc(stagingId).set({
         source: "npa",
@@ -311,9 +312,17 @@ TEXT:
 
       res.json({ ok: true, stagingId, unitsCount: units.length });
     } catch (e: any) {
-      console.error("startInvoiceParse error", e);
-      res.status(500).json({ error: e?.message || "Parse failed" });
+      console.error("startInvoiceParse error:", e);
+      res.status(500).json({ error: e?.message || "Internal server error" });
     }
+  }
+);
+
+
+export const startDocParse = onRequest(
+  { region: "us-central1", cors: true },
+  (_req, res) => {
+    res.status(501).json({ error: "Not implemented yet" });
   }
 );
 
@@ -325,6 +334,8 @@ export const createJacketFromUnit = onCall(
     assertAdmin(request);
     const { stagingId, unitId } = request.data || {};
     if (!stagingId || !unitId) throw new HttpsError("invalid-argument", "stagingId and unitId are required.");
+    if (!request.auth) throw new HttpsError("unauthenticated", "Authentication required.");
+
 
     const unitRef = db.collection("stagingInvoices").doc(stagingId).collection("units").doc(unitId);
     const unitSnap = await unitRef.get();
@@ -367,9 +378,100 @@ export const createJacketFromUnit = onCall(
       }
     });
 
+    // Mark unit as processed
+    await unitRef.update({
+      processed: true,
+      processedAt: FieldValue.serverTimestamp(),
+      processedBy: request.auth.uid,
+      jacketVin: vin,
+      jacketPath: jacketRef.path
+    });
+
+    // Check if all units are now processed
+    const remainingQuery = await db.collection("stagingInvoices").doc(stagingId).collection("units").where("processed", "==", false).limit(1).get();
+    if (remainingQuery.empty) {
+      await db.collection("stagingInvoices").doc(stagingId).update({
+        status: "processed",
+        processedAt: FieldValue.serverTimestamp()
+      });
+    }
+
     return { success: true, path: jacketRef.path };
   }
 );
+
+
+export const createJacketsForInvoice = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
+  assertAdmin(request);
+  const { stagingId } = request.data || {};
+  if (!stagingId) throw new HttpsError("invalid-argument", "stagingId required");
+  if (!request.auth) throw new HttpsError("unauthenticated", "Authentication required.");
+
+
+  const unitsSnap = await db.collection("stagingInvoices").doc(stagingId).collection("units").where("processed", "in", [false, null]).get();
+  if (unitsSnap.empty) return { success: true, created: 0 };
+
+  let created = 0;
+  for (const doc of unitsSnap.docs) {
+    const unitId = doc.id;
+    const unit = doc.data() || {};
+    const vin = (unit.vin || "").toString().trim().toUpperCase();
+    if (!vin) continue;
+
+    const jacketRef = db.collection("jackets").doc(vin);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(jacketRef);
+      const data: any = {
+        vin,
+        year: Number(unit.year) || 0,
+        make: unit.make || "",
+        model: unit.model || "",
+        color: unit.color || "",
+        odometer: Number(unit.odometer) || Number(unit.hours) || 0,
+        saleLocation: unit.saleLocation || "",
+        itemPrice: Number(unit.itemPrice) || 0,
+        buyerFee: Number(unit.buyerFee) || 0,
+        onlineFee: Number(unit.onlineFee) || 0,
+        managementFee: Number(unit.managementFee) || 100,
+        auctionSaleDate: FieldValue.serverTimestamp(),
+        isAuctionPaid: false,
+        isMgmtFeePaid: false,
+        miscFees: [],
+        documents: [],
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      if (!snap.exists) {
+        data.createdAt = FieldValue.serverTimestamp();
+        data.jacketId = `J${Date.now()}`;
+        tx.set(jacketRef, data);
+      } else {
+        tx.update(jacketRef, data);
+      }
+    });
+
+    // mark processed
+    await db.collection("stagingInvoices").doc(stagingId).collection("units").doc(unitId).update({
+      processed: true,
+      processedAt: FieldValue.serverTimestamp(),
+      processedBy: request.auth.uid,
+      jacketVin: vin,
+      jacketPath: db.collection("jackets").doc(vin).path
+    });
+    created++;
+  }
+
+  // if no remaining, mark the parent
+  const remain = await db.collection("stagingInvoices").doc(stagingId).collection("units").where("processed", "==", false).limit(1).get();
+  if (remain.empty) {
+    await db.collection("stagingInvoices").doc(stagingId).update({
+      status: "processed",
+      processedAt: FieldValue.serverTimestamp()
+    });
+  }
+
+  return { success: true, created };
+});
+
 
 export const attachStagedDocToJacket = onCall(
   { region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] },
@@ -449,7 +551,7 @@ export const generateJacketId = onCall(
 /* ───────────────────── PDF Generators ───────────────────── */
 
 export const generateJacketInvoice = onRequest(
-  { region: "us-central1", timeoutSeconds: 120, memory: "1GiB", cors: true },
+  { region: "us-central1", timeoutSeconds: 120, memory: "1GiB", cors: true, secrets: [DEV_ADMIN_UID_SECRET] },
   async (req, res) => {
     try {
       if (req.method !== "POST" && req.method !== "GET") {
@@ -645,7 +747,7 @@ ${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
 );
 
 export const generateBillOfSale = onRequest(
-  { region: "us-central1", timeoutSeconds: 120, memory: "1GiB", cors: true },
+  { region: "us-central1", timeoutSeconds: 120, memory: "1GiB", cors: true, secrets: [DEV_ADMIN_UID_SECRET] },
   async (req, res) => {
     try {
       if (req.method !== "POST" && req.method !== "GET") {
@@ -802,7 +904,7 @@ export const generateBillOfSale = onRequest(
 );
 
 export const generateJacketPacket = onRequest(
-  { region: "us-central1", timeoutSeconds: 180, memory: "1GiB", cors: true },
+  { region: "us-central1", timeoutSeconds: 180, memory: "1GiB", cors: true, secrets: [DEV_ADMIN_UID_SECRET] },
   async (req, res) => {
     try {
       if (req.method !== "POST" && req.method !== "GET") { res.status(405).send("Method Not Allowed"); return; }

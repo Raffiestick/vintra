@@ -96,6 +96,18 @@ function getGeminiModel() {
     const genAI = new GoogleGenerativeAI(key);
     return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 }
+/** Strip code fences and slice to outermost JSON so JSON.parse succeeds. */
+function extractJsonStrict(raw) {
+    const trimmed = (raw || "").trim()
+        .replace(/^```json/i, "")
+        .replace(/^```/, "")
+        .replace(/```$/, "")
+        .trim();
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    const slice = start >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed;
+    return JSON.parse(slice);
+}
 /* ───────────────────── Cover Page Builder ───────────────────── */
 function buildCoverHtml(opts) {
     const { jacketId, vin, year, make, model } = opts;
@@ -108,19 +120,10 @@ function buildCoverHtml(opts) {
   <style>
     html, body { height:100%; }
     body { margin:0; font-family: Arial, sans-serif; color:#111; }
-    .page {
-      min-height: 100vh; padding: 72px;
-      display:flex; align-items:center; justify-content:center;
-      box-sizing: border-box;
-    }
-    .grid {
-      width: 82%; max-width: 700px; border: 2px solid #111; border-radius: 12px;
-      padding: 32px 40px; box-sizing: border-box;
-      background-image:
-        linear-gradient(#eef2f7 1px, transparent 1px),
-        linear-gradient(90deg, #eef2f7 1px, transparent 1px);
-      background-size: 24px 24px; background-position: center center;
-    }
+    .page { min-height: 100vh; padding: 72px; display:flex; align-items:center; justify-content:center; box-sizing: border-box; }
+    .grid { width: 82%; max-width: 700px; border: 2px solid #111; border-radius: 12px; padding: 32px 40px; box-sizing: border-box;
+      background-image: linear-gradient(#eef2f7 1px, transparent 1px), linear-gradient(90deg, #eef2f7 1px, transparent 1px);
+      background-size: 24px 24px; background-position: center center; }
     .title { text-align:center; font-size: 26px; font-weight: 800; letter-spacing: .8px; margin: 0 0 14px 0; }
     .subtitle { text-align:center; font-size: 12px; color:#6b7280; margin: 0 0 22px 0; }
     .kv { margin: 8px auto 10px auto; max-width: 520px; display:grid; grid-template-columns: 1fr; row-gap: 10px; }
@@ -137,24 +140,15 @@ function buildCoverHtml(opts) {
     <div class="grid">
       <div class="title">RIZEUP VENTURES DEALER JACKET</div>
       <div class="subtitle">Professional packet for your records</div>
-
       <div class="kv">
-        <div><div class="label">Jacket Number</div><div class="value">${safe(jn)}</div></div>
-        <div><div class="label">Vehicle</div><div class="value">${safe(ymm)}</div></div>
-        <div><div class="label">VIN</div><div class="value">${safe(vin)}</div></div>
-        <div><div class="label">Make</div><div class="value">${safe(make || "—")}</div></div>
-        <div><div class="label">Model</div><div class="value">${safe(model || "—")}</div></div>
-        <div><div class="label">Year</div><div class="value">${year ? safe(year) : "—"}</div></div>
+        <div><div class="label">Jacket Number</div><div class="value">${jn}</div></div>
+        <div><div class="label">Vehicle</div><div class="value">${ymm}</div></div>
+        <div><div class="label">VIN</div><div class="value">${vin}</div></div>
+        <div><div class="label">Make</div><div class="value">${make || "—"}</div></div>
+        <div><div class="label">Model</div><div class="value">${model || "—"}</div></div>
+        <div><div class="label">Year</div><div class="value">${year || "—"}</div></div>
       </div>
-
-      <div class="toc">
-        <h3>Jacket Includes</h3>
-        <ul>
-          <li>Invoice</li>
-          <li>Bill of Sale</li>
-        </ul>
-      </div>
-
+      <div class="toc"><h3>Jacket Includes</h3><ul><li>Invoice</li><li>Bill of Sale</li></ul></div>
       <div class="footer">
         RizeUp Ventures, LLC • PO BOX 66741 • St Pete Beach, FL 33706 • 616-318-1991 • admin@rizeupventures.com<br/>
         ALL SALES FINAL. ALL UNITS ARE SOLD AS-IS, WHERE-IS. NO RETURNS/EXCHANGES.<br/>
@@ -196,31 +190,26 @@ export const startInvoiceParse = onRequest({
             res.status(415).json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only for MVP)` });
             return;
         }
-        // Download bytes (ensure real Node Buffer)
+        // 2) Download bytes (force a real Node Buffer)
         const [downloaded] = await file.download();
-        const nodeBuffer = Buffer.isBuffer(downloaded)
-            ? downloaded
-            : downloaded instanceof Uint8Array
-                ? Buffer.from(downloaded)
-                : Buffer.from(downloaded);
+        const nodeBuffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded);
+        console.log("startInvoiceParse", { gcsPath, contentType, length: nodeBuffer?.length || 0 });
         if (!nodeBuffer || nodeBuffer.length === 0) {
             res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
             return;
         }
-        // 2) Parse PDF to text
-        const pdfParseMod = await import("pdf-parse");
-        const pdfParse = pdfParseMod.default || pdfParseMod;
-        const parsed = await pdfParse(nodeBuffer);
-        const text = parsed?.text || "";
-        if (!text.trim()) {
+        // 3) Extract text with pdf-parse (internal entry avoids ENOENT)
+        const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
+        const { text } = await pdfParse(nodeBuffer);
+        if (!text || !text.trim()) {
             res.status(500).json({ error: "Extracted text is empty." });
             return;
         }
-        // 3) Gemini extract (strict JSON)
+        // 4) Gemini extract (strict JSON)
         const model = getGeminiModel();
         const prompt = `
 You are an invoice extraction agent for NPA-style auction invoices.
-Return STRICT JSON only with this schema (no prose):
+Return STRICT JSON ONLY with this schema (no prose, no extra keys):
 {
   "invoiceMeta": { "aucNo": string?, "saleLocation": string? },
   "units": [{
@@ -240,17 +229,17 @@ TEXT:
         const ai = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
         });
-        const raw = ai.response?.text() || "{}";
         let extracted;
         try {
-            extracted = JSON.parse(raw);
+            const raw = ai.response?.text() || "{}";
+            extracted = extractJsonStrict(raw);
         }
-        catch {
-            console.error("LLM non-JSON output:", raw);
+        catch (err) {
+            console.error("LLM JSON parse error:", err?.message);
             res.status(500).json({ error: "LLM output was not valid JSON." });
             return;
         }
-        // 4) Normalize units + default management fee
+        // 5) Normalize units + default management fee
         const units = Array.isArray(extracted?.units) ? extracted.units : [];
         for (const u of units) {
             if (!u)
@@ -262,15 +251,18 @@ TEXT:
             u.itemPrice = num(u.itemPrice);
             u.buyerFee = num(u.buyerFee);
             u.onlineFee = num(u.onlineFee);
+            if (u.hours != null)
+                u.hours = num(u.hours);
+            if (u.odometer != null)
+                u.odometer = num(u.odometer);
         }
-        // 5) Write staging docs
+        // 6) Write staging docs
         const now = FieldValue.serverTimestamp();
         const stagingId = db.collection("stagingInvoices").doc().id;
-        const [fileUrl] = await file.getSignedUrl({
-            action: "read",
-            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        });
-        const uploaderUid = gcsPath.split("/")[1] || null;
+        const [fileUrl] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+        // incoming/invoices/{uid}/filename.pdf  -> uid is index 2
+        const pathParts = gcsPath.split("/");
+        const uploaderUid = pathParts.length >= 3 ? pathParts[2] : null;
         await db.collection("stagingInvoices").doc(stagingId).set({
             source: "npa",
             gcsPath,
@@ -295,8 +287,9 @@ TEXT:
         res.json({ ok: true, stagingId, unitsCount: units.length });
     }
     catch (e) {
-        console.error("startInvoiceParse error", e);
-        res.status(500).json({ error: e?.message || "Parse failed" });
+        const firstLine = String(e?.stack || e?.message || e).split("\n")[0];
+        console.error("startInvoiceParse error:", firstLine);
+        res.status(500).json({ error: firstLine });
     }
 });
 /* ───────────────────── Staging Actions ───────────────────── */
