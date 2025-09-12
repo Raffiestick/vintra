@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut, getAuth } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Power, Car, FilePlus } from "lucide-react";
+import { Power, Car } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function DealerLayout({
@@ -31,7 +31,6 @@ export default function DealerLayout({
 
   const navItems = [
     { href: "/dealer", label: "My Jackets", icon: Car },
-    { href: "/dealer/content-generator", label: "Content Tool", icon: FilePlus },
   ];
 
   return (
