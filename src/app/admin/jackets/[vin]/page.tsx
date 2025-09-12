@@ -50,7 +50,7 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon, Trash2, Replace, Printer } from "lucide-react";
+import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon, Trash2, Replace, Printer, ScrollText, Files } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -1025,41 +1025,46 @@ export default function JacketDetailPage() {
   return (
     <main className="flex min-h-screen flex-col items-start bg-background gap-4">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-20 w-full bg-background/80 p-4 border-b backdrop-blur-sm">
-            <div className="max-w-7xl mx-auto flex items-start justify-between gap-4">
-                <div className="flex-1">
-                    <h1 className="text-2xl font-bold">
-                        {jacket.year || ""} {jacket.make || "Unknown"}{" "}
-                        {jacket.model || "Vehicle"}
-                    </h1>
-                    <p className="text-sm text-muted-foreground font-mono">{jacket.vin}</p>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground mt-2">
-                        <span>Color: <strong>{jacket.color || "N/A"}</strong></span>
-                        <span>Odometer: <strong>{jacket.odometer ? jacket.odometer.toLocaleString() : "N/A"}</strong></span>
-                        <span>Auction Date: <strong>{jacket.auctionSaleDate ? jacket.auctionSaleDate.toDate().toLocaleDateString() : "N/A"}</strong></span>
-                        <span>Created: <strong>{jacket.createdAt ? jacket.createdAt.toDate().toLocaleDateString() : "N/A"}</strong></span>
-                    </div>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                    {jacket.jacketId && <Badge variant="secondary">Jacket ID: {jacket.jacketId}</Badge>}
+        <div className="sticky top-0 z-20 w-full bg-background/80 px-4 py-2 border-b backdrop-blur-sm">
+            <div className="max-w-screen-xl mx-auto flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
                     {isAdmin && (
-                        <div className="flex items-center gap-2">
-                            <Button size="sm" onClick={handleGenerateInvoice} disabled={isGeneratingInvoice}>
-                                {isGeneratingInvoice ? <Loader2 className="animate-spin"/> : <FileText/>} Invoice
-                            </Button>
-                            <Button size="sm" onClick={handleGenerateBos} disabled={isGeneratingBos}>
-                                {isGeneratingBos ? <Loader2 className="animate-spin"/> : <FileText/>} BOS
-                            </Button>
-                            <Button size="sm" onClick={handleGeneratePacket} disabled={isGeneratingPacket}>
-                                {isGeneratingPacket ? <Loader2 className="animate-spin"/> : <FileText/>} Packet
-                            </Button>
-                        </div>
+                        <>
+                        <Button size="sm" onClick={handleGenerateInvoice} disabled={isGeneratingInvoice || !isAdmin}>
+                            <div className="flex items-center gap-2">
+                                {isGeneratingInvoice ? <Loader2 className="animate-spin" /> : <FileText />}
+                                <div className="leading-tight text-left">
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Generate</div>
+                                    <div className="text-sm font-semibold">Invoice</div>
+                                </div>
+                            </div>
+                        </Button>
+                        <Button size="sm" onClick={handleGenerateBos} disabled={isGeneratingBos || !isAdmin}>
+                            <div className="flex items-center gap-2">
+                                {isGeneratingBos ? <Loader2 className="animate-spin" /> : <ScrollText />}
+                                <div className="leading-tight text-left">
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Generate</div>
+                                    <div className="text-sm font-semibold">Bill of Sale</div>
+                                </div>
+                            </div>
+                        </Button>
+                        <Button size="sm" onClick={handleGeneratePacket} disabled={isGeneratingPacket || !isAdmin}>
+                            <div className="flex items-center gap-2">
+                                {isGeneratingPacket ? <Loader2 className="animate-spin" /> : <Files />}
+                                <div className="leading-tight text-left">
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Generate</div>
+                                    <div className="text-sm font-semibold">Jacket</div>
+                                </div>
+                            </div>
+                        </Button>
+                        </>
                     )}
                 </div>
+                 {jacket.jacketId && <Badge variant="secondary" className="font-mono">Jacket ID: {jacket.jacketId}</Badge>}
             </div>
         </div>
 
-      <div className="w-full max-w-7xl mx-auto p-4 space-y-4">
+      <div className="w-full max-w-screen-xl mx-auto px-3 sm:px-4 md:px-6 space-y-4">
           <Tabs defaultValue="overview" className="w-full">
             <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -1070,8 +1075,8 @@ export default function JacketDetailPage() {
             </TabsList>
 
             <TabsContent value="overview" className="mt-4">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                    <div className="md:col-span-7 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                    <div className="md:col-span-7 space-y-4">
                         <Card>
                             <CardHeader><CardTitle>Payment Status</CardTitle></CardHeader>
                             <CardContent className="space-y-4">
@@ -1172,7 +1177,7 @@ export default function JacketDetailPage() {
                           </Card>
                         )}
                     </div>
-                    <div className="md:col-span-5 space-y-6">
+                    <div className="md:col-span-5 space-y-4">
                        {financials && (
                            <Card>
                              <CardHeader>
@@ -1194,7 +1199,7 @@ export default function JacketDetailPage() {
                             <CardHeader>
                                 <CardTitle>Jacket Invoice</CardTitle>
                             </CardHeader>
-                            <CardContent className="space-y-4">
+                            <CardContent className="space-y-3">
                                 <div>
                                     <span className="text-sm text-muted-foreground">Jacket #: </span>
                                     <span className="font-semibold">{jacket?.jacketId || '—'}</span>
@@ -1204,11 +1209,16 @@ export default function JacketDetailPage() {
                                     <span className="font-semibold">{effectiveInvoiceId || "Not issued yet"}</span>
                                 </div>
                                 {effectiveInvoiceUrl ? (
-                                    <Button asChild>
-                                        <a href={effectiveInvoiceUrl} target="_blank" rel="noopener noreferrer">
-                                            <Download className="mr-2 h-4 w-4" /> Open Invoice PDF
-                                        </a>
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <Button asChild size="sm">
+                                            <a href={effectiveInvoiceUrl} target="_blank" rel="noopener noreferrer">
+                                                <Download className="mr-2 h-4 w-4" /> Open Invoice PDF
+                                            </a>
+                                        </Button>
+                                        <Button variant="secondary" size="sm" onClick={() => window.open(effectiveInvoiceUrl, '_blank')}>
+                                            <Printer className="mr-2 h-4 w-4" /> Print
+                                        </Button>
+                                    </div>
                                 ) : (
                                     <p className="text-sm text-muted-foreground">No invoice has been generated yet.</p>
                                 )}
@@ -1218,7 +1228,7 @@ export default function JacketDetailPage() {
                             <CardHeader>
                                 <CardTitle>Bill of Sale</CardTitle>
                             </CardHeader>
-                            <CardContent className="space-y-4">
+                            <CardContent className="space-y-3">
                                 <div>
                                   <span className="text-sm text-muted-foreground">Jacket #: </span>
                                   <span className="font-semibold">{jacket?.jacketId || '—'}</span>
@@ -1228,11 +1238,16 @@ export default function JacketDetailPage() {
                                   <span className="font-semibold">{effectiveBosUrl ? "Ready" : "Not generated"}</span>
                                 </div>
                                 {effectiveBosUrl ? (
-                                  <Button asChild>
-                                      <a href={effectiveBosUrl} target="_blank" rel="noopener noreferrer">
-                                          <Download className="mr-2 h-4 w-4" /> Open BOS PDF
-                                      </a>
-                                  </Button>
+                                    <div className="flex items-center gap-2">
+                                        <Button asChild size="sm">
+                                            <a href={effectiveBosUrl} target="_blank" rel="noopener noreferrer">
+                                                <Download className="mr-2 h-4 w-4" /> Open BOS PDF
+                                            </a>
+                                        </Button>
+                                        <Button variant="secondary" size="sm" onClick={() => window.open(effectiveBosUrl, '_blank')}>
+                                            <Printer className="mr-2 h-4 w-4" /> Print
+                                        </Button>
+                                    </div>
                                 ) : (
                                     <p className="text-sm text-muted-foreground">No Bill of Sale has been generated yet.</p>
                                 )}
@@ -1240,9 +1255,9 @@ export default function JacketDetailPage() {
                         </Card>
                          <Card>
                             <CardHeader>
-                                <CardTitle>Jacket Packet (Invoice + BOS)</CardTitle>
+                                <CardTitle>Jacket Packet</CardTitle>
                             </CardHeader>
-                            <CardContent className="space-y-4">
+                            <CardContent className="space-y-3">
                                 <div>
                                   <span className="text-sm text-muted-foreground">Jacket #: </span>
                                   <span className="font-semibold">{jacket?.jacketId || '—'}</span>
@@ -1253,12 +1268,12 @@ export default function JacketDetailPage() {
                                 </div>
                                 {effectivePacketUrl ? (
                                   <div className="flex items-center gap-2">
-                                    <Button asChild>
+                                    <Button asChild size="sm">
                                         <a href={effectivePacketUrl} target="_blank" rel="noopener noreferrer">
                                             <Download className="mr-2 h-4 w-4" /> Open Packet PDF
                                         </a>
                                     </Button>
-                                    <Button variant="secondary" onClick={() => window.open(effectivePacketUrl, '_blank')}>
+                                    <Button variant="secondary" size="sm" onClick={() => window.open(effectivePacketUrl, '_blank')}>
                                       <Printer className="mr-2 h-4 w-4" />
                                       Print
                                     </Button>
@@ -1569,3 +1584,5 @@ export default function JacketDetailPage() {
     </main>
   );
 }
+
+
