@@ -1,9 +1,9 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, onSnapshot, Timestamp } from 'firebase/firestore';
 import { httpsCallableClient } from '@/lib/firebase/client';
 import { db } from '@/lib/firebase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -12,8 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ExternalLink } from 'lucide-react';
+import { Loader2, ExternalLink, Checkbox, Check } from 'lucide-react';
 import Link from 'next/link';
+import { Label } from '@/components/ui/label';
 
 interface StagedUnit {
     id: string;
@@ -26,6 +27,7 @@ interface StagedUnit {
     onlineFee?: number;
     stockNo?: string;
     titleInfo?: string;
+    processed?: boolean;
 }
 
 interface StagingInvoice {
@@ -34,6 +36,7 @@ interface StagingInvoice {
     aucNo?: string;
     fileUrl?: string;
     rawText?: string;
+    status?: 'new' | 'in-progress' | 'processed';
 }
 
 export default function StagedInvoiceDetailPage() {
@@ -46,31 +49,40 @@ export default function StagedInvoiceDetailPage() {
     const [units, setUnits] = useState<StagedUnit[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingUnitId, setProcessingUnitId] = useState<string | null>(null);
+    const [isProcessingAll, setIsProcessingAll] = useState(false);
+    const [hideProcessed, setHideProcessed] = useState(true);
 
     useEffect(() => {
         if (!sid) return;
 
         const fetchDetails = async () => {
             try {
+                // Use onSnapshot for real-time updates on parent doc
                 const invoiceRef = doc(db, 'stagingInvoices', sid);
-                const invoiceSnap = await getDoc(invoiceRef);
-
-                if (!invoiceSnap.exists()) {
-                    toast({ title: 'Error', description: 'Staged invoice not found.', variant: 'destructive' });
-                    router.push('/admin/staging/invoices');
-                    return;
-                }
-                setInvoice(invoiceSnap.data() as StagingInvoice);
+                const unsubInvoice = onSnapshot(invoiceRef, (invoiceSnap) => {
+                    if (!invoiceSnap.exists()) {
+                        toast({ title: 'Error', description: 'Staged invoice not found.', variant: 'destructive' });
+                        router.push('/admin/staging/invoices');
+                        return;
+                    }
+                    setInvoice(invoiceSnap.data() as StagingInvoice);
+                });
 
                 const unitsRef = collection(db, 'stagingInvoices', sid, 'units');
-                const unitsSnap = await getDocs(unitsRef);
-                const unitsData = unitsSnap.docs.map(d => ({ id: d.id, ...d.data() } as StagedUnit));
-                setUnits(unitsData);
+                const unsubUnits = onSnapshot(unitsRef, (unitsSnap) => {
+                    const unitsData = unitsSnap.docs.map(d => ({ id: d.id, ...d.data() } as StagedUnit));
+                    setUnits(unitsData);
+                });
+
+                setLoading(false);
+                return () => {
+                    unsubInvoice();
+                    unsubUnits();
+                };
 
             } catch (error: any) {
                 console.error("Error fetching staged invoice details:", error);
                 toast({ title: 'Error', description: error.message, variant: 'destructive' });
-            } finally {
                 setLoading(false);
             }
         };
@@ -98,6 +110,8 @@ export default function StagedInvoiceDetailPage() {
                     ),
                     duration: 10000,
                 });
+                // Optimistically update UI - Firestore listener will catch up
+                setUnits(prev => prev.map(u => u.id === unitId ? {...u, processed: true} : u));
             } else {
                  throw new Error("Function reported failure.");
             }
@@ -108,6 +122,41 @@ export default function StagedInvoiceDetailPage() {
         }
     };
     
+    const handleCreateAllRemaining = async () => {
+        setIsProcessingAll(true);
+        try {
+            const createAll = await httpsCallableClient<{ stagingId: string }, { success: boolean, created: number }>('createJacketsForInvoice');
+            const result = await createAll({ stagingId: sid });
+
+            if (result.data.success) {
+                 toast({
+                    title: 'Batch Creation Complete!',
+                    description: `${result.data.created} jacket(s) were created.`,
+                });
+                // Optimistic update - Firestore listener will catch up
+                setUnits(prev => prev.map(u => u.vin ? {...u, processed: true} : u));
+            } else {
+                throw new Error("Batch creation function failed.");
+            }
+        } catch (error: any) {
+             toast({ title: 'Batch Creation Failed', description: error.message, variant: 'destructive' });
+        } finally {
+            setIsProcessingAll(false);
+        }
+    };
+
+    const metrics = useMemo(() => {
+        const total = units.length;
+        const processed = units.filter(u => u.processed).length;
+        const remaining = total - processed;
+        return { total, processed, remaining };
+    }, [units]);
+
+    const filteredUnits = useMemo(() => {
+        if (!hideProcessed) return units;
+        return units.filter(u => !u.processed);
+    }, [units, hideProcessed]);
+
     const fmtCurrency = (n?: number): string => (n ?? 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
 
@@ -121,25 +170,53 @@ export default function StagedInvoiceDetailPage() {
                 <CardHeader>
                     <div className="flex justify-between items-start">
                         <div>
-                            <CardTitle>Staged Invoice: {sid}</CardTitle>
+                            <CardTitle className="flex items-center gap-3">
+                                Staged Invoice: {sid}
+                                {invoice?.status === 'processed' && <Badge><Check className="mr-1 h-4 w-4"/>Processed</Badge>}
+                            </CardTitle>
                             <CardDescription>
                                 Source: {invoice?.source?.toUpperCase() || 'N/A'} | Auction #: {invoice?.aucNo || 'N/A'} | Created: {invoice?.createdAt?.toDate().toLocaleString() ?? 'N/A'}
                             </CardDescription>
+                            <div className="flex items-center gap-4 mt-2">
+                                <Badge variant="secondary">Units: {metrics.total}</Badge>
+                                <Badge variant="default">Processed: {metrics.processed}</Badge>
+                                <Badge variant="outline">Remaining: {metrics.remaining}</Badge>
+                            </div>
                         </div>
-                        {invoice?.fileUrl && (
-                             <Button asChild variant="secondary">
-                                <a href={invoice.fileUrl} target="_blank" rel="noopener noreferrer">
-                                    <ExternalLink className="mr-2 h-4 w-4" /> View Original
-                                </a>
-                            </Button>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {metrics.remaining > 0 && (
+                                 <Button onClick={handleCreateAllRemaining} disabled={isProcessingAll}>
+                                    {isProcessingAll && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                    Create All Remaining
+                                 </Button>
+                            )}
+                            {invoice?.fileUrl && (
+                                <Button asChild variant="secondary">
+                                    <a href={invoice.fileUrl} target="_blank" rel="noopener noreferrer">
+                                        <ExternalLink className="mr-2 h-4 w-4" /> View Original
+                                    </a>
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>
                     <Card>
                         <CardHeader>
-                            <CardTitle>Parsed Units</CardTitle>
-                            <CardDescription>The following units were extracted from the invoice.</CardDescription>
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <CardTitle>Parsed Units</CardTitle>
+                                    <CardDescription>The following units were extracted from the invoice.</CardDescription>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="hide-processed-units"
+                                        checked={hideProcessed}
+                                        onCheckedChange={(checked) => setHideProcessed(Boolean(checked))}
+                                    />
+                                    <Label htmlFor="hide-processed-units">Hide processed units</Label>
+                                </div>
+                            </div>
                         </CardHeader>
                         <CardContent>
                              <Table>
@@ -148,12 +225,13 @@ export default function StagedInvoiceDetailPage() {
                                         <TableHead>VIN / Stock #</TableHead>
                                         <TableHead>Vehicle</TableHead>
                                         <TableHead>Fees</TableHead>
+                                        <TableHead>Status</TableHead>
                                         <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {units.length > 0 ? units.map((unit) => (
-                                        <TableRow key={unit.id}>
+                                    {filteredUnits.length > 0 ? filteredUnits.map((unit) => (
+                                        <TableRow key={unit.id} className={unit.processed ? 'bg-muted/50' : ''}>
                                             <TableCell>
                                                 <p className="font-mono font-medium">{unit.vin || 'NO VIN'}</p>
                                                 <p className="text-xs text-muted-foreground">Stock: {unit.stockNo || 'N/A'}</p>
@@ -167,23 +245,28 @@ export default function StagedInvoiceDetailPage() {
                                                 <p>Buyer Fee: {fmtCurrency(unit.buyerFee)}</p>
                                                 <p>Online Fee: {fmtCurrency(unit.onlineFee)}</p>
                                             </TableCell>
+                                            <TableCell>
+                                                {unit.processed && <Badge variant="secondary">Processed</Badge>}
+                                            </TableCell>
                                             <TableCell className="text-right">
-                                                <Button
-                                                    size="sm"
-                                                    onClick={() => handleCreateJacket(unit.id)}
-                                                    disabled={!unit.vin || processingUnitId === unit.id}
-                                                >
-                                                    {processingUnitId === unit.id ? (
-                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                    ) : null}
-                                                    Create Jacket
-                                                </Button>
+                                                {!unit.processed && (
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={() => handleCreateJacket(unit.id)}
+                                                        disabled={!unit.vin || processingUnitId === unit.id || isProcessingAll}
+                                                    >
+                                                        {processingUnitId === unit.id ? (
+                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        ) : null}
+                                                        Create Jacket
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     )) : (
                                         <TableRow>
-                                            <TableCell colSpan={4} className="h-24 text-center">
-                                                No units found in this staged invoice.
+                                            <TableCell colSpan={5} className="h-24 text-center">
+                                                {hideProcessed ? "All units from this invoice have been processed." : "No units found in this staged invoice."}
                                             </TableCell>
                                         </TableRow>
                                     )}
@@ -208,4 +291,3 @@ export default function StagedInvoiceDetailPage() {
         </div>
     );
 }
-

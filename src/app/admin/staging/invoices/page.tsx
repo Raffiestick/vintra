@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -10,6 +10,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 interface StagedInvoice {
     id: string;
@@ -18,6 +20,7 @@ interface StagedInvoice {
     aucNo?: string;
     fileUrl?: string;
     unitsCount: number;
+    status?: 'new' | 'in-progress' | 'processed';
 }
 
 function StagingSkeleton() {
@@ -50,6 +53,7 @@ function StagingSkeleton() {
 export default function StagedInvoicesPage() {
     const [invoices, setInvoices] = useState<StagedInvoice[]>([]);
     const [loading, setLoading] = useState(true);
+    const [hideProcessed, setHideProcessed] = useState(true);
     const router = useRouter();
 
     useEffect(() => {
@@ -79,6 +83,16 @@ export default function StagedInvoicesPage() {
         fetchInvoices();
     }, []);
 
+    const filteredInvoices = useMemo(() => {
+        if (!hideProcessed) return invoices;
+        return invoices.filter(invoice => invoice.status !== 'processed');
+    }, [invoices, hideProcessed]);
+
+    const getStatus = (invoice: StagedInvoice) => {
+        if (invoice.status) return invoice.status;
+        return invoice.unitsCount > 0 ? 'in-progress' : 'new';
+    }
+
     if (loading) {
         return <StagingSkeleton />;
     }
@@ -93,18 +107,28 @@ export default function StagedInvoicesPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {invoices.length > 0 ? (
+                    <div className="flex items-center space-x-2 mb-4">
+                        <Checkbox
+                            id="hide-processed"
+                            checked={hideProcessed}
+                            onCheckedChange={(checked) => setHideProcessed(Boolean(checked))}
+                        />
+                        <Label htmlFor="hide-processed">Hide processed invoices</Label>
+                    </div>
+
+                    {filteredInvoices.length > 0 ? (
                         <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Date Uploaded</TableHead>
                                     <TableHead>Source / Auc #</TableHead>
                                     <TableHead>Units</TableHead>
+                                    <TableHead>Status</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {invoices.map((invoice) => (
+                                {filteredInvoices.map((invoice) => (
                                     <TableRow key={invoice.id}>
                                         <TableCell>
                                             {invoice.createdAt?.toDate().toLocaleString() ?? 'N/A'}
@@ -117,6 +141,11 @@ export default function StagedInvoicesPage() {
                                         </TableCell>
                                          <TableCell>
                                             <Badge variant="secondary">{invoice.unitsCount}</Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant={getStatus(invoice) === 'processed' ? 'default' : 'outline'} className="capitalize">
+                                                {getStatus(invoice)}
+                                            </Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <Button
@@ -133,8 +162,12 @@ export default function StagedInvoicesPage() {
                         </Table>
                     ) : (
                         <div className="text-center py-10">
-                            <p className="text-muted-foreground">No invoices are currently in the staging area.</p>
-                            <p className="text-xs mt-2 text-muted-foreground">Upload new invoices to the `incoming/invoices` folder in Cloud Storage.</p>
+                            <p className="text-muted-foreground">
+                                {hideProcessed ? "No unprocessed invoices found." : "No invoices are currently in the staging area."}
+                            </p>
+                            <Button variant="link" onClick={() => router.push('/admin/jackets/new')}>
+                                Upload an Invoice
+                            </Button>
                         </div>
                     )}
                 </CardContent>
