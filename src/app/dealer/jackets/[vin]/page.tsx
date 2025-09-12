@@ -45,6 +45,8 @@ interface Jacket {
   year?: number;
   make?: string;
   model?: string;
+  color?: string;
+  odometer?: number;
   jacketId?: string;
   itemPrice?: number;
   buyerFee?: number;
@@ -85,6 +87,16 @@ function JacketDetailSkeleton() {
     </div>
   );
 }
+
+const DetailItem = ({ label, value }: { label: string, value: string | number | null | undefined }) => (
+    value ? (
+        <div className="flex justify-between text-sm py-2 border-b">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="font-medium">{value}</dd>
+        </div>
+    ) : null
+);
+
 
 export default function DealerJacketDetailPage() {
   const params = useParams<{ vin: string | string[] }>();
@@ -137,20 +149,20 @@ export default function DealerJacketDetailPage() {
   const financials = useMemo(() => {
     if (!jacket) return null;
     const num = (x: any): number => (typeof x === 'number' ? x : 0);
-    const auctionDue = num(jacket.itemPrice) + num(jacket.buyerFee) + num(jacket.onlineFee);
+    const auctionDue = num(jacket.itemPrice);
     const mgmtDue = num(jacket.managementFee);
     
     const miscFees = jacket.miscFees || [];
+    const totalMisc = miscFees.reduce((acc, fee) => acc + num(fee.amount), 0);
     const paidMisc = miscFees.filter(f => f.paid).reduce((acc, fee) => acc + num(fee.amount), 0);
-    const unpaidMisc = miscFees.filter(f => !f.paid).reduce((acc, fee) => acc + num(fee.amount), 0);
 
-    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtFeeActuallyPaid ? mgmtDue : 0) + paidMisc;
-    const subtotal = auctionDue + mgmtDue + paidMisc + unpaidMisc;
+    const amountPaid = (jacket.isAuctionPaid ? auctionDue + num(jacket.buyerFee) + num(jacket.onlineFee) : 0) + (isMgmtFeeActuallyPaid ? mgmtDue : 0) + paidMisc;
+    const subtotal = auctionDue + num(jacket.buyerFee) + num(jacket.onlineFee) + mgmtDue + totalMisc;
     const balanceDue = subtotal - amountPaid;
 
-    const isFullyPaid = jacket.isAuctionPaid && isMgmtFeeActuallyPaid && unpaidMisc === 0;
+    const isFullyPaid = balanceDue <= 0;
 
-    return { subtotal, amountPaid, balanceDue, isFullyPaid };
+    return { subtotal, amountPaid, balanceDue, isFullyPaid, totalMisc };
   }, [jacket, isMgmtFeeActuallyPaid]);
 
 
@@ -209,7 +221,7 @@ export default function DealerJacketDetailPage() {
                 </Card>
                 <Card className="p-3">
                     <CardDescription>Balance Due</CardDescription>
-                    <CardTitle>{fmtCurrency(financials?.balanceDue)}</CardTitle>
+                    <CardTitle className={financials?.balanceDue && financials.balanceDue > 0 ? 'text-destructive' : ''}>{fmtCurrency(financials?.balanceDue)}</CardTitle>
                 </Card>
             </div>
         </header>
@@ -220,40 +232,72 @@ export default function DealerJacketDetailPage() {
                 <TabsTrigger value="misc-fees">
                     Misc Fees <Badge variant="secondary" className="ml-2">{jacket.miscFees?.length || 0}</Badge>
                 </TabsTrigger>
-                <TabsTrigger value="documents">
+                <TabsTrigger value="documents" disabled={!financials?.isFullyPaid}>
                     Documents <Badge variant="secondary" className="ml-2">{jacket.documents?.length || 0}</Badge>
                 </TabsTrigger>
             </TabsList>
-            <TabsContent value="overview" className="mt-4">
-                 <Card>
-                    <CardHeader><CardTitle>Files & Downloads</CardTitle></CardHeader>
-                    <CardContent className="space-y-3">
-                        {jacket.invoiceUrl && (
-                            <Button asChild variant="outline" className="w-full justify-start">
-                                <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer">
-                                    <Download className="mr-2" /> Open Invoice PDF
-                                </a>
-                            </Button>
-                        )}
-                        {jacket.bosUrl && (
-                            <Button asChild variant="outline" className="w-full justify-start">
-                                <a href={jacket.bosUrl} target="_blank" rel="noopener noreferrer">
-                                    <Download className="mr-2" /> Open Bill of Sale PDF
-                                </a>
-                            </Button>
-                        )}
-                        {jacket.packetUrl && (
-                            <Button asChild className="w-full justify-start">
-                                <a href={jacket.packetUrl} target="_blank" rel="noopener noreferrer">
-                                    <Package className="mr-2" /> Open Full Packet (Invoice + BOS)
-                                </a>
-                            </Button>
-                        )}
-                        {!jacket.invoiceUrl && !jacket.bosUrl && !jacket.packetUrl && (
-                            <p className="text-sm text-muted-foreground text-center py-4">No generated files available yet.</p>
-                        )}
-                    </CardContent>
-                </Card>
+            <TabsContent value="overview" className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div className="space-y-6">
+                    <Card>
+                        <CardHeader><CardTitle>Vehicle Details</CardTitle></CardHeader>
+                        <CardContent>
+                            <dl>
+                                <DetailItem label="Year" value={jacket.year} />
+                                <DetailItem label="Make" value={jacket.make} />
+                                <DetailItem label="Model" value={jacket.model} />
+                                <DetailItem label="Color" value={jacket.color} />
+                                <DetailItem label="Odometer" value={jacket.odometer ? `${jacket.odometer.toLocaleString()} miles` : null} />
+                            </dl>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader><CardTitle>Files & Downloads</CardTitle></CardHeader>
+                        <CardContent className="space-y-3">
+                            {jacket.invoiceUrl && (
+                                <Button asChild variant="outline" className="w-full justify-start">
+                                    <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer">
+                                        <Download className="mr-2" /> Open Invoice PDF
+                                    </a>
+                                </Button>
+                            )}
+                            {jacket.bosUrl && (
+                                <Button asChild variant="outline" className="w-full justify-start">
+                                    <a href={jacket.bosUrl} target="_blank" rel="noopener noreferrer">
+                                        <Download className="mr-2" /> Open Bill of Sale PDF
+                                    </a>
+                                </Button>
+                            )}
+                            {jacket.packetUrl && (
+                                <Button asChild className="w-full justify-start">
+                                    <a href={jacket.packetUrl} target="_blank" rel="noopener noreferrer">
+                                        <Package className="mr-2" /> Open Full Packet (Invoice + BOS)
+                                    </a>
+                                </Button>
+                            )}
+                            {!jacket.invoiceUrl && !jacket.bosUrl && !jacket.packetUrl && (
+                                <p className="text-sm text-muted-foreground text-center py-4">No generated files available yet.</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                 </div>
+                 <div>
+                    <Card>
+                        <CardHeader><CardTitle>Financial Breakdown</CardTitle></CardHeader>
+                        <CardContent>
+                             <dl>
+                                <DetailItem label="Unit Price" value={fmtCurrency(jacket.itemPrice)} />
+                                <DetailItem label="Buyer Fee" value={fmtCurrency(jacket.buyerFee)} />
+                                <DetailItem label="Online Fee" value={fmtCurrency(jacket.onlineFee)} />
+                                <DetailItem label="Management Fee" value={fmtCurrency(jacket.managementFee)} />
+                                <DetailItem label="Misc Fees Total" value={fmtCurrency(financials?.totalMisc)} />
+                                <div className="flex justify-between text-sm py-3 mt-2 border-t-2">
+                                    <dt className="font-bold">Total Cost</dt>
+                                    <dd className="font-bold text-lg">{fmtCurrency(financials?.subtotal)}</dd>
+                                </div>
+                            </dl>
+                        </CardContent>
+                    </Card>
+                 </div>
             </TabsContent>
             <TabsContent value="misc-fees">
                 <Card>
@@ -299,7 +343,7 @@ export default function DealerJacketDetailPage() {
                 <Card>
                     <CardHeader>
                         <CardTitle>Documents</CardTitle>
-                        <CardDescription>Supporting documents for this jacket.</CardDescription>
+                        <CardDescription>Supporting documents for this jacket. This tab is unlocked once the balance is fully paid.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {(!jacket.documents || jacket.documents.length === 0) ? (
@@ -336,3 +380,5 @@ export default function DealerJacketDetailPage() {
     </div>
   );
 }
+
+  
