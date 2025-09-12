@@ -186,6 +186,10 @@ export const startInvoiceParse = onRequest({
         }
         const [meta] = await file.getMetadata();
         const contentType = (meta?.contentType || "").toLowerCase();
+        if (contentType.startsWith("image/")) {
+            res.status(415).send("Image uploads are not yet supported for parsing.");
+            return;
+        }
         if (!contentType.includes("pdf")) {
             res.status(415).json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only for MVP)` });
             return;
@@ -199,7 +203,7 @@ export const startInvoiceParse = onRequest({
             return;
         }
         // 3) Extract text with pdf-parse (internal entry avoids ENOENT)
-        const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
+        const pdfParse = (await import("pdf-parse")).default;
         const { text } = await pdfParse(nodeBuffer);
         if (!text || !text.trim()) {
             res.status(500).json({ error: "Extracted text is empty." });
@@ -287,10 +291,12 @@ TEXT:
         res.json({ ok: true, stagingId, unitsCount: units.length });
     }
     catch (e) {
-        const firstLine = String(e?.stack || e?.message || e).split("\n")[0];
-        console.error("startInvoiceParse error:", firstLine);
-        res.status(500).json({ error: firstLine });
+        console.error("startInvoiceParse error:", e);
+        res.status(500).json({ error: e?.message || "Internal server error" });
     }
+});
+export const startDocParse = onRequest({ region: "us-central1", cors: true }, (_req, res) => {
+    res.status(501).json({ error: "Not implemented yet" });
 });
 /* ───────────────────── Staging Actions ───────────────────── */
 export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
@@ -298,6 +304,8 @@ export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DE
     const { stagingId, unitId } = request.data || {};
     if (!stagingId || !unitId)
         throw new HttpsError("invalid-argument", "stagingId and unitId are required.");
+    if (!request.auth)
+        throw new HttpsError("unauthenticated", "Authentication required.");
     const unitRef = db.collection("stagingInvoices").doc(stagingId).collection("units").doc(unitId);
     const unitSnap = await unitRef.get();
     if (!unitSnap.exists)
@@ -337,7 +345,91 @@ export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DE
             tx.update(jacketRef, jacketData);
         }
     });
+    // Mark unit as processed
+    await unitRef.update({
+        processed: true,
+        processedAt: FieldValue.serverTimestamp(),
+        processedBy: request.auth.uid,
+        jacketVin: vin,
+        jacketPath: jacketRef.path
+    });
+    // Check if all units are now processed
+    const remainingQuery = await db.collection("stagingInvoices").doc(stagingId).collection("units").where("processed", "==", false).limit(1).get();
+    if (remainingQuery.empty) {
+        await db.collection("stagingInvoices").doc(stagingId).update({
+            status: "processed",
+            processedAt: FieldValue.serverTimestamp()
+        });
+    }
     return { success: true, path: jacketRef.path };
+});
+export const createJacketsForInvoice = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
+    assertAdmin(request);
+    const { stagingId } = request.data || {};
+    if (!stagingId)
+        throw new HttpsError("invalid-argument", "stagingId required");
+    if (!request.auth)
+        throw new HttpsError("unauthenticated", "Authentication required.");
+    const unitsSnap = await db.collection("stagingInvoices").doc(stagingId).collection("units").where("processed", "in", [false, null]).get();
+    if (unitsSnap.empty)
+        return { success: true, created: 0 };
+    let created = 0;
+    for (const doc of unitsSnap.docs) {
+        const unitId = doc.id;
+        const unit = doc.data() || {};
+        const vin = (unit.vin || "").toString().trim().toUpperCase();
+        if (!vin)
+            continue;
+        const jacketRef = db.collection("jackets").doc(vin);
+        await db.runTransaction(async (tx) => {
+            const snap = await tx.get(jacketRef);
+            const data = {
+                vin,
+                year: Number(unit.year) || 0,
+                make: unit.make || "",
+                model: unit.model || "",
+                color: unit.color || "",
+                odometer: Number(unit.odometer) || Number(unit.hours) || 0,
+                saleLocation: unit.saleLocation || "",
+                itemPrice: Number(unit.itemPrice) || 0,
+                buyerFee: Number(unit.buyerFee) || 0,
+                onlineFee: Number(unit.onlineFee) || 0,
+                managementFee: Number(unit.managementFee) || 100,
+                auctionSaleDate: FieldValue.serverTimestamp(),
+                isAuctionPaid: false,
+                isMgmtFeePaid: false,
+                miscFees: [],
+                documents: [],
+                updatedAt: FieldValue.serverTimestamp(),
+            };
+            if (!snap.exists) {
+                data.createdAt = FieldValue.serverTimestamp();
+                data.jacketId = `J${Date.now()}`;
+                tx.set(jacketRef, data);
+            }
+            else {
+                tx.update(jacketRef, data);
+            }
+        });
+        // mark processed
+        await db.collection("stagingInvoices").doc(stagingId).collection("units").doc(unitId).update({
+            processed: true,
+            processedAt: FieldValue.serverTimestamp(),
+            processedBy: request.auth.uid,
+            jacketVin: vin,
+            jacketPath: db.collection("jackets").doc(vin).path
+        });
+        created++;
+    }
+    // if no remaining, mark the parent
+    const remain = await db.collection("stagingInvoices").doc(stagingId).collection("units").where("processed", "==", false).limit(1).get();
+    if (remain.empty) {
+        await db.collection("stagingInvoices").doc(stagingId).update({
+            status: "processed",
+            processedAt: FieldValue.serverTimestamp()
+        });
+    }
+    return { success: true, created };
 });
 export const attachStagedDocToJacket = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
     assertAdmin(request);
@@ -397,7 +489,7 @@ export const generateJacketId = onCall({ region: "us-central1", secrets: [DEV_AD
     return { jacketId };
 });
 /* ───────────────────── PDF Generators ───────────────────── */
-export const generateJacketInvoice = onRequest({ region: "us-central1", timeoutSeconds: 120, memory: "1GiB", cors: true }, async (req, res) => {
+export const generateJacketInvoice = onRequest({ region: "us-central1", timeoutSeconds: 120, memory: "1GiB", cors: true, secrets: [DEV_ADMIN_UID_SECRET] }, async (req, res) => {
     try {
         if (req.method !== "POST" && req.method !== "GET") {
             res.status(405).send("Method Not Allowed");
@@ -585,7 +677,7 @@ ${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
         res.status(500).send(err?.message || "Internal error");
     }
 });
-export const generateBillOfSale = onRequest({ region: "us-central1", timeoutSeconds: 120, memory: "1GiB", cors: true }, async (req, res) => {
+export const generateBillOfSale = onRequest({ region: "us-central1", timeoutSeconds: 120, memory: "1GiB", cors: true, secrets: [DEV_ADMIN_UID_SECRET] }, async (req, res) => {
     try {
         if (req.method !== "POST" && req.method !== "GET") {
             res.status(405).send("Method Not Allowed");
@@ -738,7 +830,7 @@ export const generateBillOfSale = onRequest({ region: "us-central1", timeoutSeco
         res.status(500).send(err?.message || "Internal error");
     }
 });
-export const generateJacketPacket = onRequest({ region: "us-central1", timeoutSeconds: 180, memory: "1GiB", cors: true }, async (req, res) => {
+export const generateJacketPacket = onRequest({ region: "us-central1", timeoutSeconds: 180, memory: "1GiB", cors: true, secrets: [DEV_ADMIN_UID_SECRET] }, async (req, res) => {
     try {
         if (req.method !== "POST" && req.method !== "GET") {
             res.status(405).send("Method Not Allowed");
