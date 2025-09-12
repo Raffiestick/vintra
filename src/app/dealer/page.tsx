@@ -131,9 +131,8 @@ export default function DealerDashboardPage() {
         setLoadingData(true);
         const q = query(
             collection(db, "jackets"),
-            where("dealerId", "==", user.uid),
-            where("createdAt", "!=", null), // Ensure createdAt exists for ordering
-            orderBy("createdAt", "desc")
+            orderBy("createdAt", "desc"),
+            where("dealerId", "==", user.uid)
         );
         return onSnapshot(q, (snapshot) => {
             const jacketsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Jacket));
@@ -141,6 +140,7 @@ export default function DealerDashboardPage() {
             setLoadingData(false);
             setError(null);
         }, (err) => {
+            console.error("Firestore Error:", err);
             setError(err.code === 'permission-denied' ? "Please sign in to view your jackets." : "Failed to load jackets.");
             setLoadingData(false);
         });
@@ -383,5 +383,7 @@ export default function DealerDashboardPage() {
         </div>
     );
 }
+
+    
 
     
