@@ -1,20 +1,22 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { type User } from "firebase/auth";
 import { collection, query, where, onSnapshot, doc, getDoc, Timestamp, DocumentData } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase/client";
+import { db } from "@/lib/firebase/client";
 import { useSafeSnapshot } from "@/hooks/useSafeSnapshot";
+import { useAuth } from "@/hooks/use-auth";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuth } from "@/hooks/use-auth";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Printer, FileText, Download, Package, Car } from "lucide-react";
+import { useWindowSize } from 'react-use';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -24,6 +26,7 @@ interface Jacket extends DocumentData {
     year?: number;
     make?: string;
     model?: string;
+    color?: string;
     createdAt?: Timestamp;
     auctionSaleDate?: Timestamp;
     itemPrice?: number;
@@ -34,6 +37,9 @@ interface Jacket extends DocumentData {
     isMgmtPaid?: boolean; // legacy
     isMgmtFeePaid?: boolean;
     miscFees?: { amount?: number }[];
+    invoiceUrl?: string;
+    bosUrl?: string;
+    packetUrl?: string;
 }
 
 interface DealerProfile {
@@ -43,19 +49,20 @@ interface DealerProfile {
     email?: string;
 }
 
-const num = (x: any): number => (typeof x === 'number' ? x : 0);
+const num = (x: any): number => Number(x || 0);
 
 const calculateFinancials = (jacket: Jacket) => {
     const auctionDue = num(jacket.itemPrice) + num(jacket.buyerFee) + num(jacket.onlineFee);
     const mgmtDue = num(jacket.managementFee);
-    const miscTotal = jacket.miscFees?.reduce((s, f) => s + num(f?.amount), 0) || 0;
+    const miscTotal = Array.isArray(jacket.miscFees) ? jacket.miscFees.reduce((s, f) => s + num(f?.amount), 0) : 0;
     const subtotal = auctionDue + mgmtDue + miscTotal;
-    const isMgmtActuallyPaid = jacket.isMgmtFeePaid ?? jacket.isMgmtPaid ?? false;
+    const isMgmtActuallyPaid = (jacket.isMgmtFeePaid ?? jacket.isMgmtPaid) === true;
     const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtActuallyPaid ? mgmtDue : 0);
-    const outstanding = Math.max(0, subtotal - amountPaid);
+    const balanceDue = Math.max(0, subtotal - amountPaid);
     const isFullyPaid = jacket.isAuctionPaid && isMgmtActuallyPaid;
-    return { amountPaid, outstanding, isFullyPaid };
+    return { amountPaid, balanceDue, isFullyPaid };
 };
+
 
 function DashboardSkeleton() {
   return (
@@ -92,12 +99,16 @@ function DashboardSkeleton() {
 export default function DealerDashboardPage() {
     const router = useRouter();
     const { user, loading: authLoading } = useAuth();
+    const { width } = useWindowSize();
+    const isMobile = width < 768;
+
     const [profile, setProfile] = useState<DealerProfile | null>(null);
     const [jackets, setJackets] = useState<Jacket[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const [searchTerm, setSearchTerm] = useState("");
+    const [filter, setFilter] = useState("all");
     const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
@@ -113,24 +124,25 @@ export default function DealerDashboardPage() {
 
     useSafeSnapshot(() => {
         if (!user?.uid) {
-            if (!authLoading) setLoading(false);
+            if (!authLoading) setLoadingData(false);
             return;
         }
 
-        setLoading(true);
+        setLoadingData(true);
         const q = query(
             collection(db, "jackets"),
-            where("dealerId", "==", user.uid)
+            where("dealerId", "==", user.uid),
+            where("createdAt", "!=", null), // Ensure createdAt exists for ordering
+            orderBy("createdAt", "desc")
         );
         return onSnapshot(q, (snapshot) => {
             const jacketsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Jacket));
-            jacketsData.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
             setJackets(jacketsData);
-            setLoading(false);
+            setLoadingData(false);
             setError(null);
         }, (err) => {
             setError(err.code === 'permission-denied' ? "Please sign in to view your jackets." : "Failed to load jackets.");
-            setLoading(false);
+            setLoadingData(false);
         });
     }, [user?.uid, authLoading]);
 
@@ -139,25 +151,37 @@ export default function DealerDashboardPage() {
             return { unitsPurchased: 0, totalAmountPaid: 0, totalAmountOwed: 0 };
         }
         return jackets.reduce((acc, jacket) => {
-            const { amountPaid, outstanding } = calculateFinancials(jacket);
+            const { amountPaid, balanceDue } = calculateFinancials(jacket);
             return {
-                unitsPurchased: acc.unitsPurchased + (jacket.isAuctionPaid ? 1 : 0),
+                unitsPurchased: acc.unitsPurchased + 1,
                 totalAmountPaid: acc.totalAmountPaid + amountPaid,
-                totalAmountOwed: acc.totalAmountOwed + outstanding,
+                totalAmountOwed: acc.totalAmountOwed + balanceDue,
             };
         }, { unitsPurchased: 0, totalAmountPaid: 0, totalAmountOwed: 0 });
     }, [jackets]);
     
     const filteredJackets = useMemo(() => {
-        if (!searchTerm) return jackets;
+        let results = jackets;
         const lowercasedFilter = searchTerm.toLowerCase();
-        return jackets.filter(j => 
-            j.vin.toLowerCase().includes(lowercasedFilter) ||
-            j.make?.toLowerCase().includes(lowercasedFilter) ||
-            j.model?.toLowerCase().includes(lowercasedFilter) ||
-            j.year?.toString().includes(lowercasedFilter)
-        );
-    }, [jackets, searchTerm]);
+        
+        if (searchTerm) {
+            results = results.filter(j => 
+                j.vin.toLowerCase().includes(lowercasedFilter) ||
+                j.make?.toLowerCase().includes(lowercasedFilter) ||
+                j.model?.toLowerCase().includes(lowercasedFilter) ||
+                j.year?.toString().includes(lowercasedFilter)
+            );
+        }
+
+        if (filter !== "all") {
+            results = results.filter(j => {
+                const { isFullyPaid } = calculateFinancials(j);
+                return filter === "paid" ? isFullyPaid : !isFullyPaid;
+            });
+        }
+        
+        return results;
+    }, [jackets, searchTerm, filter]);
 
     const paginatedJackets = useMemo(() => {
         const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -168,12 +192,12 @@ export default function DealerDashboardPage() {
 
     const fmtCurrency = (n?: number) => (n ?? 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
-    if (loading || authLoading) {
+    if (authLoading || loadingData) {
         return <DashboardSkeleton />;
     }
     
     if (!user) {
-        return <div className="p-4 text-sm text-muted-foreground">Please sign in.</div>;
+        return <div className="p-4 text-sm text-muted-foreground">Please sign in to view your dashboard.</div>;
     }
     
     if (error) {
@@ -181,6 +205,44 @@ export default function DealerDashboardPage() {
     }
 
     const welcomeName = profile?.companyName || profile?.contactName || profile?.displayName || user?.email || 'Dealer';
+
+    const ActionButtons = ({ jacket }: { jacket: Jacket }) => (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button size="sm" onClick={() => router.push(`/dealer/jackets/${jacket.vin}`)}>
+                <Car className="mr-2" /> Open Jacket
+            </Button>
+            {jacket.invoiceUrl && (
+                <div className="flex gap-2">
+                    <Button asChild size="sm" variant="outline">
+                        <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer"><Download /> Invoice</a>
+                    </Button>
+                    <Button asChild size="sm" variant="secondary">
+                        <a href={`/dealer/print?url=${encodeURIComponent(jacket.invoiceUrl)}`} target="_blank" rel="noopener noreferrer"><Printer /></a>
+                    </Button>
+                </div>
+            )}
+            {jacket.bosUrl && (
+                <div className="flex gap-2">
+                    <Button asChild size="sm" variant="outline">
+                        <a href={jacket.bosUrl} target="_blank" rel="noopener noreferrer"><Download /> BOS</a>
+                    </Button>
+                     <Button asChild size="sm" variant="secondary">
+                        <a href={`/dealer/print?url=${encodeURIComponent(jacket.bosUrl)}`} target="_blank" rel="noopener noreferrer"><Printer /></a>
+                    </Button>
+                </div>
+            )}
+            {jacket.packetUrl && (
+                <div className="flex gap-2">
+                    <Button asChild size="sm" variant="outline">
+                        <a href={jacket.packetUrl} target="_blank" rel="noopener noreferrer"><Package /> Packet</a>
+                    </Button>
+                     <Button asChild size="sm" variant="secondary">
+                        <a href={`/dealer/print?url=${encodeURIComponent(jacket.packetUrl)}`} target="_blank" rel="noopener noreferrer"><Printer /></a>
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
 
     return (
         <div className="space-y-6">
@@ -196,61 +258,103 @@ export default function DealerDashboardPage() {
                     <CardContent><p className="text-2xl font-bold">{fmtCurrency(metrics.totalAmountPaid)}</p></CardContent>
                 </Card>
                 <Card>
-                    <CardHeader><CardTitle>Total Amount Owed</CardTitle></CardHeader>
-                    <CardContent><p className="text-2xl font-bold">{fmtCurrency(metrics.totalAmountOwed)}</p></CardContent>
+                    <CardHeader><CardTitle>Total Balance Due</CardTitle></CardHeader>
+                    <CardContent><p className="text-2xl font-bold text-destructive">{fmtCurrency(metrics.totalAmountOwed)}</p></CardContent>
                 </Card>
             </div>
             
             <Card>
                 <CardHeader>
-                    <Input 
-                        placeholder="Search by VIN, Make, Model, or Year..."
-                        value={searchTerm}
-                        onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                        className="max-w-sm"
-                    />
+                    <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+                        <Input 
+                            placeholder="Search by VIN, Make, Model, or Year..."
+                            value={searchTerm}
+                            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                            className="w-full md:max-w-sm"
+                        />
+                        <Tabs value={filter} onValueChange={(v) => { setFilter(v); setCurrentPage(1); }} className="w-full md:w-auto">
+                            <TabsList className="grid w-full grid-cols-3">
+                                <TabsTrigger value="all">All</TabsTrigger>
+                                <TabsTrigger value="paid">Paid</TabsTrigger>
+                                <TabsTrigger value="unpaid">Unpaid</TabsTrigger>
+                            </TabsList>
+                        </Tabs>
+                    </div>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Auction Date</TableHead>
-                                <TableHead>VIN</TableHead>
-                                <TableHead>Vehicle</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead className="text-right">Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {paginatedJackets.length > 0 ? (
-                                paginatedJackets.map(jacket => {
-                                    const { isFullyPaid } = calculateFinancials(jacket);
-                                    const vehicleDesc = [jacket.year, jacket.make, jacket.model].filter(Boolean).join(' ');
+                    {paginatedJackets.length === 0 ? (
+                         <div className="text-center py-10">
+                            <p className="text-muted-foreground">No jackets found matching your criteria.</p>
+                        </div>
+                    ) : isMobile ? (
+                        <div className="space-y-4">
+                            {paginatedJackets.map(jacket => {
+                                const { isFullyPaid, amountPaid, balanceDue } = calculateFinancials(jacket);
+                                return (
+                                <Card key={jacket.id}>
+                                    <CardHeader>
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <CardTitle className="font-mono text-base">{jacket.vin}</CardTitle>
+                                                <CardDescription>{jacket.auctionSaleDate ? jacket.auctionSaleDate.toDate().toLocaleDateString() : 'N/A'}</CardDescription>
+                                            </div>
+                                            <Badge variant={isFullyPaid ? 'default' : 'destructive'}>
+                                                {isFullyPaid ? 'Paid' : 'Unpaid'}
+                                            </Badge>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <p className="font-medium">{[jacket.year, jacket.make, jacket.model, jacket.color].filter(Boolean).join(' ')}</p>
+                                        <div className="flex justify-between text-sm">
+                                            <div className="text-muted-foreground">Paid: <span className="font-medium text-foreground">{fmtCurrency(amountPaid)}</span></div>
+                                            <div className="text-muted-foreground">Due: <span className="font-medium text-destructive">{fmtCurrency(balanceDue)}</span></div>
+                                        </div>
+                                        <ActionButtons jacket={jacket} />
+                                    </CardContent>
+                                </Card>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Auction Date</TableHead>
+                                    <TableHead>Vehicle</TableHead>
+                                    <TableHead>Financials</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {paginatedJackets.map(jacket => {
+                                    const { isFullyPaid, amountPaid, balanceDue } = calculateFinancials(jacket);
+                                    const vehicleDesc = [jacket.year, jacket.make, jacket.model, jacket.color].filter(Boolean).join(' ');
                                     return (
                                         <TableRow key={jacket.id}>
                                             <TableCell>{jacket.auctionSaleDate ? jacket.auctionSaleDate.toDate().toLocaleDateString() : 'N/A'}</TableCell>
-                                            <TableCell className="font-mono">{jacket.vin}</TableCell>
-                                            <TableCell>{vehicleDesc || 'Details Missing'}</TableCell>
+                                            <TableCell>
+                                                <div className="font-medium">{vehicleDesc || "Details Missing"}</div>
+                                                <div className="text-sm text-muted-foreground font-mono">{jacket.vin}</div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline">Paid: {fmtCurrency(amountPaid)}</Badge>
+                                                <Badge variant="destructive" className="ml-2">Due: {fmtCurrency(balanceDue)}</Badge>
+                                            </TableCell>
                                             <TableCell>
                                                 <Badge variant={isFullyPaid ? 'default' : 'destructive'}>
                                                     {isFullyPaid ? 'Paid' : 'Unpaid'}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <Button size="sm" onClick={() => router.push(`/dealer/jackets/${jacket.vin}`)}>
-                                                    Open Jacket
-                                                </Button>
+                                                <ActionButtons jacket={jacket} />
                                             </TableCell>
                                         </TableRow>
                                     );
-                                })
-                            ) : (
-                                <TableRow>
-                                    <TableCell colSpan={5} className="h-24 text-center">No jackets found.</TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                                })}
+                            </TableBody>
+                        </Table>
+                    )}
                     {totalPages > 1 && (
                         <div className="flex items-center justify-between pt-4">
                             <Button

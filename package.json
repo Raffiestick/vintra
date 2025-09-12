@@ -53,6 +53,7 @@
     "react-day-picker": "^8.10.0",
     "react-dom": "^18",
     "react-hook-form": "^7.51.0",
+    "react-use": "^17.5.0",
     "recharts": "^2.12.3",
     "tailwind-merge": "^2.2.1",
     "tailwindcss-animate": "^1.0.7",
@@ -69,5 +70,3 @@
     "typescript": "^5"
   }
 }
-
-    

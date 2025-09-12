@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut, getAuth } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Power, Car } from "lucide-react";
+import { Power, Car, FilePlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function DealerLayout({
@@ -31,6 +31,7 @@ export default function DealerLayout({
 
   const navItems = [
     { href: "/dealer", label: "My Jackets", icon: Car },
+    { href: "/dealer/content-generator", label: "Content Tool", icon: FilePlus },
   ];
 
   return (
@@ -51,8 +52,8 @@ export default function DealerLayout({
                   href={item.href}
                   className={cn(
                     "flex items-center w-full text-left px-4 py-2 rounded-md transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    pathname === item.href &&
-                      "bg-primary text-primary-foreground"
+                    pathname.startsWith(item.href) && item.href !== '/dealer' ? "bg-primary text-primary-foreground" : "",
+                    pathname === item.href && "bg-primary text-primary-foreground"
                   )}
                 >
                   <item.icon className="mr-2 h-4 w-4" />
