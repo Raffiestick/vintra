@@ -1,11 +1,12 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { auth, db } from "@/lib/firebase/client";
+import { db } from "@/lib/firebase/client";
 import { collection, query, onSnapshot, DocumentData, Timestamp, orderBy } from "firebase/firestore";
 import { useAuth } from "@/hooks/use-auth";
+import { useSafeSnapshot } from "@/hooks/useSafeSnapshot";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -85,11 +86,12 @@ export default function AdminAllJacketsPage() {
   const { user, isAdmin, loading: authLoading } = useAuth();
   const [allJackets, setAllJackets] = useState<Jacket[]>([]);
   const [loadingJackets, setLoadingJackets] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
 
-  useEffect(() => {
+  useSafeSnapshot(() => {
     if (!isAdmin) {
       if (!authLoading) setLoadingJackets(false);
       return;
@@ -98,19 +100,19 @@ export default function AdminAllJacketsPage() {
     setLoadingJackets(true);
     const q = query(collection(db, "jackets"), orderBy("createdAt", "desc"));
     
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    return onSnapshot(q, (querySnapshot) => {
       const jacketsData = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
       } as Jacket));
       setAllJackets(jacketsData);
       setLoadingJackets(false);
-    }, (error) => {
-      console.error("Error fetching all jackets: ", error);
+      setError(null);
+    }, (err) => {
+      console.error("Error fetching all jackets: ", err);
+      setError(err.code === 'permission-denied' ? "You don't have permission to view this." : "Failed to load jackets.");
       setLoadingJackets(false);
     });
-
-    return () => unsubscribe();
   }, [isAdmin, authLoading]);
 
   const filteredJackets = useMemo(() => {
@@ -143,6 +145,10 @@ export default function AdminAllJacketsPage() {
             </CardContent>
         </Card>
     );
+  }
+
+  if (error) {
+    return <div className="p-4 text-sm text-red-600">{error}</div>;
   }
 
   return (
@@ -246,5 +252,3 @@ export default function AdminAllJacketsPage() {
     </div>
   );
 }
-
-    

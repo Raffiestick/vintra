@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { httpsCallableClient } from '@/lib/firebase/client';
@@ -10,19 +10,34 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Download } from 'lucide-react';
+import { useSafeSnapshot } from '@/hooks/useSafeSnapshot';
+import { useAuth } from '@/hooks/use-auth';
 
 export default function DealerManagementClient() {
+    const { isAdmin } = useAuth();
     const [pendingDealers, setPendingDealers] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const { toast } = useToast();
 
-    useEffect(() => {
+    useSafeSnapshot(() => {
+        if (!isAdmin) {
+            setLoading(false);
+            return;
+        };
+
         const q = query(collection(db, "users"), where("status", "==", "pending"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        return onSnapshot(q, (querySnapshot) => {
             const dealersData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setPendingDealers(dealersData);
+            setLoading(false);
+            setError(null);
+        }, (err) => {
+            console.error("Error fetching pending dealers: ", err);
+            setError(err.code === 'permission-denied' ? "You don't have permission to view this." : "Failed to load pending dealers.");
+            setLoading(false);
         });
-        return () => unsubscribe();
-    }, []);
+    }, [isAdmin]);
 
     const handleApplication = async (uid: string, action: 'approve' | 'deny') => {
         try {
@@ -34,6 +49,10 @@ export default function DealerManagementClient() {
             toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
         }
     };
+    
+    if (error) {
+        return <div className="p-4 text-sm text-red-600">{error}</div>;
+    }
 
     return (
         <Card>
@@ -53,7 +72,13 @@ export default function DealerManagementClient() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {pendingDealers.length === 0 ? (
+                        {loading ? (
+                            <TableRow>
+                                <TableCell colSpan={5} className="h-24 text-center">
+                                    Loading...
+                                </TableCell>
+                            </TableRow>
+                        ) : pendingDealers.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={5} className="h-24 text-center">
                                     No pending applications.

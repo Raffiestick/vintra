@@ -1,8 +1,8 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
+import { useState, useMemo } from 'react';
+import { collection, getDocs, query, orderBy, Timestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -12,6 +12,9 @@ import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { useAuth } from '@/hooks/use-auth';
+import { useSafeSnapshot } from '@/hooks/useSafeSnapshot';
+import Link from 'next/link';
 
 interface StagedInvoice {
     id: string;
@@ -51,41 +54,46 @@ function StagingSkeleton() {
 }
 
 export default function StagedInvoicesPage() {
+    const { isAdmin, loading: authLoading } = useAuth();
     const [invoices, setInvoices] = useState<StagedInvoice[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [hideProcessed, setHideProcessed] = useState(true);
     const router = useRouter();
 
-    useEffect(() => {
-        const fetchInvoices = async () => {
-            try {
-                const q = query(collection(db, 'stagingInvoices'), orderBy('createdAt', 'desc'));
-                const querySnapshot = await getDocs(q);
-                
-                const invoicesData = await Promise.all(querySnapshot.docs.map(async (doc) => {
-                    const unitsCollection = collection(db, 'stagingInvoices', doc.id, 'units');
-                    const unitsSnapshot = await getDocs(unitsCollection);
-                    return {
-                        id: doc.id,
-                        ...doc.data(),
-                        unitsCount: unitsSnapshot.size
-                    } as StagedInvoice;
-                }));
+    useSafeSnapshot(() => {
+        if (!isAdmin) {
+            if (!authLoading) setLoading(false);
+            return;
+        }
 
-                setInvoices(invoicesData);
-            } catch (error) {
-                console.error("Error fetching staged invoices:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
+        const q = query(collection(db, 'stagingInvoices'), orderBy('createdAt', 'desc'));
+        
+        return onSnapshot(q, async (querySnapshot) => {
+            const invoicesData = await Promise.all(querySnapshot.docs.map(async (doc) => {
+                const unitsCollection = collection(db, 'stagingInvoices', doc.id, 'units');
+                const unitsSnapshot = await getDocs(unitsCollection);
+                return {
+                    id: doc.id,
+                    ...doc.data(),
+                    unitsCount: unitsSnapshot.size
+                } as StagedInvoice;
+            }));
 
-        fetchInvoices();
-    }, []);
+            setInvoices(invoicesData);
+            setLoading(false);
+            setError(null);
+        }, (err) => {
+            console.error("Error fetching staged invoices:", err);
+            setError(err.code === 'permission-denied' ? "You don't have permission to view this." : "Failed to load invoices.");
+            setLoading(false);
+        });
+
+    }, [isAdmin, authLoading]);
 
     const filteredInvoices = useMemo(() => {
         if (!hideProcessed) return invoices;
-        return invoices.filter(invoice => invoice.status !== 'processed');
+        return invoices.filter(invoice => getStatus(invoice) !== 'processed');
     }, [invoices, hideProcessed]);
 
     const getStatus = (invoice: StagedInvoice) => {
@@ -93,8 +101,16 @@ export default function StagedInvoicesPage() {
         return invoice.unitsCount > 0 ? 'in-progress' : 'new';
     }
 
-    if (loading) {
+    if (loading || authLoading) {
         return <StagingSkeleton />;
+    }
+
+    if (!isAdmin) {
+        return <p className="text-muted-foreground p-4">Admin access required.</p>
+    }
+
+    if (error) {
+        return <div className="p-4 text-sm text-red-600">{error}</div>;
     }
 
     return (
@@ -165,8 +181,8 @@ export default function StagedInvoicesPage() {
                             <p className="text-muted-foreground">
                                 {hideProcessed ? "No unprocessed invoices found." : "No invoices are currently in the staging area."}
                             </p>
-                            <Button variant="link" onClick={() => router.push('/admin/jackets/new')}>
-                                Upload an Invoice
+                            <Button variant="link" asChild>
+                                <Link href="/admin/jackets/new">Upload an Invoice</Link>
                             </Button>
                         </div>
                     )}

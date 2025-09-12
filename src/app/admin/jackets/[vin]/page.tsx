@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -27,6 +26,7 @@ import {
   deleteObject,
 } from "firebase/storage";
 import { useAuth } from "@/hooks/use-auth";
+import { useSafeSnapshot } from "@/hooks/useSafeSnapshot";
 import { db, storage, auth } from "@/lib/firebase/client";
 import {
   Card,
@@ -220,7 +220,7 @@ export default function JacketDetailPage() {
   );
 
   const { toast } = useToast();
-  const { user, isAdmin } = useAuth(); 
+  const { user, isAdmin, loading: authLoading } = useAuth(); 
 
   const [jacket, setJacket] = useState<Jacket | null>(null);
   const [loading, setLoading] = useState(true);
@@ -276,15 +276,14 @@ export default function JacketDetailPage() {
     return approvedDealers.find(d => d.uid === jacket.dealerId) || null;
   }, [jacket?.dealerId, approvedDealers]);
 
-  useEffect(() => {
-    if (!vin || typeof vin !== "string") {
-      setError("VIN not found in URL.");
-      setLoading(false);
+  useSafeSnapshot(() => {
+    if (!vin || !isAdmin) {
+      if (!authLoading) setLoading(false);
       return;
     }
 
-    const jacketDocRef = doc(db, "jackets", vin);
-    const unsubscribe = onSnapshot(
+    const jacketDocRef = doc(db, "jackets", vin as string);
+    return onSnapshot(
       jacketDocRef,
       (docSnap) => {
         if (docSnap.exists()) {
@@ -303,14 +302,19 @@ export default function JacketDetailPage() {
         setLoading(false);
       },
       (err) => {
-        console.error("Error fetching jacket:", err);
-        setError("Failed to fetch jacket data.");
+        setError(err.code === 'permission-denied' ? "You don't have permission to view this jacket." : "Failed to fetch jacket data.");
         setLoading(false);
       }
     );
-    
-    const activityQuery = query(collection(db, "jackets", vin, "activity"), orderBy("ts", "desc"));
-    const unsubscribeActivity = onSnapshot(activityQuery, (snapshot) => {
+  }, [vin, isAdmin, authLoading]);
+  
+  useSafeSnapshot(() => {
+    if (!vin || !isAdmin) {
+        if (!authLoading) setLoadingActivity(false);
+        return;
+    }
+    const activityQuery = query(collection(db, "jackets", vin as string, "activity"), orderBy("ts", "desc"));
+    return onSnapshot(activityQuery, (snapshot) => {
         const activities = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Activity));
         setActivityLog(activities);
         setLoadingActivity(false);
@@ -318,13 +322,8 @@ export default function JacketDetailPage() {
         console.error("Error fetching activity log:", err);
         setLoadingActivity(false);
     });
+  }, [vin, isAdmin, authLoading]);
 
-
-    return () => {
-      unsubscribe();
-      unsubscribeActivity();
-    };
-  }, [vin]);
 
   // One-time migration for isMgmtPaid -> isMgmtFeePaid
   useEffect(() => {
@@ -415,7 +414,7 @@ export default function JacketDetailPage() {
                     </a>
                 )
             });
-            await logActivity(vin, { type: "invoiceGenerated", message: `Invoice generated ${result?.invoiceId ? " — " + result.invoiceId : ""}`, meta: { invoiceId: result?.invoiceId } });
+            await logActivity(vin as string, { type: "invoiceGenerated", message: `Invoice generated ${result?.invoiceId ? " — " + result.invoiceId : ""}`, meta: { invoiceId: result?.invoiceId } });
         } else {
             toast({
                 title: "Invoice Generation Started",
@@ -463,7 +462,7 @@ export default function JacketDetailPage() {
                     </a>
                 )
             });
-            await logActivity(vin, { type: "bosGenerated", message: "Bill of Sale generated", meta: { url: result.url } });
+            await logActivity(vin as string, { type: "bosGenerated", message: "Bill of Sale generated", meta: { url: result.url } });
         } else {
             toast({
                 title: "BOS Generation Started",
@@ -511,7 +510,7 @@ export default function JacketDetailPage() {
                     </a>
                 )
             });
-            await logActivity(vin, { type: "packetGenerated", message: "Jacket Packet generated", meta: { url: result.url } });
+            await logActivity(vin as string, { type: "packetGenerated", message: "Jacket Packet generated", meta: { url: result.url } });
         } else {
             toast({
                 title: "Packet Generation Started",
@@ -546,7 +545,7 @@ export default function JacketDetailPage() {
   const handleConfirmPaid = async () => {
     if (!vin || !paymentDialog.type || !paymentDate) return;
     setIsUpdatingPayment(true);
-    const jacketDocRef = doc(db, "jackets", vin);
+    const jacketDocRef = doc(db, "jackets", vin as string);
     const type = paymentDialog.type;
     
     let updateData: any = {
@@ -570,7 +569,7 @@ export default function JacketDetailPage() {
       toast({ title: "Status Updated", description: `Marked as paid successfully.` });
       
       const logMessage = `${type === 'auction' ? 'Auction' : 'Mgmt fee'} marked PAID (${paymentDate.toLocaleDateString()}${paymentRef ? " — " + paymentRef : ""})`;
-      await logActivity(vin, {
+      await logActivity(vin as string, {
           type: type === 'auction' ? 'auctionPaidOn' : 'mgmtPaidOn',
           message: logMessage,
           meta: { date: paymentDate, note: paymentRef }
@@ -588,7 +587,7 @@ export default function JacketDetailPage() {
   const handleConfirmUnpaid = async () => {
     if (!vin || !unpaidConfirmDialog.type) return;
     setIsUpdatingPayment(true);
-    const jacketDocRef = doc(db, "jackets", vin);
+    const jacketDocRef = doc(db, "jackets", vin as string);
     const type = unpaidConfirmDialog.type;
 
     let updateData: any = {
@@ -611,7 +610,7 @@ export default function JacketDetailPage() {
       console.log(`${type} Paid cleared`);
       toast({ title: "Status Updated", description: `Marked as unpaid.` });
       
-      await logActivity(vin, {
+      await logActivity(vin as string, {
           type: type === 'auction' ? 'auctionPaidOff' : 'mgmtPaidOff',
           message: `${type === 'auction' ? 'Auction' : 'Mgmt fee'} marked UNPAID`
       });
@@ -649,14 +648,14 @@ export default function JacketDetailPage() {
     };
 
     try {
-        const jacketDocRef = doc(db, "jackets", vin);
+        const jacketDocRef = doc(db, "jackets", vin as string);
         await updateDoc(jacketDocRef, {
             miscFees: arrayUnion(newFee),
             updatedAt: Timestamp.fromDate(new Date()),
         });
         toast({ title: "Fee Added", description: "The miscellaneous fee has been added." });
         
-        await logActivity(vin, {
+        await logActivity(vin as string, {
             type: "miscFeeAdded",
             message: `Misc fee added: ${feeDescription.trim()} — ${fmtCurrency(parsedAmount)}`,
             meta: { description: feeDescription.trim(), amount: parsedAmount }
@@ -723,7 +722,7 @@ export default function JacketDetailPage() {
               createdAt: Timestamp.fromDate(new Date()),
           };
 
-          const jacketDocRef = doc(db, "jackets", vin);
+          const jacketDocRef = doc(db, "jackets", vin as string);
           await updateDoc(jacketDocRef, {
               documents: arrayUnion(newDocument),
               updatedAt: serverTimestamp(),
@@ -731,7 +730,7 @@ export default function JacketDetailPage() {
 
           toast({ title: "Document Uploaded", description: `${docFile.name} has been added.` });
           
-          await logActivity(vin, {
+          await logActivity(vin as string, {
               type: "docAdded",
               message: `${docType.toUpperCase()} uploaded: ${docFile.name}`,
               meta: { type: docType, name: docFile.name }
@@ -770,7 +769,7 @@ export default function JacketDetailPage() {
             : d
         );
 
-        const jacketDocRef = doc(db, "jackets", vin);
+        const jacketDocRef = doc(db, "jackets", vin as string);
         await updateDoc(jacketDocRef, {
             documents: updatedDocuments,
             updatedAt: serverTimestamp()
@@ -785,7 +784,7 @@ export default function JacketDetailPage() {
 
         toast({ title: "Document Replaced", description: `${newFile.name} is now uploaded.` });
         
-        await logActivity(vin, {
+        await logActivity(vin as string, {
             type: "docReplaced",
             message: `${docToReplace.type.toUpperCase()} replaced: ${newFile.name}`,
             meta: { type: docToReplace.type, name: newFile.name }
@@ -805,7 +804,7 @@ export default function JacketDetailPage() {
     setIsDeletingDoc(true);
 
     try {
-        const jacketDocRef = doc(db, "jackets", vin);
+        const jacketDocRef = doc(db, "jackets", vin as string);
         const currentDoc = await getDoc(jacketDocRef);
         const currentData = currentDoc.data() as Jacket;
 
@@ -830,7 +829,7 @@ export default function JacketDetailPage() {
 
         toast({ title: "Document Deleted", description: `${docToDelete.name} has been removed.` });
         
-        await logActivity(vin, {
+        await logActivity(vin as string, {
             type: "docDeleted",
             message: `${(docToDelete.type || "DOC").toUpperCase()} deleted: ${docToDelete.name || "file"}`,
             meta: { type: docToDelete.type, name: docToDelete.name }
@@ -857,14 +856,14 @@ export default function JacketDetailPage() {
       setIsSavingDealer(true);
       try {
           const dealer = approvedDealers.find(d => d.uid === selectedDealer);
-          const jacketDocRef = doc(db, "jackets", vin);
+          const jacketDocRef = doc(db, "jackets", vin as string);
           await updateDoc(jacketDocRef, {
               dealerId: selectedDealer,
               updatedAt: serverTimestamp(),
           });
           toast({ title: "Success", description: "Dealer assigned successfully." });
           
-          await logActivity(vin, {
+          await logActivity(vin as string, {
               type: "assignDealer",
               message: `Assigned to dealer ${dealer?.companyName || selectedDealer}`,
               meta: { dealerUid: selectedDealer, dealerEmail: dealer?.email, dealerName: dealer?.companyName }
@@ -913,7 +912,7 @@ export default function JacketDetailPage() {
     return { auctionDue, mgmtDue, miscTotal, subtotal, outstanding, amountPaid };
   }, [jacket, isMgmtFeeActuallyPaid]);
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8">
         <JacketDetailSkeleton />
@@ -1595,6 +1594,3 @@ export default function JacketDetailPage() {
     </main>
   );
 }
-
-
-

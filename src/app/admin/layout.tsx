@@ -3,11 +3,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase/client";
+import { signOut, getAuth } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Power, UserCheck, UserCog, FilePlus, FileText, UploadCloud } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AdminLayout({
   children,
@@ -16,14 +16,16 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { toast } = useToast();
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
-      router.push("/");
-    } catch (error) {
+      await signOut(getAuth());
+      router.replace("/");
+      toast({ title: "Signed Out", description: "You have been successfully signed out." });
+    } catch (error: any) {
       console.error("Error signing out: ", error);
-      // Optionally, show a toast notification on error
+      toast({ title: "Sign Out Error", description: error.message, variant: "destructive" });
     }
   };
 

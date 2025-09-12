@@ -194,18 +194,21 @@ export const startInvoiceParse = onRequest({
             res.status(415).json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only for MVP)` });
             return;
         }
-        // 2) Download bytes (force a real Node Buffer)
+        // 1) Download bytes (force a real Node Buffer)
         const [downloaded] = await file.download();
-        const nodeBuffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded);
-        console.log("startInvoiceParse", { gcsPath, contentType, length: nodeBuffer?.length || 0 });
+        const nodeBuffer = Buffer.isBuffer(downloaded)
+            ? downloaded
+            : Buffer.from(downloaded);
         if (!nodeBuffer || nodeBuffer.length === 0) {
+            console.error("Downloaded buffer empty for", gcsPath, contentType);
             res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
             return;
         }
-        // 3) Extract text with pdf-parse (internal entry avoids ENOENT)
-        const pdfParse = (await import("pdf-parse")).default;
+        // 2) ✅ Use internal entry to avoid top-level test file read
+        const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default;
+        // 3) Parse to text
         const { text } = await pdfParse(nodeBuffer);
-        if (!text || !text.trim()) {
+        if (!text.trim()) {
             res.status(500).json({ error: "Extracted text is empty." });
             return;
         }

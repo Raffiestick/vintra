@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Download } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
+import { useSafeSnapshot } from '@/hooks/useSafeSnapshot';
+import { useAuth } from '@/hooks/use-auth';
 
 interface ApprovedDealer {
     id: string;
@@ -22,26 +24,38 @@ interface ApprovedDealer {
 }
 
 export default function ApprovedDealersClient() {
+    const { isAdmin } = useAuth();
     const [approvedDealers, setApprovedDealers] = useState<ApprovedDealer[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
+    useSafeSnapshot(() => {
+        if (!isAdmin) {
+            setLoading(false);
+            return;
+        };
+
         const q = query(collection(db, "users"), where("status", "==", "approved"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        return onSnapshot(q, (querySnapshot) => {
             const dealersData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ApprovedDealer));
             setApprovedDealers(dealersData);
             setLoading(false);
-        }, (error) => {
-            console.error("Error fetching approved dealers: ", error);
+            setError(null);
+        }, (err) => {
+            console.error("Error fetching approved dealers: ", err);
+            setError(err.code === 'permission-denied' ? "You don't have permission to view this." : "Failed to load approved dealers.");
             setLoading(false);
         });
-        return () => unsubscribe();
-    }, []);
+    }, [isAdmin]);
 
     const formatDate = (timestamp: Timestamp | null) => {
         if (!timestamp) return 'N/A';
         return new Date(timestamp.seconds * 1000).toLocaleDateString();
     };
+
+    if (error) {
+        return <div className="p-4 text-sm text-red-600">{error}</div>;
+    }
 
     return (
         <Card>

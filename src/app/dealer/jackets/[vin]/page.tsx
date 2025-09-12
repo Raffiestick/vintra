@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { doc, onSnapshot, Timestamp } from "firebase/firestore";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/client";
+import { useSafeSnapshot } from "@/hooks/useSafeSnapshot";
 import {
   Card,
   CardContent,
@@ -66,7 +67,7 @@ function JacketDetailSkeleton() {
             </div>
         </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card><CardHeader><Skeleton className="h-6 w-1/2 mb-4" /></CardHeader><CardContent><Skeleton className="h-24 w-full" /></CardContent></Card>
         <Card><CardHeader><Skeleton className="h-6 w-1/2 mb-4" /></CardHeader><CardContent><Skeleton className="h-24 w-full" /></CardContent></Card>
       </div>
@@ -81,36 +82,37 @@ export default function DealerJacketDetailPage() {
   
   const [jacket, setJacket] = useState<Jacket | null>(null);
   const [loading, setLoading] = useState(true);
-  const [accessDenied, setAccessDenied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!vin || !user) return;
+  useSafeSnapshot(() => {
+    if (!vin || !user?.uid) {
+        if (!authLoading) setLoading(false);
+        return;
+    };
 
-    const jacketDocRef = doc(db, "jackets", vin);
-    const unsubscribe = onSnapshot(
+    const jacketDocRef = doc(db, "jackets", vin as string);
+    return onSnapshot(
       jacketDocRef,
       (docSnap) => {
         if (docSnap.exists()) {
           const jacketData = { vin: docSnap.id, ...docSnap.data() } as Jacket;
           if (jacketData.dealerId === user.uid) {
             setJacket(jacketData);
-            setAccessDenied(false);
+            setError(null);
           } else {
-            setAccessDenied(true);
+            setError("Access Denied: You do not have permission to view this jacket.");
           }
         } else {
-          setAccessDenied(true);
+          setError("Jacket not found.");
         }
         setLoading(false);
       },
       (err) => {
-        console.error("Error fetching jacket:", err);
-        setAccessDenied(true); 
+        setError(err.code === 'permission-denied' ? "Please sign in to view this jacket." : "Failed to load jacket data.");
         setLoading(false);
       }
     );
-    return () => unsubscribe();
-  }, [vin, user]);
+  }, [vin, user?.uid, authLoading]);
 
   const fmtCurrency = (n?: number): string => {
     return (n ?? 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -138,17 +140,17 @@ export default function DealerJacketDetailPage() {
     return <JacketDetailSkeleton />;
   }
 
-  if (accessDenied) {
+  if (error) {
     return (
       <main className="flex min-h-[50vh] flex-col items-center justify-center bg-background p-4 md:p-8">
         <Card className="w-full max-w-lg text-center">
           <CardHeader>
             <CardTitle className="text-2xl font-bold text-destructive">
-              Access Denied
+              Error
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p>You do not have permission to view this jacket.</p>
+            <p>{error}</p>
           </CardContent>
         </Card>
       </main>
@@ -156,6 +158,7 @@ export default function DealerJacketDetailPage() {
   }
 
   if (!jacket) {
+    // This case is typically covered by the error state now
     return (
       <main className="flex min-h-[50vh] flex-col items-center justify-center bg-background p-4 md:p-8">
         <Card className="w-full max-w-lg text-center">
@@ -263,5 +266,3 @@ export default function DealerJacketDetailPage() {
     </div>
   );
 }
-
-    

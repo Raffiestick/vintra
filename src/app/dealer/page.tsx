@@ -1,11 +1,12 @@
 
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged, type User } from "firebase/auth";
-import { collection, query, where, onSnapshot, doc, getDoc, orderBy, Timestamp, DocumentData } from "firebase/firestore";
+import { type User } from "firebase/auth";
+import { collection, query, where, onSnapshot, doc, getDoc, Timestamp, DocumentData } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
+import { useSafeSnapshot } from "@/hooks/useSafeSnapshot";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/use-auth";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -55,7 +57,6 @@ const calculateFinancials = (jacket: Jacket) => {
     return { amountPaid, outstanding, isFullyPaid };
 };
 
-
 function DashboardSkeleton() {
   return (
     <div className="space-y-6">
@@ -90,50 +91,48 @@ function DashboardSkeleton() {
 
 export default function DealerDashboardPage() {
     const router = useRouter();
-    const [user, setUser] = useState<User | null>(null);
+    const { user, loading: authLoading } = useAuth();
     const [profile, setProfile] = useState<DealerProfile | null>(null);
     const [jackets, setJackets] = useState<Jacket[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     const [searchTerm, setSearchTerm] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-            if (currentUser) {
-                setUser(currentUser);
-                const profileDoc = await getDoc(doc(db, "users", currentUser.uid));
-                if (profileDoc.exists()) {
-                    setProfile(profileDoc.data() as DealerProfile);
-                }
-            } else {
-                router.push("/");
-            }
-        });
-        return () => unsubscribe();
-    }, [router]);
-
-    useEffect(() => {
         if (!user) return;
+        const fetchProfile = async () => {
+            const profileDoc = await getDoc(doc(db, "users", user.uid));
+            if (profileDoc.exists()) {
+                setProfile(profileDoc.data() as DealerProfile);
+            }
+        };
+        fetchProfile();
+    }, [user]);
+
+    useSafeSnapshot(() => {
+        if (!user?.uid) {
+            if (!authLoading) setLoading(false);
+            return;
+        }
+
         setLoading(true);
-        // The composite index is required for the orderBy clause.
-        // We can remove it and sort on the client to avoid the error.
         const q = query(
             collection(db, "jackets"),
             where("dealerId", "==", user.uid)
         );
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const jacketsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Jacket));
-            // Sort client-side
+        return onSnapshot(q, (snapshot) => {
+            const jacketsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Jacket));
             jacketsData.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
             setJackets(jacketsData);
             setLoading(false);
+            setError(null);
         }, (err) => {
-            console.error("Error fetching jackets:", err);
+            setError(err.code === 'permission-denied' ? "Please sign in to view your jackets." : "Failed to load jackets.");
             setLoading(false);
         });
-        return () => unsubscribe();
-    }, [user]);
+    }, [user?.uid, authLoading]);
 
     const metrics = useMemo(() => {
         if (jackets.length === 0) {
@@ -169,10 +168,18 @@ export default function DealerDashboardPage() {
 
     const fmtCurrency = (n?: number) => (n ?? 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
-    if (loading) {
+    if (loading || authLoading) {
         return <DashboardSkeleton />;
     }
     
+    if (!user) {
+        return <div className="p-4 text-sm text-muted-foreground">Please sign in.</div>;
+    }
+    
+    if (error) {
+        return <div className="p-4 text-sm text-red-600">{error}</div>;
+    }
+
     const welcomeName = profile?.companyName || profile?.contactName || profile?.displayName || user?.email || 'Dealer';
 
     return (

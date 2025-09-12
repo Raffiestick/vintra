@@ -3,10 +3,12 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, getDocs, query, onSnapshot, Timestamp } from 'firebase/firestore';
+import { doc, collection, onSnapshot, Timestamp } from 'firebase/firestore';
 import { httpsCallableClient } from '@/lib/firebase/client';
 import { db } from '@/lib/firebase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
+import { useSafeSnapshot } from '@/hooks/useSafeSnapshot';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -44,52 +46,52 @@ export default function StagedInvoiceDetailPage() {
     const params = useParams();
     const router = useRouter();
     const { toast } = useToast();
+    const { isAdmin, loading: authLoading } = useAuth();
     const sid = params.sid as string;
 
     const [invoice, setInvoice] = useState<StagingInvoice | null>(null);
     const [units, setUnits] = useState<StagedUnit[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [processingUnitId, setProcessingUnitId] = useState<string | null>(null);
     const [isProcessingAll, setIsProcessingAll] = useState(false);
     const [hideProcessed, setHideProcessed] = useState(true);
 
-    useEffect(() => {
-        if (!sid) return;
+    useSafeSnapshot(() => {
+        if (!isAdmin || !sid) {
+            if (!authLoading) setLoading(false);
+            return;
+        }
 
-        const fetchDetails = async () => {
-            try {
-                // Use onSnapshot for real-time updates on parent doc
-                const invoiceRef = doc(db, 'stagingInvoices', sid);
-                const unsubInvoice = onSnapshot(invoiceRef, (invoiceSnap) => {
-                    if (!invoiceSnap.exists()) {
-                        toast({ title: 'Error', description: 'Staged invoice not found.', variant: 'destructive' });
-                        router.push('/admin/staging/invoices');
-                        return;
-                    }
-                    setInvoice(invoiceSnap.data() as StagingInvoice);
-                });
-
-                const unitsRef = collection(db, 'stagingInvoices', sid, 'units');
-                const unsubUnits = onSnapshot(unitsRef, (unitsSnap) => {
-                    const unitsData = unitsSnap.docs.map(d => ({ id: d.id, ...d.data() } as StagedUnit));
-                    setUnits(unitsData);
-                });
-
-                setLoading(false);
-                return () => {
-                    unsubInvoice();
-                    unsubUnits();
-                };
-
-            } catch (error: any) {
-                console.error("Error fetching staged invoice details:", error);
-                toast({ title: 'Error', description: error.message, variant: 'destructive' });
-                setLoading(false);
+        const invoiceRef = doc(db, 'stagingInvoices', sid);
+        return onSnapshot(invoiceRef, (invoiceSnap) => {
+            if (!invoiceSnap.exists()) {
+                toast({ title: 'Error', description: 'Staged invoice not found.', variant: 'destructive' });
+                router.push('/admin/staging/invoices');
+                return;
             }
-        };
+            setInvoice(invoiceSnap.data() as StagingInvoice);
+            setError(null);
+            setLoading(false);
+        }, (err) => {
+            setError(err.code === 'permission-denied' ? "You don't have permission to view this." : "Failed to load invoice details.");
+            setLoading(false);
+        });
 
-        fetchDetails();
-    }, [sid, router, toast]);
+    }, [sid, isAdmin, authLoading, router, toast]);
+
+    useSafeSnapshot(() => {
+        if (!isAdmin || !sid) return;
+
+        const unitsRef = collection(db, 'stagingInvoices', sid, 'units');
+        return onSnapshot(unitsRef, (unitsSnap) => {
+            const unitsData = unitsSnap.docs.map(d => ({ id: d.id, ...d.data() } as StagedUnit));
+            setUnits(unitsData);
+        }, (err) => {
+            setError(err.code === 'permission-denied' ? "You don't have permission to view units." : "Failed to load units.");
+        });
+
+    }, [sid, isAdmin]);
 
     const handleCreateJacket = async (unitId: string) => {
         setProcessingUnitId(unitId);
@@ -111,7 +113,6 @@ export default function StagedInvoiceDetailPage() {
                     ),
                     duration: 10000,
                 });
-                // Optimistically update UI - Firestore listener will catch up
                 setUnits(prev => prev.map(u => u.id === unitId ? {...u, processed: true} : u));
             } else {
                  throw new Error("Function reported failure.");
@@ -134,7 +135,6 @@ export default function StagedInvoiceDetailPage() {
                     title: 'Batch Creation Complete!',
                     description: `${result.data.created} jacket(s) were created.`,
                 });
-                // Optimistic update - Firestore listener will catch up
                 setUnits(prev => prev.map(u => u.vin ? {...u, processed: true} : u));
             } else {
                 throw new Error("Batch creation function failed.");
@@ -161,9 +161,18 @@ export default function StagedInvoiceDetailPage() {
     const fmtCurrency = (n?: number): string => (n ?? 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
 
-    if (loading) {
+    if (loading || authLoading) {
         return <div><Skeleton className="h-96 w-full" /></div>;
     }
+
+    if (!isAdmin) {
+        return <p className="text-muted-foreground p-4">Admin access required.</p>;
+    }
+    
+    if (error) {
+        return <div className="p-4 text-sm text-red-600">{error}</div>;
+    }
+
 
     return (
         <div className="space-y-6">
