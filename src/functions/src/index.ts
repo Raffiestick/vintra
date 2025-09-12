@@ -1,3 +1,4 @@
+
 // src/functions/src/index.ts
 
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
@@ -308,6 +309,8 @@ export const generateJacketInvoice = onRequest(
       const isMgmtFeePaid = j.isMgmtFeePaid ?? j.isMgmtPaid ?? false;
       const amountPaid = (j.isAuctionPaid ? auctionDue : 0) + (isMgmtFeePaid ? mgmtDue : 0);
       const balanceDue = Math.max(0, subtotal - amountPaid);
+      const isFullyPaid = !!(j.isAuctionPaid && isMgmtFeePaid);
+
 
       const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
       
@@ -343,9 +346,16 @@ export const generateJacketInvoice = onRequest(
     .signatures p { font-size: 10px; color: #555; }
     .footer { position: fixed; bottom: 40px; left: 40px; right: 40px; text-align: center; font-size: 9px; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
     .footer p { margin: 2px 0; }
+    .wm {
+      position: fixed; inset: 0; display:flex; align-items:center; justify-content:center;
+      font-size: 120px; font-weight: 900; color: #16a34a;
+      opacity: 0.08; transform: rotate(-24deg);
+      pointer-events: none; user-select: none;
+    }
   </style>
 </head>
 <body>
+${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
 <div class="page">
   <div class="header">
     <div class="company-name">${safe(seller.name)}</div>
@@ -708,8 +718,6 @@ export const generateJacketPacket = onRequest(
              return;
         }
         
-        const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
-        
         // 1. Generate Cover Page PDF
         const coverHtml = buildCoverHtml({
             jacketId: j.jacketId,
@@ -810,3 +818,5 @@ export const generateJacketPacket = onRequest(
     }
   }
 );
+
+    
