@@ -210,25 +210,29 @@ export const startInvoiceParse = onRequest(
         return;
       }
 
-      // 2) Download bytes (force a real Node Buffer)
-      const [downloaded] = await file.download();
-      const nodeBuffer: Buffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded as any);
-      console.log("startInvoiceParse", { gcsPath, contentType, length: nodeBuffer?.length || 0 });
+      // 1) Download bytes (force a real Node Buffer)
+const [downloaded] = await file.download();
+const nodeBuffer: Buffer = Buffer.isBuffer(downloaded)
+  ? downloaded
+  : Buffer.from(downloaded as any);
 
-      if (!nodeBuffer || nodeBuffer.length === 0) {
-        res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
-        return;
-      }
+if (!nodeBuffer || nodeBuffer.length === 0) {
+  console.error("Downloaded buffer empty for", gcsPath, contentType);
+  res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
+  return;
+}
 
-      // 3) Extract text with pdf-parse (internal entry avoids ENOENT)
-      const pdfParse = (await import("pdf-parse")).default;
-      const { text } = await pdfParse(nodeBuffer);
-      
-      if (!text || !text.trim()) {
-        res.status(500).json({ error: "Extracted text is empty." });
-        return;
-      }
+// 2) ✅ Use internal entry to avoid top-level test file read
+const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default as (
+  data: Buffer | Uint8Array | ArrayBuffer
+) => Promise<{ text: string }>;
 
+// 3) Parse to text
+const { text } = await pdfParse(nodeBuffer);
+if (!text.trim()) {
+  res.status(500).json({ error: "Extracted text is empty." });
+  return;
+}
       // 4) Gemini extract (strict JSON)
       const model = getGeminiModel();
       const prompt = `
