@@ -597,12 +597,18 @@ export const generateJacketInvoice = onRequest(
       const buyerData = await getBuyerData(j.dealerId);
       const auctionDue = num(j.itemPrice) + num(j.buyerFee) + num(j.onlineFee);
       const mgmtDue = num(j.managementFee);
-      const miscTotal = Array.isArray(j.miscFees) ? j.miscFees.reduce((s: number, f: any) => s + num(f?.amount), 0) : 0;
-      const subtotal = auctionDue + mgmtDue + miscTotal;
+      const miscFees: any[] = Array.isArray(j.miscFees) ? j.miscFees : [];
+      const paidMisc = miscFees.filter(f => f.paid).reduce((s, f) => s + num(f.amount), 0);
+      const unpaidMisc = miscFees.filter(f => !f.paid).reduce((s, f) => s + num(f.amount), 0);
+
+      const subtotal = auctionDue + mgmtDue + paidMisc + unpaidMisc;
+      
       const isMgmtFeePaid = j.isMgmtFeePaid ?? j.isMgmtPaid ?? false;
-      const amountPaid = (j.isAuctionPaid ? auctionDue : 0) + (isMgmtFeePaid ? mgmtDue : 0);
-      const balanceDue = Math.max(0, subtotal - amountPaid);
-      const isFullyPaid = !!(j.isAuctionPaid && isMgmtFeePaid);
+      const amountPaid = (j.isAuctionPaid ? auctionDue : 0) + (isMgmtFeePaid ? mgmtDue : 0) + paidMisc;
+      
+      const balanceDue = subtotal - amountPaid;
+      
+      const isFullyPaid = !!(j.isAuctionPaid && isMgmtFeePaid && unpaidMisc === 0);
       const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
 
       const html = `<!doctype html>
