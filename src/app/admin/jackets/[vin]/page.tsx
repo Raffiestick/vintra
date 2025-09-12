@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -1024,10 +1025,21 @@ export default function JacketDetailPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-start bg-background gap-4">
-        {/* Sticky Header */}
-        <div className="sticky top-0 z-20 w-full bg-background/80 px-4 py-2 border-b backdrop-blur-sm">
-            <div className="max-w-screen-xl mx-auto flex items-center justify-between gap-4">
+        <div className="w-full max-w-screen-xl mx-auto px-3 sm:px-4 md:px-6 space-y-4">
+            <div className="flex items-center justify-between gap-4 pt-4">
+                 <div>
+                    <h1 className="text-2xl font-bold">
+                        {jacket.year} {jacket.make} {jacket.model}
+                    </h1>
+                    <div className="text-sm text-muted-foreground space-x-4">
+                        <span className="font-mono">{jacket.vin}</span>
+                        <span>Color: {jacket.color}</span>
+                        <span>Odometer: {jacket.odometer}</span>
+                        <span>Auction Date: {jacket.auctionSaleDate?.toDate().toLocaleDateString()}</span>
+                    </div>
+                </div>
                 <div className="flex items-center gap-2">
+                    {jacket.jacketId && <Badge variant="secondary" className="font-mono">Jacket ID: {jacket.jacketId}</Badge>}
                     {isAdmin && (
                         <>
                         <Button size="sm" onClick={handleGenerateInvoice} disabled={isGeneratingInvoice || !isAdmin}>
@@ -1060,11 +1072,8 @@ export default function JacketDetailPage() {
                         </>
                     )}
                 </div>
-                 {jacket.jacketId && <Badge variant="secondary" className="font-mono">Jacket ID: {jacket.jacketId}</Badge>}
             </div>
-        </div>
 
-      <div className="w-full max-w-screen-xl mx-auto px-3 sm:px-4 md:px-6 space-y-4">
           <Tabs defaultValue="overview" className="w-full">
             <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -1195,6 +1204,9 @@ export default function JacketDetailPage() {
                              </CardContent>
                            </Card>
                        )}
+                    </div>
+                </div>
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                         <Card>
                             <CardHeader>
                                 <CardTitle>Jacket Invoice</CardTitle>
@@ -1284,7 +1296,6 @@ export default function JacketDetailPage() {
                             </CardContent>
                         </Card>
                     </div>
-                </div>
             </TabsContent>
 
             <TabsContent value="documents">
@@ -1584,5 +1595,6 @@ export default function JacketDetailPage() {
     </main>
   );
 }
+
 
 
