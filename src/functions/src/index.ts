@@ -598,10 +598,12 @@ export const generateJacketInvoice = onRequest(
       const auctionDue = num(j.itemPrice) + num(j.buyerFee) + num(j.onlineFee);
       const mgmtDue = num(j.managementFee);
       const miscFees: any[] = Array.isArray(j.miscFees) ? j.miscFees : [];
+      
       const paidMisc = miscFees.filter(f => f.paid).reduce((s, f) => s + num(f.amount), 0);
       const unpaidMisc = miscFees.filter(f => !f.paid).reduce((s, f) => s + num(f.amount), 0);
+      const totalMisc = paidMisc + unpaidMisc;
 
-      const subtotal = auctionDue + mgmtDue + paidMisc + unpaidMisc;
+      const subtotal = auctionDue + mgmtDue + totalMisc;
       
       const isMgmtFeePaid = j.isMgmtFeePaid ?? j.isMgmtPaid ?? false;
       const amountPaid = (j.isAuctionPaid ? auctionDue : 0) + (isMgmtFeePaid ? mgmtDue : 0) + paidMisc;
