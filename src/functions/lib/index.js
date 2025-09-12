@@ -218,19 +218,20 @@ export const startInvoiceParse = onRequest({
 You are an invoice extraction agent for NPA-style auction invoices.
 Return STRICT JSON ONLY with this schema (no prose, no extra keys):
 {
-  "invoiceMeta": { "aucNo": string?, "saleLocation": string? },
+  "invoiceMeta": { "aucNo": string?, "saleLocation": string?, "invoiceDate": string? },
   "units": [{
     "vin": string,
     "year": number?, "make": string?, "model": string?, "color": string?,
     "hours": number?, "odometer": number?,
     "saleLocation": string?,
     "itemPrice": number?, "buyerFee": number?, "onlineFee": number?,
-    "titleInfo": string?, "stockNo": string?, "aucNo": string?
+    "titleInfo": string?, "stockNo": string?, "aucNo": string?, "invoiceDate": string?
   }]
 }
 Rules:
 - VIN uppercase, remove spaces/hyphens
 - Currency fields: numbers only (no $ or commas)
+- Dates must be in MM/DD/YYYY or ISO 8601 format.
 TEXT:
 """${text.substring(0, 20000)}"""`;
         const ai = await model.generateContent({
@@ -247,6 +248,7 @@ TEXT:
             return;
         }
         // 5) Normalize units + default management fee
+        const invoiceDate = extracted?.invoiceMeta?.invoiceDate;
         const units = Array.isArray(extracted?.units) ? extracted.units : [];
         for (const u of units) {
             if (!u)
@@ -262,6 +264,8 @@ TEXT:
                 u.hours = num(u.hours);
             if (u.odometer != null)
                 u.odometer = num(u.odometer);
+            if (invoiceDate && !u.invoiceDate)
+                u.invoiceDate = invoiceDate;
         }
         // 6) Write staging docs
         const now = FieldValue.serverTimestamp();
@@ -318,6 +322,7 @@ export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DE
     if (!vin)
         throw new HttpsError("failed-precondition", "Staged unit has no VIN.");
     const jacketRef = db.collection("jackets").doc(vin);
+    const parsedDate = unit.invoiceDate ? new Date(unit.invoiceDate) : null;
     await db.runTransaction(async (tx) => {
         const jacketSnap = await tx.get(jacketRef);
         const jacketData = {
@@ -332,7 +337,7 @@ export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DE
             buyerFee: num(unit.buyerFee),
             onlineFee: num(unit.onlineFee),
             managementFee: num(unit.managementFee) || 100,
-            auctionSaleDate: FieldValue.serverTimestamp(),
+            auctionSaleDate: parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : FieldValue.serverTimestamp(),
             isAuctionPaid: false,
             isMgmtFeePaid: false,
             miscFees: [],
@@ -383,6 +388,7 @@ export const createJacketsForInvoice = onCall({ region: "us-central1", secrets: 
         const vin = (unit.vin || "").toString().trim().toUpperCase();
         if (!vin)
             continue;
+        const parsedDate = unit.invoiceDate ? new Date(unit.invoiceDate) : null;
         const jacketRef = db.collection("jackets").doc(vin);
         await db.runTransaction(async (tx) => {
             const snap = await tx.get(jacketRef);
@@ -398,7 +404,7 @@ export const createJacketsForInvoice = onCall({ region: "us-central1", secrets: 
                 buyerFee: Number(unit.buyerFee) || 0,
                 onlineFee: Number(unit.onlineFee) || 0,
                 managementFee: Number(unit.managementFee) || 100,
-                auctionSaleDate: FieldValue.serverTimestamp(),
+                auctionSaleDate: parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : FieldValue.serverTimestamp(),
                 isAuctionPaid: false,
                 isMgmtFeePaid: false,
                 miscFees: [],

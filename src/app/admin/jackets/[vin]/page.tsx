@@ -51,7 +51,7 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon, Trash2, Replace, Printer, ScrollText, Files } from "lucide-react";
+import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon, Trash2, Replace, Printer, ScrollText, Files, CreditCard } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -85,8 +85,12 @@ import { format } from "date-fns";
 
 
 interface MiscFee {
+    id: string; // Now mandatory
     description: string;
     amount: number;
+    paid?: boolean;
+    paidAt?: Timestamp;
+    note?: string;
     createdAt?: Timestamp;
 }
 
@@ -145,7 +149,7 @@ interface Activity {
   actorUid: string;
   actorEmail?: string;
   actorName?: string;
-  type: "assignDealer" | "auctionPaidOn" | "auctionPaidOff" | "mgmtPaidOn" | "mgmtPaidOff" | "miscFeeAdded" | "docAdded" | "docReplaced" | "docDeleted" | "invoiceGenerated" | "bosGenerated" | "packetGenerated";
+  type: "assignDealer" | "auctionPaidOn" | "auctionPaidOff" | "mgmtPaidOn" | "mgmtPaidOff" | "miscFeeAdded" | "miscFeePaidOn" | "miscFeePaidOff" | "miscFeeDeleted" | "docAdded" | "docReplaced" | "docDeleted" | "invoiceGenerated" | "bosGenerated" | "packetGenerated";
   message: string;
   meta?: any;
 }
@@ -236,11 +240,13 @@ export default function JacketDetailPage() {
   const [isGeneratingPacket, setIsGeneratingPacket] = useState(false);
   const [packetUrlLocal, setPacketUrlLocal] = useState<string | null>(null);
 
-
+  // Misc Fee states
   const [feeDescription, setFeeDescription] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
   const [feeError, setFeeError] = useState("");
   const [isAddingFee, setIsAddingFee] = useState(false);
+  const [feeToModify, setFeeToModify] = useState<{ fee: MiscFee, action: 'delete' | 'pay' | 'unpay'} | null>(null);
+  const [isModifyingFee, setIsModifyingFee] = useState(false);
 
   // Document states
   const [docFile, setDocFile] = useState<File | null>(null);
@@ -327,7 +333,7 @@ export default function JacketDetailPage() {
 
   // One-time migration for isMgmtPaid -> isMgmtFeePaid
   useEffect(() => {
-    if (jacket && typeof jacket.isMgmtPaid === 'boolean' && typeof jacket.isMgmtFeePaid === 'undefined') {
+    if (isAdmin && jacket && typeof jacket.isMgmtPaid === 'boolean' && typeof jacket.isMgmtFeePaid === 'undefined') {
         const jacketDocRef = doc(db, "jackets", jacket.vin);
         console.info(`Migrating isMgmtPaid -> isMgmtFeePaid for VIN ${jacket.vin}`);
         updateDoc(jacketDocRef, {
@@ -338,10 +344,11 @@ export default function JacketDetailPage() {
             console.error("One-time migration failed:", err);
         });
     }
-  }, [jacket]);
+  }, [jacket, isAdmin]);
 
+  // One-time migration for documents to add IDs
   useEffect(() => {
-    if (jacket?.documents && jacket.documents.some(d => !d.id)) {
+    if (isAdmin && jacket?.documents && jacket.documents.some(d => !d.id)) {
         console.log(`Migrating documents to add IDs for VIN ${jacket.vin}`);
         const jacketDocRef = doc(db, "jackets", jacket.vin);
         const updatedDocuments = jacket.documents.map((doc, index) => 
@@ -354,7 +361,27 @@ export default function JacketDetailPage() {
             console.error("Document ID migration failed:", err);
         });
     }
-  }, [jacket?.documents, jacket?.vin]);
+  }, [jacket?.documents, jacket?.vin, isAdmin]);
+
+  // Backfill IDs for misc fees
+  useEffect(() => {
+    if (isAdmin && jacket?.vin && Array.isArray(jacket.miscFees) && jacket.miscFees.some(fee => !fee.id)) {
+      console.log(`Backfilling IDs for misc fees on VIN ${jacket.vin}`);
+      const jacketDocRef = doc(db, "jackets", jacket.vin);
+      const updatedFees = jacket.miscFees.map((fee, index) =>
+        fee.id ? fee : { ...fee, id: `fee-${Date.now()}-${index}` }
+      );
+      updateDoc(jacketDocRef, {
+        miscFees: updatedFees,
+        updatedAt: serverTimestamp(),
+      })
+      .then(() => toast({ title: "Fees Updated", description: "Successfully backfilled IDs for misc fees." }))
+      .catch(err => {
+        console.error("Misc fee ID backfill failed:", err);
+        toast({ title: "Fee Update Failed", description: "Could not backfill IDs for misc fees.", variant: "destructive" });
+      });
+    }
+  }, [isAdmin, jacket?.vin, jacket?.miscFees, toast]);
 
 
   useEffect(() => {
@@ -642,8 +669,10 @@ export default function JacketDetailPage() {
     setIsAddingFee(true);
 
     const newFee: MiscFee = {
+        id: `fee-${Date.now()}`,
         description: feeDescription.trim(),
         amount: parsedAmount,
+        paid: false,
         createdAt: Timestamp.fromDate(new Date()),
     };
 
@@ -651,7 +680,7 @@ export default function JacketDetailPage() {
         const jacketDocRef = doc(db, "jackets", vin as string);
         await updateDoc(jacketDocRef, {
             miscFees: arrayUnion(newFee),
-            updatedAt: Timestamp.fromDate(new Date()),
+            updatedAt: serverTimestamp(),
         });
         toast({ title: "Fee Added", description: "The miscellaneous fee has been added." });
         
@@ -674,6 +703,55 @@ export default function JacketDetailPage() {
         setIsAddingFee(false);
     }
   };
+
+  const handleModifyFee = async () => {
+    if (!isAdmin || !vin || !feeToModify) return;
+
+    const { fee, action } = feeToModify;
+    setIsModifyingFee(true);
+
+    try {
+      const jacketDocRef = doc(db, "jackets", vin);
+      const currentDoc = await getDoc(jacketDocRef);
+      const currentFees = (currentDoc.data() as Jacket)?.miscFees || [];
+
+      let updatedFees: MiscFee[] = [];
+      let logMessage = "";
+      let logType: Activity['type'] = "miscFeeDeleted"; // Default
+
+      if (action === "delete") {
+        updatedFees = currentFees.filter(f => f.id !== fee.id);
+        logMessage = `Misc fee deleted: ${fee.description} — ${fmtCurrency(fee.amount)}`;
+        logType = "miscFeeDeleted";
+      } else {
+        updatedFees = currentFees.map(f => {
+          if (f.id === fee.id) {
+            const isPaid = action === 'pay';
+            logMessage = `Misc fee "${f.description}" marked ${isPaid ? 'PAID' : 'UNPAID'}`;
+            logType = isPaid ? 'miscFeePaidOn' : 'miscFeePaidOff';
+            return { ...f, paid: isPaid, paidAt: isPaid ? Timestamp.now() : deleteField() };
+          }
+          return f;
+        });
+      }
+
+      await updateDoc(jacketDocRef, {
+        miscFees: updatedFees,
+        updatedAt: serverTimestamp(),
+      });
+
+      toast({ title: "Fee Updated", description: "The fee status has been changed." });
+      await logActivity(vin, { type: logType, message: logMessage, meta: { feeId: fee.id } });
+
+    } catch (err: any) {
+      console.error("Failed to modify fee:", err);
+      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsModifyingFee(false);
+      setFeeToModify(null);
+    }
+  };
+
 
   const uploadFile = (file: File, type: JacketDocument['type'], onProgress: (p: number) => void): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -901,15 +979,15 @@ export default function JacketDetailPage() {
       (jacket.buyerFee || 0) +
       (jacket.onlineFee || 0);
     const mgmtDue = jacket.managementFee || 0;
-    const miscTotal =
-      jacket.miscFees?.reduce((acc, fee) => acc + (fee?.amount || 0), 0) || 0;
-    const subtotal = auctionDue + mgmtDue + miscTotal;
+
+    const paidMisc = (jacket.miscFees || []).filter(f => f.paid).reduce((acc, fee) => acc + (fee.amount || 0), 0);
+    const unpaidMisc = (jacket.miscFees || []).filter(f => !f.paid).reduce((acc, fee) => acc + (fee.amount || 0), 0);
     
-    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtFeeActuallyPaid ? mgmtDue : 0);
+    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtFeeActuallyPaid ? mgmtDue : 0) + paidMisc;
+    const outstanding = (jacket.isAuctionPaid ? 0 : auctionDue) + (isMgmtFeeActuallyPaid ? 0 : mgmtDue) + unpaidMisc;
+    const subtotal = auctionDue + mgmtDue + paidMisc + unpaidMisc;
 
-    const outstanding = subtotal - amountPaid;
-
-    return { auctionDue, mgmtDue, miscTotal, subtotal, outstanding, amountPaid };
+    return { auctionDue, mgmtDue, subtotal, outstanding, amountPaid, paidMisc, unpaidMisc };
   }, [jacket, isMgmtFeeActuallyPaid]);
 
   if (loading || authLoading) {
@@ -1076,6 +1154,9 @@ export default function JacketDetailPage() {
           <Tabs defaultValue="overview" className="w-full">
             <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="misc-fees">
+                    Misc Fees <Badge variant="secondary" className="ml-2">{jacket.miscFees?.length || 0}</Badge>
+                </TabsTrigger>
                 <TabsTrigger value="documents">
                     Documents <Badge variant="secondary" className="ml-2">{jacket.documents?.length || 0}</Badge>
                 </TabsTrigger>
@@ -1192,11 +1273,10 @@ export default function JacketDetailPage() {
                                <CardTitle>Financials</CardTitle>
                              </CardHeader>
                              <CardContent className="grid grid-cols-2 gap-3 text-sm">
-                                <FinancialsGridItem label="Item Price" value={jacket.itemPrice || 0} />
-                                <FinancialsGridItem label="Buyer Fee" value={jacket.buyerFee || 0} />
-                                <FinancialsGridItem label="Online Fee" value={jacket.onlineFee || 0} />
-                                <FinancialsGridItem label="Mgmt Fee" value={jacket.managementFee || 0} />
-                                <FinancialsGridItem label="Misc Fees" value={financials.miscTotal} />
+                                <FinancialsGridItem label="Auction Total" value={financials.auctionDue} />
+                                <FinancialsGridItem label="Mgmt Fee" value={financials.mgmtDue} />
+                                <FinancialsGridItem label="Paid Misc Fees" value={financials.paidMisc} />
+                                <FinancialsGridItem label="Unpaid Misc Fees" value={financials.unpaidMisc} />
                                 <FinancialsGridItem label="Subtotal" value={financials.subtotal} />
                                 <FinancialsGridItem label="Paid" value={financials.amountPaid} />
                                 <FinancialsGridItem label="Balance Due" value={financials.outstanding} />
@@ -1295,6 +1375,107 @@ export default function JacketDetailPage() {
                             </CardContent>
                         </Card>
                     </div>
+            </TabsContent>
+            
+            <TabsContent value="misc-fees">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Miscellaneous Fees</CardTitle>
+                  <CardDescription>Manage additional fees associated with this jacket.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {(!jacket.miscFees || jacket.miscFees.length === 0) ? (
+                      <p className="text-sm text-muted-foreground p-4 text-center">No misc fees yet.</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Description</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Added</TableHead>
+                            {isAdmin && <TableHead className="text-right">Actions</TableHead>}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {jacket.miscFees.map((fee) => (
+                            <TableRow key={fee.id}>
+                              <TableCell className="font-medium">{fee.description}</TableCell>
+                              <TableCell>{fmtCurrency(fee.amount)}</TableCell>
+                              <TableCell>
+                                <Badge variant={fee.paid ? 'default' : 'destructive'}>
+                                  {fee.paid ? 'Paid' : 'Unpaid'}
+                                </Badge>
+                                {fee.paid && fee.paidAt && (
+                                    <p className="text-xs text-muted-foreground mt-1">{fee.paidAt.toDate().toLocaleDateString()}</p>
+                                )}
+                              </TableCell>
+                              <TableCell>{fee.createdAt ? fee.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
+                              {isAdmin && (
+                                <TableCell className="text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setFeeToModify({ fee, action: fee.paid ? 'unpay' : 'pay' })}
+                                            disabled={isModifyingFee}
+                                        >
+                                            <CreditCard className="mr-2 h-4 w-4" /> Mark {fee.paid ? 'Unpaid' : 'Paid'}
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            size="icon"
+                                            onClick={() => setFeeToModify({ fee, action: 'delete' })}
+                                            disabled={isModifyingFee}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+                </CardContent>
+                {isAdmin && (
+                  <CardFooter className="border-t pt-6">
+                    <form onSubmit={handleAddFee} className="w-full space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div className="md:col-span-2 space-y-1">
+                          <Label htmlFor="feeDescription">Fee Description</Label>
+                          <Input
+                            id="feeDescription"
+                            value={feeDescription}
+                            onChange={(e) => setFeeDescription(e.target.value)}
+                            placeholder="e.g. Lost Key Replacement"
+                            disabled={isAddingFee}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="feeAmount">Amount ($)</Label>
+                          <Input
+                            id="feeAmount"
+                            type="number"
+                            value={feeAmount}
+                            onChange={(e) => setFeeAmount(e.target.value)}
+                            placeholder="50.00"
+                            step="0.01"
+                            disabled={isAddingFee}
+                          />
+                        </div>
+                      </div>
+                      {feeError && <p className="text-sm text-destructive">{feeError}</p>}
+                      <Button type="submit" disabled={isAddingFee}>
+                        {isAddingFee ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding...</> : 'Add Fee'}
+                      </Button>
+                    </form>
+                  </CardFooter>
+                )}
+              </Card>
             </TabsContent>
 
             <TabsContent value="documents">
@@ -1413,72 +1594,6 @@ export default function JacketDetailPage() {
                         </CardFooter>
                     )}
                 </Card>
-
-                 <Card className="mt-6">
-                    <CardHeader>
-                        <CardTitle>Misc Fees</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {(!jacket.miscFees || jacket.miscFees.length === 0) ? (
-                                <p className="text-sm text-muted-foreground p-4 text-center">No misc fees yet.</p>
-                            ) : (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Description</TableHead>
-                                            <TableHead>Added</TableHead>
-                                            <TableHead className="text-right">Amount</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {jacket.miscFees.map((fee, index) => (
-                                            <TableRow key={index}>
-                                                <TableCell className="font-medium">{fee.description}</TableCell>
-                                                <TableCell>{fee.createdAt ? fee.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
-                                                <TableCell className="text-right">{fmtCurrency(fee.amount)}</TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            )}
-                        </div>
-                    </CardContent>
-                    {isAdmin && (
-                        <CardFooter className="border-t pt-6">
-                            <form onSubmit={handleAddFee} className="w-full space-y-4">
-                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                    <div className="md:col-span-2 space-y-1">
-                                        <Label htmlFor="feeDescription">Fee Description</Label>
-                                        <Input 
-                                            id="feeDescription"
-                                            value={feeDescription}
-                                            onChange={(e) => setFeeDescription(e.target.value)}
-                                            placeholder="e.g. Lost Key Replacement"
-                                            disabled={isAddingFee}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label htmlFor="feeAmount">Amount ($)</Label>
-                                        <Input
-                                            id="feeAmount"
-                                            type="number"
-                                            value={feeAmount}
-                                            onChange={(e) => setFeeAmount(e.target.value)}
-                                            placeholder="50.00"
-                                            step="0.01"
-                                            disabled={isAddingFee}
-                                        />
-                                    </div>
-                                </div>
-                                {feeError && <p className="text-sm text-destructive">{feeError}</p>}
-                                <Button type="submit" disabled={isAddingFee}>
-                                    {isAddingFee ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Adding...</> : 'Add Fee'}
-                                </Button>
-                            </form>
-                        </CardFooter>
-                    )}
-                </Card>
             </TabsContent>
             
             <TabsContent value="activity">
@@ -1588,6 +1703,29 @@ export default function JacketDetailPage() {
               Yes, Delete Document
             </AlertDialogAction>
           </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!feeToModify} onOpenChange={(open) => !open && setFeeToModify(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    {feeToModify?.action === 'delete' ? `This will permanently delete the fee "${feeToModify?.fee.description}". This action cannot be undone.` :
+                    `This will mark the fee "${feeToModify?.fee.description}" as ${feeToModify?.action === 'pay' ? 'Paid' : 'Unpaid'}.`}
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setFeeToModify(null)}>Cancel</AlertDialogCancel>
+                <AlertDialogAction 
+                    onClick={handleModifyFee} 
+                    disabled={isModifyingFee}
+                    className={feeToModify?.action === 'delete' ? "bg-destructive hover:bg-destructive/90" : ""}
+                >
+                    {isModifyingFee && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Yes, proceed
+                </AlertDialogAction>
+            </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
