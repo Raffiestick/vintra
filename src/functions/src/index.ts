@@ -1,4 +1,3 @@
-
 // src/functions/src/index.ts
 
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
@@ -10,15 +9,14 @@ import { getStorage } from "firebase-admin/storage";
 import { PDFDocument } from "pdf-lib";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Use Chromium bundle that works on Firebase (no Chrome install needed)
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 
-/** Secrets */
+/* ───────────────────── Secrets ───────────────────── */
 const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID");
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
-/** Admin init */
+/* ───────────────────── Admin init ───────────────────── */
 if (getApps().length === 0) {
   initializeApp();
 }
@@ -26,7 +24,7 @@ const db = getFirestore();
 const storage = getStorage();
 const bucket = storage.bucket();
 
-/** Seller constants */
+/* ───────────────────── Constants / Helpers ───────────────────── */
 const seller = {
   name: "RizeUp Ventures, LLC",
   dba: "DBA Dolphin Chasers",
@@ -36,7 +34,6 @@ const seller = {
   email: "admin@rizeupventures.com",
 };
 
-/** Helpers */
 const num = (x: any): number => {
   if (typeof x === "number") return x;
   if (typeof x === "string") {
@@ -45,8 +42,7 @@ const num = (x: any): number => {
   }
   return 0;
 };
-const fmtUSD = (n: number): string =>
-  n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+const fmtUSD = (n: number): string => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 const safe = (s: any): string =>
   String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -62,54 +58,39 @@ async function getBuyerData(dealerId?: string): Promise<any> {
     if (userSnap.exists) {
       const u = userSnap.data() || {};
       return {
-        name:
-          u.companyName ||
-          u.businessName ||
-          u.contactName ||
-          u.displayName ||
-          u.email ||
-          u.uid,
+        name: u.companyName || u.businessName || u.contactName || u.displayName || u.email || u.uid,
         line1: u.streetAddress || u.address || u.street || "",
         line2: [u.city, u.state, u.zip].filter(Boolean).join(", "),
         phone: u.phone || "",
         email: u.email || "",
       };
     }
-  } catch (error) {
-    console.warn(`Could not fetch buyer data for dealerId ${dealerId}:`, error);
+  } catch (e) {
+    console.warn("getBuyerData error:", e);
   }
   return { name: `Dealer ${dealerId} (not found)` };
 }
 
-async function logActivity(
-  vin: string,
-  entry: { type: string; message: string; meta?: any }
-) {
+async function logActivity(vin: string, entry: { type: string; message: string; meta?: any }) {
   if (!vin) return;
   try {
-    const activityCol = db.collection("jackets").doc(vin).collection("activity");
-    await activityCol.add({
+    await db.collection("jackets").doc(vin).collection("activity").add({
       ...entry,
       ts: FieldValue.serverTimestamp(),
       actor: "System",
     });
-  } catch (error) {
-    console.error(`Failed to log activity for VIN ${vin}:`, error);
+  } catch (e) {
+    console.error("logActivity error:", e);
   }
 }
 
 function assertAdmin(request: CallableRequest) {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "You must be signed in.");
-  }
+  if (!request.auth) throw new HttpsError("unauthenticated", "You must be signed in.");
   const devBypass = DEV_ADMIN_UID_SECRET.value();
   if (devBypass && request.auth.uid === devBypass) return;
-
   const token: any = request.auth.token || {};
   const isAdmin = token.role === "admin" || token.admin === true;
-  if (!isAdmin) {
-    throw new HttpsError("permission-denied", "Admin privileges required.");
-  }
+  if (!isAdmin) throw new HttpsError("permission-denied", "Admin privileges required.");
 }
 
 function getGeminiModel() {
@@ -119,14 +100,8 @@ function getGeminiModel() {
   return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 }
 
-/** Cover page builder for packet */
-function buildCoverHtml(opts: {
-  jacketId?: string;
-  vin: string;
-  year?: number;
-  make?: string;
-  model?: string;
-}) {
+/* ───────────────────── Cover Page Builder ───────────────────── */
+function buildCoverHtml(opts: { jacketId?: string; vin: string; year?: number; make?: string; model?: string }) {
   const { jacketId, vin, year, make, model } = opts;
   const ymm = [year, make, model].filter(Boolean).join(" ") || "—";
   const jn = jacketId || "—";
@@ -195,7 +170,7 @@ function buildCoverHtml(opts: {
 </html>`;
 }
 
-/* ------------------------- PARSING FUNCTIONS ------------------------- */
+/* ───────────────────── Parsing: startInvoiceParse ───────────────────── */
 
 export const startInvoiceParse = onRequest(
   {
@@ -211,37 +186,55 @@ export const startInvoiceParse = onRequest(
         res.status(405).send("Method Not Allowed");
         return;
       }
+
       const gcsPath = (req.body?.gcsPath ?? "").toString().trim();
       if (!gcsPath) {
         res.status(400).json({ error: "Missing gcsPath (e.g., incoming/invoices/<uid>/<file>.pdf)" });
         return;
       }
 
+      // 1) Read the uploaded file from GCS
       const file = bucket.file(gcsPath);
       const [exists] = await file.exists();
       if (!exists) {
-        res.status(404).json({ error: "File not found at gcsPath" });
+        res.status(404).json({ error: `File not found at ${gcsPath}` });
         return;
       }
 
       const [meta] = await file.getMetadata();
-      const contentType = meta.contentType || "application/pdf";
+      const contentType = (meta?.contentType || "").toLowerCase();
       if (!contentType.includes("pdf")) {
-        res.status(415).json({ error: "Images not supported yet in MVP" });
+        res.status(415).json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only for MVP)` });
         return;
       }
 
-      // Parse PDF text
-      const pdfParse = (await import("pdf-parse")).default;
-      const [buffer] = await file.download();
-      const { text } = await pdfParse(buffer);
-      if (!text || !text.trim()) throw new Error("Extracted text is empty.");
+      // Download bytes (force a real Node Buffer)
+const [downloaded] = await file.download();
+const nodeBuffer: Buffer = Buffer.isBuffer(downloaded)
+  ? downloaded
+  : Buffer.from(downloaded as any);
 
-      // Gemini extraction
+if (!nodeBuffer || nodeBuffer.length === 0) {
+  console.error("Downloaded buffer empty for", gcsPath, meta?.contentType);
+  res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
+  return;
+}
+
+// Parse PDF -> text
+const pdfParseMod: any = await import("pdf-parse");
+const pdfParse = pdfParseMod.default || pdfParseMod;
+const parsed = await pdfParse(nodeBuffer);
+const text: string = parsed?.text || "";
+if (!text.trim()) {
+  res.status(500).json({ error: "Extracted text is empty." });
+  return;
+}
+
+      // 3) Gemini extract (strict JSON)
       const model = getGeminiModel();
       const prompt = `
 You are an invoice extraction agent for NPA-style auction invoices.
-Return STRICT JSON only with this schema (NO prose):
+Return STRICT JSON only with this schema (no prose):
 {
   "invoiceMeta": { "aucNo": string?, "saleLocation": string? },
   "units": [{
@@ -258,30 +251,39 @@ Rules:
 - Currency fields: numbers only (no $ or commas)
 TEXT:
 """${text.substring(0, 20000)}"""`;
-      const ai = await model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }] });
+
+      const ai = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+
       const raw = ai.response?.text() || "{}";
-      let extracted: any = {};
+      let extracted: any;
       try {
         extracted = JSON.parse(raw);
       } catch {
-        console.error("LLM raw output:", raw);
-        throw new Error("LLM output was not valid JSON.");
+        console.error("LLM non-JSON output:", raw);
+        res.status(500).json({ error: "LLM output was not valid JSON." });
+        return;
       }
 
+      // 4) Normalize units + default management fee
       const units: any[] = Array.isArray(extracted?.units) ? extracted.units : [];
       for (const u of units) {
-        if (u) {
-          if (u.managementFee == null) u.managementFee = 100;
-          if (typeof u.vin === "string") u.vin = u.vin.toUpperCase().replace(/[^A-Z0-9]/g, "");
-          u.itemPrice = num(u.itemPrice);
-          u.buyerFee = num(u.buyerFee);
-          u.onlineFee = num(u.onlineFee);
-        }
+        if (!u) continue;
+        if (u.managementFee == null) u.managementFee = 100;
+        if (typeof u.vin === "string") u.vin = u.vin.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        u.itemPrice = num(u.itemPrice);
+        u.buyerFee = num(u.buyerFee);
+        u.onlineFee = num(u.onlineFee);
       }
 
+      // 5) Write staging docs
       const now = FieldValue.serverTimestamp();
       const stagingId = db.collection("stagingInvoices").doc().id;
-      const [fileUrl] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+      const [fileUrl] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+      });
       const uploaderUid = gcsPath.split("/")[1] || null;
 
       await db.collection("stagingInvoices").doc(stagingId).set({
@@ -315,33 +317,18 @@ TEXT:
   }
 );
 
-export const startDocParse = onRequest(
-  { region: "us-central1", cors: true },
-  (_req, res) => {
-    res.status(501).json({ error: "Not implemented yet" });
-  }
-);
-
-/* ---------------------- STAGING ACTIONS ---------------------- */
+/* ───────────────────── Staging Actions ───────────────────── */
 
 export const createJacketFromUnit = onCall(
   { region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] },
   async (request) => {
     assertAdmin(request);
     const { stagingId, unitId } = request.data || {};
-    if (!stagingId || !unitId) {
-      throw new HttpsError("invalid-argument", "stagingId and unitId are required.");
-    }
+    if (!stagingId || !unitId) throw new HttpsError("invalid-argument", "stagingId and unitId are required.");
 
-    const unitRef = db
-      .collection("stagingInvoices")
-      .doc(stagingId)
-      .collection("units")
-      .doc(unitId);
+    const unitRef = db.collection("stagingInvoices").doc(stagingId).collection("units").doc(unitId);
     const unitSnap = await unitRef.get();
-    if (!unitSnap.exists) {
-      throw new HttpsError("not-found", "Staged unit not found.");
-    }
+    if (!unitSnap.exists) throw new HttpsError("not-found", "Staged unit not found.");
 
     const unit = unitSnap.data() as any;
     const vin = unit.vin?.trim().toUpperCase();
@@ -363,7 +350,7 @@ export const createJacketFromUnit = onCall(
         buyerFee: num(unit.buyerFee),
         onlineFee: num(unit.onlineFee),
         managementFee: num(unit.managementFee) || 100,
-        auctionSaleDate: FieldValue.serverTimestamp(), // can backfill later
+        auctionSaleDate: FieldValue.serverTimestamp(),
         isAuctionPaid: false,
         isMgmtFeePaid: false,
         miscFees: [],
@@ -389,23 +376,20 @@ export const attachStagedDocToJacket = onCall(
   async (request) => {
     assertAdmin(request);
     const { docId, vin, typeOverride } = request.data || {};
-    if (!docId || !vin) {
-      throw new HttpsError("invalid-argument", "docId and vin are required.");
-    }
+    if (!docId || !vin) throw new HttpsError("invalid-argument", "docId and vin are required.");
 
     const stagedDocRef = db.collection("stagedDocs").doc(docId);
     const stagedDocSnap = await stagedDocRef.get();
-    if (!stagedDocSnap.exists) {
-      throw new HttpsError("not-found", "Staged document not found.");
-    }
+    if (!stagedDocSnap.exists) throw new HttpsError("not-found", "Staged document not found.");
     const stagedDoc = stagedDocSnap.data() as any;
 
-    const gcsPath: string = stagedDoc.gcsPath; // e.g., "incoming/docs/uid/file.ext"
+    const gcsPath: string | undefined = stagedDoc.gcsPath;
+    if (!gcsPath) throw new HttpsError("failed-precondition", "Staged document missing gcsPath.");
+
     const fileName = gcsPath.split("/").pop() || `doc-${Date.now()}`;
     const docType = typeOverride || stagedDoc.type || "other";
     const newPath = `jacket-documents/${vin}/${docType}/${fileName}`;
 
-    // Move within *this* bucket
     await bucket.file(gcsPath).move(newPath);
 
     const newFile = bucket.file(newPath);
@@ -422,8 +406,7 @@ export const attachStagedDocToJacket = onCall(
       createdAt: FieldValue.serverTimestamp(),
     };
 
-    const jacketRef = db.collection("jackets").doc(vin);
-    await jacketRef.update({
+    await db.collection("jackets").doc(vin).update({
       documents: FieldValue.arrayUnion(newDocument),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -434,7 +417,7 @@ export const attachStagedDocToJacket = onCall(
   }
 );
 
-/* ---------------------- ADMIN CALLABLES (unchanged) ---------------------- */
+/* ───────────────────── Admin Callables (unchanged) ───────────────────── */
 
 export const manageDealerApplication = onCall(
   { region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] },
@@ -442,16 +425,11 @@ export const manageDealerApplication = onCall(
     assertAdmin(request);
     const { uid, action } = request.data || {};
     if (!uid || !action || !["approve", "deny"].includes(String(action))) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Provide 'uid' and 'action' of 'approve' or 'deny'."
-      );
+      throw new HttpsError("invalid-argument", "Provide 'uid' and 'action' of 'approve' or 'deny'.");
     }
     const userDocRef = db.collection("users").doc(String(uid));
     try {
-      await userDocRef.update({
-        status: action === "approve" ? "approved" : "denied",
-      });
+      await userDocRef.update({ status: action === "approve" ? "approved" : "denied" });
       return { success: true, message: `User ${uid} has been ${action}d.` };
     } catch (err: any) {
       console.error("manageDealerApplication error:", err);
@@ -468,7 +446,7 @@ export const generateJacketId = onCall(
   }
 );
 
-/* ---------------------- PDF GENERATORS ---------------------- */
+/* ───────────────────── PDF Generators ───────────────────── */
 
 export const generateJacketInvoice = onRequest(
   { region: "us-central1", timeoutSeconds: 120, memory: "1GiB", cors: true },
@@ -480,32 +458,26 @@ export const generateJacketInvoice = onRequest(
       }
       const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim();
       const vin = rawVin.toUpperCase();
-      if (!vin) {
-        res.status(400).send("Missing 'vin'");
-        return;
-      }
+      if (!vin) { res.status(400).send("Missing 'vin'"); return; }
 
       const docRef = db.collection("jackets").doc(vin);
       let snap = await docRef.get();
-      if (!snap.exists) {
-        res.status(404).send("Jacket not found");
-        return;
-      }
+      if (!snap.exists) { res.status(404).send("Jacket not found"); return; }
       let j: DocumentData = snap.data() || {};
 
-      // Ensure invoiceId once
+      // Ensure invoiceId only once
       if (!j.invoiceId) {
         const counterRef = db.collection("counters").doc("invoices");
-        await db.runTransaction(async (transaction: Transaction) => {
-          const counterDoc = await transaction.get(counterRef);
+        await db.runTransaction(async (tx: Transaction) => {
+          const counterDoc = await tx.get(counterRef);
           const newSeq = (counterDoc.data()?.seq || 0) + 1;
-          transaction.set(counterRef, { seq: newSeq }, { merge: true });
+          tx.set(counterRef, { seq: newSeq }, { merge: true });
           const now = new Date();
           const yyyy = now.getUTCFullYear();
           const mm = (now.getUTCMonth() + 1).toString().padStart(2, "0");
-          const paddedSeq = newSeq.toString().padStart(4, "0");
-          const newInvoiceId = `INV-${yyyy}${mm}-${paddedSeq}`;
-          transaction.update(docRef, { invoiceId: newInvoiceId });
+          const padded = newSeq.toString().padStart(4, "0");
+          const newInvoiceId = `INV-${yyyy}${mm}-${padded}`;
+          tx.update(docRef, { invoiceId: newInvoiceId });
           j.invoiceId = newInvoiceId;
         });
       }
@@ -513,13 +485,10 @@ export const generateJacketInvoice = onRequest(
       const buyerData = await getBuyerData(j.dealerId);
       const auctionDue = num(j.itemPrice) + num(j.buyerFee) + num(j.onlineFee);
       const mgmtDue = num(j.managementFee);
-      const miscTotal = Array.isArray(j.miscFees)
-        ? j.miscFees.reduce((s: number, f: any) => s + num(f?.amount), 0)
-        : 0;
+      const miscTotal = Array.isArray(j.miscFees) ? j.miscFees.reduce((s: number, f: any) => s + num(f?.amount), 0) : 0;
       const subtotal = auctionDue + mgmtDue + miscTotal;
       const isMgmtFeePaid = j.isMgmtFeePaid ?? j.isMgmtPaid ?? false;
-      const amountPaid =
-        (j.isAuctionPaid ? auctionDue : 0) + (isMgmtFeePaid ? mgmtDue : 0);
+      const amountPaid = (j.isAuctionPaid ? auctionDue : 0) + (isMgmtFeePaid ? mgmtDue : 0);
       const balanceDue = Math.max(0, subtotal - amountPaid);
       const isFullyPaid = !!(j.isAuctionPaid && isMgmtFeePaid);
       const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
@@ -529,7 +498,7 @@ export const generateJacketInvoice = onRequest(
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; font-size: 10px; color: #333; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 10px; color: #333; }
     .page { padding: 40px; }
     .header { text-align: left; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
     .header .company-name { font-size: 16px; font-weight: bold; }
@@ -614,9 +583,7 @@ ${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
       <tr><td>Management Fee</td><td>${fmtUSD(num(j.managementFee))}</td></tr>
       ${
         Array.isArray(j.miscFees)
-          ? j.miscFees
-              .map((f: any) => `<tr><td>${safe(f?.description || "Misc Fee")}</td><td>${fmtUSD(num(f?.amount))}</td></tr>`)
-              .join("")
+          ? j.miscFees.map((f: any) => `<tr><td>${safe(f?.description || "Misc Fee")}</td><td>${fmtUSD(num(f?.amount))}</td></tr>`).join("")
           : ""
       }
     </tbody>
@@ -652,11 +619,7 @@ ${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
       });
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "networkidle0" });
-      const pdfBuffer = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        margin: { top: "0", right: "0", bottom: "0", left: "0" },
-      });
+      const pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: "0", right: "0", bottom: "0", left: "0" } });
       await browser.close();
 
       const filePath = `jacket-documents/${vin}/invoice.pdf`;
@@ -670,16 +633,8 @@ ${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
       const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
       const [signedUrl] = await file.getSignedUrl({ action: "read", expires });
 
-      await docRef.update({
-        invoiceUrl: signedUrl,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      await logActivity(vin, {
-        type: "invoiceGenerated",
-        message: `Invoice generated ${j.invoiceId ? "— " + j.invoiceId : ""}`,
-        meta: { invoiceId: j.invoiceId, url: signedUrl },
-      });
+      await docRef.update({ invoiceUrl: signedUrl, updatedAt: FieldValue.serverTimestamp() });
+      await logActivity(vin, { type: "invoiceGenerated", message: `Invoice generated ${j.invoiceId ? "— " + j.invoiceId : ""}`, meta: { invoiceId: j.invoiceId, url: signedUrl } });
 
       res.status(200).json({ ok: true, vin, url: signedUrl, invoiceId: j.invoiceId });
     } catch (err: any) {
@@ -694,35 +649,23 @@ export const generateBillOfSale = onRequest(
   async (req, res) => {
     try {
       if (req.method !== "POST" && req.method !== "GET") {
-        res.status(405).send("Method Not Allowed");
-        return;
+        res.status(405).send("Method Not Allowed"); return;
       }
       const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim();
       const vin = rawVin.toUpperCase();
-      if (!vin) {
-        res.status(400).send("Missing 'vin'");
-        return;
-      }
+      if (!vin) { res.status(400).send("Missing 'vin'"); return; }
 
       const docRef = db.collection("jackets").doc(vin);
       const snap = await docRef.get();
-      if (!snap.exists) {
-        res.status(404).send("Jacket not found");
-        return;
-      }
+      if (!snap.exists) { res.status(404).send("Jacket not found"); return; }
       const j: DocumentData = snap.data() || {};
       const buyerData = await getBuyerData(j.dealerId);
 
       const auctionDue = num(j.itemPrice) + num(j.buyerFee) + num(j.onlineFee);
       const mgmtDue = num(j.managementFee);
-      const miscTotal = Array.isArray(j.miscFees)
-        ? j.miscFees.reduce((s: number, f: any) => s + num(f?.amount), 0)
-        : 0;
+      const miscTotal = Array.isArray(j.miscFees) ? j.miscFees.reduce((s: number, f: any) => s + num(f?.amount), 0) : 0;
       const subtotal = auctionDue + mgmtDue + miscTotal;
-
-      const saleDate =
-        j.auctionSaleDate?.toDate?.()?.toLocaleDateString?.() ||
-        new Date().toLocaleDateString();
+      const saleDate = j.auctionSaleDate?.toDate?.()?.toLocaleDateString?.() || new Date().toLocaleDateString();
       const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
 
       const html = `<!doctype html>
@@ -833,11 +776,7 @@ export const generateBillOfSale = onRequest(
       });
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "networkidle0" });
-      const pdfBuffer = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        margin: { top: "0", right: "0", bottom: "0", left: "0" },
-      });
+      const pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: "0", right: "0", bottom: "0", left: "0" } });
       await browser.close();
 
       const filePath = `jacket-documents/${vin}/bill-of-sale.pdf`;
@@ -851,16 +790,8 @@ export const generateBillOfSale = onRequest(
       const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
       const [signedUrl] = await file.getSignedUrl({ action: "read", expires });
 
-      await docRef.update({
-        bosUrl: signedUrl,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      await logActivity(vin, {
-        type: "bosGenerated",
-        message: "Bill of Sale generated",
-        meta: { url: signedUrl },
-      });
+      await docRef.update({ bosUrl: signedUrl, updatedAt: FieldValue.serverTimestamp() });
+      await logActivity(vin, { type: "bosGenerated", message: "Bill of Sale generated", meta: { url: signedUrl } });
 
       res.status(200).json({ ok: true, vin, url: signedUrl });
     } catch (err: any) {
@@ -874,126 +805,87 @@ export const generateJacketPacket = onRequest(
   { region: "us-central1", timeoutSeconds: 180, memory: "1GiB", cors: true },
   async (req, res) => {
     try {
-      if (req.method !== "POST" && req.method !== "GET") {
-        res.status(405).send("Method Not Allowed");
-        return;
-      }
+      if (req.method !== "POST" && req.method !== "GET") { res.status(405).send("Method Not Allowed"); return; }
       const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim();
       const vin = rawVin.toUpperCase();
-      if (!vin) {
-        res.status(400).send("Missing 'vin'");
-        return;
-      }
+      if (!vin) { res.status(400).send("Missing 'vin'"); return; }
 
       const docRef = db.collection("jackets").doc(vin);
       const snap = await docRef.get();
-      if (!snap.exists) {
-        res.status(404).send("Jacket not found");
-        return;
-      }
+      if (!snap.exists) { res.status(404).send("Jacket not found"); return; }
       const j = snap.data() || {};
-      if (!j.invoiceUrl) {
-        res.status(400).send("Invoice must be generated before creating a packet.");
-        return;
-      }
-      if (!j.bosUrl) {
-        res.status(400).send("Bill of Sale must be generated before creating a packet.");
-        return;
-      }
+      if (!j.invoiceUrl) { res.status(400).send("Invoice must be generated before creating a packet."); return; }
+      if (!j.bosUrl) { res.status(400).send("Bill of Sale must be generated before creating a packet."); return; }
 
-      // Cover
-      const coverHtml = buildCoverHtml({
-        jacketId: j.jacketId,
-        vin,
-        year: j.year,
-        make: j.make,
-        model: j.model,
-      });
-      const browser = await puppeteer.launch({
-        args: chromium.args,
-        executablePath: await chromium.executablePath(),
-        headless: true,
-      });
+      // Build cover
+      const coverHtml = buildCoverHtml({ jacketId: j.jacketId, vin, year: j.year, make: j.make, model: j.model });
+      const browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
       const page = await browser.newPage();
       await page.setContent(coverHtml, { waitUntil: "networkidle0" });
       const coverPdfBuffer = await page.pdf({ format: "A4", printBackground: true });
       await browser.close();
 
-      // Pull canonical invoice/BOS files from bucket
-      const invoicePath = `jacket-documents/${vin}/invoice.pdf`;
-      const bosPath = `jacket-documents/${vin}/bill-of-sale.pdf`;
-      const [invoiceBuf] = await bucket.file(invoicePath).download();
-      const [bosBuf] = await bucket.file(bosPath).download();
+      // Pull canonical invoice/BOS PDFs from bucket
+      const [invoiceBuf] = await bucket.file(`jacket-documents/${vin}/invoice.pdf`).download();
+      const [bosBuf] = await bucket.file(`jacket-documents/${vin}/bill-of-sale.pdf`).download();
 
-      // Merge PDFs (all pages)
+      // Merge all pages
       const packetDoc = await PDFDocument.create();
+
       const coverPdf = await PDFDocument.load(coverPdfBuffer);
       const coverPages = await packetDoc.copyPages(coverPdf, coverPdf.getPageIndices());
       for (const p of coverPages) packetDoc.addPage(p);
 
-      const invPdf = await PDFDocument.load(invoiceBuf);
+      const invPdf = await PDFDocument.load(inlineEnsureUint8Array(invoiceBuf));
       const invPages = await packetDoc.copyPages(invPdf, invPdf.getPageIndices());
       for (const p of invPages) packetDoc.addPage(p);
 
-      const bosPdf = await PDFDocument.load(bosBuf);
+      const bosPdf = await PDFDocument.load(inlineEnsureUint8Array(bosBuf));
       const bosPages = await packetDoc.copyPages(bosPdf, bosPdf.getPageIndices());
       for (const p of bosPages) packetDoc.addPage(p);
 
-      // (Optional) Attempt to append any uploaded PDF docs in jacket.documents[]
+      // Optionally append any extra PDF docs from jacket.documents
       if (Array.isArray(j.documents)) {
         for (const d of j.documents) {
           try {
             if (!d?.url || typeof d?.name !== "string") continue;
             if (!d.name.toLowerCase().endsWith(".pdf")) continue;
 
-            // Best-effort: if URL is a firebase download URL with /o/<path>, derive the object path
             const u = new URL(d.url);
-            // Two common patterns: firebasestorage.googleapis.com/v0/b/<bucket>/o/<encodedPath>
-            // or storage.googleapis.com/<bucket>/<path>
             let objectPath = "";
             if (u.hostname.includes("firebasestorage.googleapis.com") && u.pathname.includes("/o/")) {
               const enc = u.pathname.split("/o/")[1] || "";
               objectPath = decodeURIComponent(enc.split("?")[0] || "");
             } else if (u.hostname.includes("storage.googleapis.com")) {
-              // /<bucket>/<path...>
               const parts = u.pathname.split("/");
               objectPath = decodeURIComponent(parts.slice(2).join("/"));
             }
             if (objectPath) {
               const [buf] = await bucket.file(objectPath).download();
-              const docPdf = await PDFDocument.load(buf);
-              const pages = await packetDoc.copyPages(docPdf, docPdf.getPageIndices());
+              const extPdf = await PDFDocument.load(inlineEnsureUint8Array(buf));
+              const pages = await packetDoc.copyPages(extPdf, extPdf.getPageIndices());
               for (const p of pages) packetDoc.addPage(p);
             }
           } catch (e) {
-            console.warn(`Could not add extra doc to packet:`, e);
+            console.warn("Could not append extra PDF:", e);
           }
         }
       }
 
       const packetBytes = await packetDoc.save();
-
       const packetPath = `jacket-documents/${vin}/packet.pdf`;
       const packetFile = bucket.file(packetPath);
       await packetFile.save(packetBytes, {
         contentType: "application/pdf",
         resumable: false,
-        metadata: { cacheControl: "private, max-age=0, no-store" },
+        metadata: { cacheControl: "private, max-age:0, no-store" },
       });
 
       const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
       const [signedUrl] = await packetFile.getSignedUrl({ action: "read", expires });
 
-      await docRef.update({
-        packetUrl: signedUrl,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      await logActivity(vin, {
-        type: "packetGenerated",
-        message: "Packet generated (cover + invoice + BOS)",
-        meta: { url: signedUrl },
-      });
+      await docRef.update({ packetUrl: signedUrl, updatedAt: FieldValue.serverTimestamp() });
+      await logActivity(vin, { type: "packetGenerated", message: "Packet generated (cover + invoice + BOS)", meta: { url: signedUrl } });
 
       res.status(200).json({ ok: true, vin, url: signedUrl });
     } catch (err: any) {
@@ -1002,3 +894,8 @@ export const generateJacketPacket = onRequest(
     }
   }
 );
+
+/* Helper to ensure Uint8Array for pdf-lib load (satisfies types at runtime) */
+function inlineEnsureUint8Array(buf: any): Uint8Array {
+  return buf instanceof Uint8Array ? buf : new Uint8Array(buf as ArrayBuffer);
+}

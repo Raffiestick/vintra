@@ -314,7 +314,7 @@ function AiParseCard() {
           const response = await fetch("https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/startInvoiceParse", {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gcsPath }),
+            body: JSON.stringify({ gcsPath: gcsPath }),
           });
 
           if (!response.ok) {
@@ -395,5 +395,3 @@ export default function NewJacketPage() {
     </div>
   );
 }
-
-    
