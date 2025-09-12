@@ -10,7 +10,13 @@ import {
   getDoc,
   setDoc,
 } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase/client";
+import {
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
+} from "firebase/storage";
+import { useAuth } from "@/hooks/use-auth";
+import { db, storage } from "@/lib/firebase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,11 +35,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, Loader2, UploadCloud } from "lucide-react";
 
-export default function NewJacketPage() {
+function ManualCreateCard() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -53,6 +60,8 @@ export default function NewJacketPage() {
   const [vinError, setVinError] = useState("");
   const [dateError, setDateError] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const { user } = useAuth();
+
 
   const validateForm = () => {
     let isValid = true;
@@ -77,6 +86,10 @@ export default function NewJacketPage() {
     if (!validateForm()) {
       return;
     }
+    if (!user) {
+      toast({ title: "Authentication Error", description: "You must be logged in to create a jacket.", variant: "destructive" });
+      return;
+    }
     setLoading(true);
 
     const normalizedVin = vin.trim().toUpperCase();
@@ -88,11 +101,6 @@ export default function NewJacketPage() {
         setVinError("VIN already exists in the database.");
         setLoading(false);
         return;
-      }
-
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        throw new Error("You must be logged in to create a jacket.");
       }
 
       const payload = {
@@ -115,7 +123,7 @@ export default function NewJacketPage() {
         documents: [],
         invoiceUrl: "",
         dealerId: "",
-        creatorId: currentUser.uid,
+        creatorId: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -142,9 +150,9 @@ export default function NewJacketPage() {
   };
 
   return (
-    <Card className="w-full max-w-4xl">
+    <Card>
       <CardHeader>
-        <CardTitle>Create New Jacket</CardTitle>
+        <CardTitle>Create New Jacket (Manual)</CardTitle>
         <CardDescription>
           Fill out the form below to create a new vehicle jacket.
         </CardDescription>
@@ -259,3 +267,133 @@ export default function NewJacketPage() {
     </Card>
   );
 }
+
+function AiParseCard() {
+  const { user, isAdmin } = useAuth();
+  const { toast } = useToast();
+  const router = useRouter();
+
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0] || null;
+    setFile(selectedFile);
+  };
+
+  const handleUpload = async () => {
+    if (!file || !user || !isAdmin) {
+      toast({ title: "Error", description: "File and admin authentication are required.", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    setProgress(0);
+    
+    const storagePath = `incoming/invoices/${user.uid}/${Date.now()}-${file.name}`;
+    const storageRef = ref(storage, storagePath);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const currentProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setProgress(currentProgress);
+      },
+      (error) => {
+        console.error("Upload failed:", error);
+        toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
+        setUploading(false);
+      },
+      async () => {
+        // Upload complete, now call the function
+        toast({ title: "Upload Complete", description: "Now parsing file..." });
+        const gcsPath = uploadTask.snapshot.ref.fullPath;
+        try {
+          const response = await fetch("https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/startInvoiceParse", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gcsPath }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Function returned status ${response.status}`);
+          }
+          
+          const result = await response.json();
+
+          if (result.ok && result.stagingId) {
+            toast({ title: "Parse Complete!", description: `Found ${result.unitsCount || 0} units. Redirecting...` });
+            router.push(`/admin/staging/invoices/${result.stagingId}`);
+          } else {
+             throw new Error("Function did not return a valid staging ID.");
+          }
+        } catch (error: any) {
+          console.error("Function call failed:", error);
+          toast({ title: "Parsing Failed", description: error.message, variant: "destructive" });
+          setUploading(false);
+        }
+      }
+    );
+  };
+
+  if (!isAdmin) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>AI Parse (Upload Invoice)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">You must be signed in as an administrator to use this feature.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI Parse (Upload Invoice)</CardTitle>
+        <CardDescription>
+          Upload an auction invoice to automatically parse vehicle data.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="invoice-upload">Invoice File</Label>
+          <Input id="invoice-upload" type="file" accept="application/pdf" onChange={handleFileChange} disabled={uploading} />
+          <p className="text-xs text-muted-foreground">PDF only for MVP (images next).</p>
+        </div>
+        {uploading && (
+          <div className="space-y-2">
+            <Label>Upload Progress</Label>
+            <Progress value={progress} />
+            <p className="text-xs text-muted-foreground text-center">{Math.round(progress)}%</p>
+          </div>
+        )}
+      </CardContent>
+      <CardFooter>
+        <Button onClick={handleUpload} disabled={uploading || !file}>
+          {uploading ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...</>
+          ) : (
+            <><UploadCloud className="mr-2 h-4 w-4" /> Upload & Parse</>
+          )}
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
+export default function NewJacketPage() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <ManualCreateCard />
+      <AiParseCard />
+    </div>
+  );
+}
+
+    
