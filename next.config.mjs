@@ -1,10 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
+  experimental: {
+    // This allows the Next.js dev server to be accessed from the cloud workstation.
+    allowedDevOrigins: ["*.cloudworkstations.dev"],
   },
 };
 
