@@ -1,21 +1,28 @@
 // src/functions/src/index.ts
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
+import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { defineSecret } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { getVertexAI } from 'firebase-admin/vertex-ai';
 import { PDFDocument } from "pdf-lib";
+import { ImageAnnotatorClient } from '@google-cloud/vision';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 // Use Chromium bundle that works on Firebase (no Chrome install needed)
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 /** Optional dev bypass: set secret DEV_ADMIN_UID if you want one UID to bypass admin claims */
 const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID");
+const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 // Init Admin SDK once
 if (getApps().length === 0) {
     initializeApp();
 }
 const db = getFirestore();
-const bucket = getStorage().bucket();
+const storage = getStorage();
+const bucket = storage.bucket();
+const visionClient = new ImageAnnotatorClient();
 // --- SHARED HELPERS ---
 const seller = {
     name: "RizeUp Ventures, LLC",
@@ -25,16 +32,21 @@ const seller = {
     phone: "616-318-1991",
     email: "admin@rizeupventures.com"
 };
-const num = (x) => (typeof x === "number" ? x : Number(x || 0));
+const num = (x) => {
+    if (typeof x === 'number')
+        return x;
+    if (typeof x === 'string') {
+        const parsed = parseFloat(x.replace(/[$,]/g, ''));
+        return isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+};
 const fmtUSD = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 const fmtDateUTC = (d) => d ? d.toLocaleDateString('en-US', { timeZone: 'UTC' }) : '';
 const safe = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 function buildCoverHtml(opts) {
     const { jacketId, vin, year, make, model } = opts;
     const ymm = [year, make, model].filter(Boolean).join(" ") || "—";
-    const safe = (s) => String(s ?? "")
-        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     const jn = jacketId || "—";
     return `<!doctype html>
 <html>
@@ -166,8 +178,6 @@ async function logActivity(vin, entry) {
         await activityCol.add({
             ...entry,
             ts: FieldValue.serverTimestamp(),
-            // In a Cloud Function, there is no `auth` context unless it's a Callable function.
-            // We can't log the actor automatically here for onRequest functions.
             actor: "System"
         });
     }
@@ -175,12 +185,11 @@ async function logActivity(vin, entry) {
         console.error(`Failed to log activity for VIN ${vin}:`, error);
     }
 }
-/** Require admin privileges (claims), with optional DEV UID bypass via secret. */
 function assertAdmin(request) {
     if (!request.auth) {
         throw new HttpsError("unauthenticated", "You must be signed in.");
     }
-    const devBypass = DEV_ADMIN_UID_SECRET.value(); // '' if not set
+    const devBypass = DEV_ADMIN_UID_SECRET.value();
     if (devBypass && request.auth.uid === devBypass)
         return;
     const token = request.auth.token || {};
@@ -189,7 +198,414 @@ function assertAdmin(request) {
         throw new HttpsError("permission-denied", "Admin privileges required.");
     }
 }
-/** Approve / deny dealer application (admin only) */
+// --- PARSING & OCR HELPERS ---
+async function extractTextFromPdf(gcsPath) {
+    const [result] = await visionClient.asyncBatchAnnotateFiles({
+        requests: [
+            {
+                inputConfig: {
+                    gcsSource: { uri: gcsPath },
+                    mimeType: 'application/pdf',
+                },
+                features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+            },
+        ],
+    });
+    const response = result.responses?.[0];
+    return response?.fullTextAnnotation?.text ?? "";
+}
+async function extractTextFromImage(gcsPath) {
+    const [result] = await visionClient.textDetection(gcsPath);
+    return result.fullTextAnnotation?.text ?? "";
+}
+async function parseInvoiceWithGemini(text) {
+    const vertexAI = getVertexAI();
+    const generativeModel = vertexAI.getGenerativeModel({
+        model: 'gemini-1.5-flash-001',
+        generationConfig: { responseMimeType: 'application/json' },
+    });
+    const prompt = `You are an expert auction invoice extraction agent for a vehicle wholesaler.
+The user will provide OCR text from an auction invoice, likely from NPA (National Powersport Auctions).
+Your task is to extract the data for each vehicle unit listed on the invoice and return it as a JSON object that matches the provided schema EXACTLY.
+If a value is not present in the text, omit the key or set it to null.
+The 'managementFee' for each unit should always be set to 100.
+
+SCHEMA:
+{
+  "invoiceMeta": { "aucNo": "string?", "source": "npa", "saleLocation": "string?" },
+  "units": [{
+    "vin": "string", "year": "number?", "make": "string?", "model": "string?",
+    "color": "string?", "hours": "number?", "odometer": "number?", "saleLocation": "string?",
+    "itemPrice": "number?", "buyerFee": "number?", "onlineFee": "number?",
+    "titleInfo": "string?", "stockNo": "string?", "aucNo": "string?",
+    "managementFee": 100
+  }]
+}
+
+OCR TEXT:
+${text}
+`;
+    const resp = await generativeModel.generateContent(prompt);
+    const jsonString = resp.response.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!jsonString) {
+        throw new Error("LLM parsing returned no content.");
+    }
+    try {
+        return JSON.parse(jsonString);
+    }
+    catch (e) {
+        console.error("Failed to parse JSON from LLM response:", jsonString);
+        throw new Error("LLM output was not valid JSON.");
+    }
+}
+async function classifyDocWithGemini(text) {
+    const vertexAI = getVertexAI();
+    const generativeModel = vertexAI.getGenerativeModel({
+        model: 'gemini-1.5-flash-001',
+        generationConfig: { responseMimeType: 'application/json' },
+    });
+    const prompt = `You are a document classification agent. Given the OCR text of a document,
+classify its type and extract the VIN if present.
+
+SCHEMA:
+{
+  "type": ("title" | "poa" | "lien" | "other"),
+  "guessVin": "string?"
+}
+
+RULES:
+- "poa" is for "Power of Attorney".
+- "title" is for vehicle titles or certificates of origin.
+- "lien" is for lien releases or related documents.
+- If a 17-character VIN is clearly identifiable, extract it. Otherwise, omit 'guessVin'.
+
+OCR TEXT:
+${text}
+`;
+    const resp = await generativeModel.generateContent(prompt);
+    const jsonString = resp.response.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!jsonString) {
+        throw new Error("LLM classification returned no content.");
+    }
+    try {
+        return JSON.parse(jsonString);
+    }
+    catch (e) {
+        console.error("Failed to parse JSON from LLM response:", jsonString);
+        throw new Error("LLM output was not valid JSON.");
+    }
+}
+// --- STORAGE TRIGGERS (INGESTION) ---
+export const onInvoiceUpload = onObjectFinalized({
+    bucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "default",
+    cpu: 2,
+    memory: "1GiB",
+    timeoutSeconds: 300,
+}, async (event) => {
+    const { bucket, name: filePath, contentType } = event.data;
+    if (!filePath.startsWith('incoming/invoices/')) {
+        console.log(`Skipping file ${filePath} as it is not in incoming/invoices/`);
+        return;
+    }
+    console.log(`Processing invoice: ${filePath}`);
+    const gcsPath = `gs://${bucket}/${filePath}`;
+    try {
+        let rawText = "";
+        if (contentType === 'application/pdf') {
+            rawText = await extractTextFromPdf(gcsPath);
+        }
+        else if (contentType?.startsWith('image/')) {
+            rawText = await extractTextFromImage(gcsPath);
+        }
+        else {
+            console.log(`Unsupported content type: ${contentType}`);
+            return;
+        }
+        if (!rawText.trim()) {
+            throw new Error("OCR processing returned no text.");
+        }
+        const parsedData = await parseInvoiceWithGemini(rawText);
+        if (!parsedData || !parsedData.units || parsedData.units.length === 0) {
+            throw new Error("LLM parsing did not return any units.");
+        }
+        const stagingId = db.collection('stagingInvoices').doc().id;
+        const file = storage.bucket(bucket).file(filePath);
+        const [signedUrl] = await file.getSignedUrl({ action: 'read', expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+        const writeBatch = db.batch();
+        const stagingDocRef = db.collection('stagingInvoices').doc(stagingId);
+        writeBatch.set(stagingDocRef, {
+            createdAt: FieldValue.serverTimestamp(),
+            fileUrl: signedUrl,
+            gcsPath,
+            rawText,
+            ...parsedData.invoiceMeta
+        });
+        for (const unit of parsedData.units) {
+            const unitDocRef = db.collection('stagingInvoices').doc(stagingId).collection('units').doc();
+            writeBatch.set(unitDocRef, { ...unit, managementFee: 100 });
+        }
+        await writeBatch.commit();
+        console.log(`Successfully staged ${parsedData.units.length} units from ${filePath} under ID ${stagingId}`);
+    }
+    catch (error) {
+        console.error(`Failed to process invoice ${filePath}:`, error);
+        // Optional: Move file to an 'errors' folder
+        const newPath = filePath.replace('incoming/invoices/', 'incoming/errors/');
+        await storage.bucket(bucket).file(filePath).move(newPath);
+    }
+});
+export const onDocUpload = onObjectFinalized({
+    bucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "default",
+    cpu: 1,
+    memory: "512MiB",
+    timeoutSeconds: 120,
+}, async (event) => {
+    const { bucket, name: filePath, contentType } = event.data;
+    if (!filePath.startsWith('incoming/docs/')) {
+        console.log(`Skipping file ${filePath} as it is not in incoming/docs/`);
+        return;
+    }
+    console.log(`Processing document: ${filePath}`);
+    const gcsPath = `gs://${bucket}/${filePath}`;
+    try {
+        let rawText = "";
+        if (contentType === 'application/pdf') {
+            rawText = await extractTextFromPdf(gcsPath);
+        }
+        else if (contentType?.startsWith('image/')) {
+            rawText = await extractTextFromImage(gcsPath);
+        }
+        else {
+            console.log(`Unsupported content type: ${contentType}`);
+            return;
+        }
+        const { type, guessVin } = await classifyDocWithGemini(rawText);
+        const file = storage.bucket(bucket).file(filePath);
+        const [signedUrl] = await file.getSignedUrl({ action: 'read', expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+        const docId = db.collection('stagedDocs').doc().id;
+        await db.collection('stagedDocs').doc(docId).set({
+            createdAt: FieldValue.serverTimestamp(),
+            fileUrl: signedUrl,
+            gcsPath,
+            rawText,
+            type,
+            guessVin,
+        });
+        console.log(`Successfully staged doc ${filePath} with type: ${type}, VIN: ${guessVin}`);
+    }
+    catch (error) {
+        console.error(`Failed to process document ${filePath}:`, error);
+        const newPath = filePath.replace('incoming/docs/', 'incoming/errors/');
+        await storage.bucket(bucket).file(filePath).move(newPath);
+    }
+});
+// --- ADMIN CALLABLE FUNCTIONS ---
+export const startInvoiceParse = onRequest({
+    region: "us-central1",
+    cors: true,
+    timeoutSeconds: 120,
+    memory: "1GiB",
+    secrets: [GEMINI_API_KEY],
+}, async (req, res) => {
+    if (req.method !== "POST") {
+        res.status(405).send("Method Not Allowed");
+        return;
+    }
+    const { gcsPath } = req.body;
+    if (!gcsPath) {
+        res.status(400).send({ error: "Missing gcsPath" });
+        return;
+    }
+    try {
+        const file = bucket.file(gcsPath);
+        const [exists] = await file.exists();
+        if (!exists) {
+            res.status(404).send({ error: "File not found at gcsPath" });
+            return;
+        }
+        const [metadata] = await file.getMetadata();
+        const contentType = metadata.contentType || "application/pdf";
+        let text = "";
+        if (contentType.includes("pdf")) {
+            const pdf = await import("pdf-parse/lib/pdf-parse.js");
+            const [buffer] = await file.download();
+            const data = await pdf.default(buffer);
+            text = data.text;
+        }
+        else if (contentType.includes("image")) {
+            res.status(400).send({ error: "Image files are not supported yet" });
+            return;
+        }
+        else {
+            res.status(400).send({ error: `Unsupported content type: ${contentType}` });
+            return;
+        }
+        if (!text.trim()) {
+            throw new Error("Extracted text is empty.");
+        }
+        // Call Gemini
+        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY.value());
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const prompt = `You are an invoice extraction agent for NPA-style invoices. Your output must be ONLY the JSON object, matching this exact schema. Do not add markdown backticks or any other text.
+
+SCHEMA:
+{
+  "invoiceMeta": { "aucNo": "string?", "saleLocation": "string?" },
+  "units": [{
+    "vin": "string", "year": "number?", "make": "string?", "model": "string?",
+    "color": "string?", "hours": "number?", "odometer": "number?",
+    "saleLocation": "string?", "itemPrice": "number?", "buyerFee": "number?",
+    "onlineFee": "number?", "titleInfo": "string?", "stockNo": "string?", "aucNo": "string?"
+  }]
+}
+
+TEXT:
+${text.substring(0, 30000)}
+`;
+        const result = await model.generateContent(prompt);
+        const response = result.response;
+        const responseText = response.text();
+        let parsedData;
+        try {
+            parsedData = JSON.parse(responseText);
+        }
+        catch (e) {
+            console.error("Failed to parse JSON from LLM:", responseText);
+            throw new Error("LLM did not return valid JSON.");
+        }
+        if (!parsedData || !parsedData.units || !Array.isArray(parsedData.units)) {
+            throw new Error("Parsed data does not contain a 'units' array.");
+        }
+        // Write to Firestore
+        const stagingId = db.collection("stagingInvoices").doc().id;
+        const [fileUrl] = await file.getSignedUrl({ action: 'read', expires: '03-09-2491' });
+        const uploaderUid = gcsPath.split('/')[1];
+        await db.collection("stagingInvoices").doc(stagingId).set({
+            source: "npa",
+            gcsPath,
+            fileUrl,
+            createdAt: FieldValue.serverTimestamp(),
+            uploaderUid: uploaderUid || null,
+            ...(parsedData.invoiceMeta || {}),
+        });
+        const unitsCollection = db.collection("stagingInvoices").doc(stagingId).collection("units");
+        for (const unit of parsedData.units) {
+            if (!unit.vin)
+                continue;
+            const normalizedUnit = {
+                ...unit,
+                vin: unit.vin.trim().toUpperCase(),
+                itemPrice: num(unit.itemPrice),
+                buyerFee: num(unit.buyerFee),
+                onlineFee: num(unit.onlineFee),
+                managementFee: 100, // Default value
+                rawText: text, // For reference
+            };
+            await unitsCollection.add(normalizedUnit);
+        }
+        res.status(200).json({ ok: true, stagingId, unitsCount: parsedData.units.length });
+    }
+    catch (err) {
+        console.error(`Error in startInvoiceParse for ${gcsPath}:`, err);
+        res.status(500).send({ error: err.message || "An internal error occurred." });
+    }
+});
+export const startDocParse = onRequest({
+    region: "us-central1",
+    cors: true
+}, (req, res) => {
+    res.status(501).send({ error: "Not implemented yet" });
+});
+export const createJacketFromUnit = onCall({
+    region: "us-central1",
+    secrets: [DEV_ADMIN_UID_SECRET]
+}, async (request) => {
+    assertAdmin(request);
+    const { stagingId, unitId } = request.data;
+    if (!stagingId || !unitId) {
+        throw new HttpsError("invalid-argument", "stagingId and unitId are required.");
+    }
+    const unitRef = db.collection('stagingInvoices').doc(stagingId).collection('units').doc(unitId);
+    const unitSnap = await unitRef.get();
+    if (!unitSnap.exists) {
+        throw new HttpsError("not-found", "Staged unit not found.");
+    }
+    const unit = unitSnap.data();
+    const vin = unit.vin?.trim().toUpperCase();
+    if (!vin) {
+        throw new HttpsError("failed-precondition", "Staged unit has no VIN.");
+    }
+    const jacketRef = db.collection('jackets').doc(vin);
+    await db.runTransaction(async (transaction) => {
+        const jacketSnap = await transaction.get(jacketRef);
+        const jacketData = {
+            vin: vin,
+            year: num(unit.year),
+            make: unit.make || "",
+            model: unit.model || "",
+            color: unit.color || "",
+            odometer: num(unit.odometer) || num(unit.hours) || 0,
+            saleLocation: unit.saleLocation || "",
+            itemPrice: num(unit.itemPrice),
+            buyerFee: num(unit.buyerFee),
+            onlineFee: num(unit.onlineFee),
+            managementFee: num(unit.managementFee) || 100,
+            auctionSaleDate: FieldValue.serverTimestamp(), // Placeholder
+            isAuctionPaid: false,
+            isMgmtFeePaid: false,
+            miscFees: [],
+            documents: [],
+            updatedAt: FieldValue.serverTimestamp(),
+        };
+        if (!jacketSnap.exists) {
+            jacketData.createdAt = FieldValue.serverTimestamp();
+            jacketData.jacketId = `J${Date.now()}`;
+            transaction.set(jacketRef, jacketData);
+        }
+        else {
+            transaction.update(jacketRef, jacketData);
+        }
+    });
+    return { success: true, path: jacketRef.path };
+});
+export const attachStagedDocToJacket = onCall({
+    region: "us-central1",
+    secrets: [DEV_ADMIN_UID_SECRET]
+}, async (request) => {
+    assertAdmin(request);
+    const { docId, vin, typeOverride } = request.data;
+    if (!docId || !vin) {
+        throw new HttpsError("invalid-argument", "docId and vin are required.");
+    }
+    const stagedDocRef = db.collection('stagedDocs').doc(docId);
+    const stagedDocSnap = await stagedDocRef.get();
+    if (!stagedDocSnap.exists) {
+        throw new HttpsError("not-found", "Staged document not found.");
+    }
+    const stagedDoc = stagedDocSnap.data();
+    const gcsPath = stagedDoc.gcsPath;
+    const fileName = gcsPath.split('/').pop();
+    const docType = typeOverride || stagedDoc.type || 'other';
+    const newPath = `jacket-documents/${vin}/${docType}/${fileName}`;
+    await storage.bucket(stagedDoc.gcsPath.split('/')[2]).file(gcsPath.split('/').slice(3).join('/')).move(newPath);
+    const newFile = bucket.file(newPath);
+    const [signedUrl] = await newFile.getSignedUrl({ action: 'read', expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+    const newDocument = {
+        id: `doc-${Date.now()}`,
+        name: fileName,
+        type: docType,
+        url: signedUrl,
+        createdAt: FieldValue.serverTimestamp(),
+    };
+    const jacketRef = db.collection('jackets').doc(vin);
+    await jacketRef.update({
+        documents: FieldValue.arrayUnion(newDocument),
+        updatedAt: FieldValue.serverTimestamp(),
+    });
+    await stagedDocRef.delete();
+    return { success: true, message: `Document attached to jacket ${vin}.` };
+});
+// --- EXISTING FUNCTIONS (UNCHANGED) ---
 export const manageDealerApplication = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
     assertAdmin(request);
     const { uid, action } = request.data || {};
@@ -208,24 +624,16 @@ export const manageDealerApplication = onCall({ region: "us-central1", secrets: 
         throw new HttpsError("internal", err?.message || "Failed to manage application.");
     }
 });
-/** Simple jacket ID generator (admin only) */
 export const generateJacketId = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
     assertAdmin(request);
     const jacketId = Math.floor(100000 + Math.random() * 900000).toString();
     return { jacketId };
 });
-/**
- * Generate invoice PDF and store to:
- *   jacket-documents/{vin}/invoice.pdf
- * Update Firestore jacket with a 7-day URL in `invoiceUrl`.
- * Gen 2 HTTP function (v2) named generateJacketInvoice.
- * ✅ CORS enabled so your workspace URL can call it from the browser.
- */
 export const generateJacketInvoice = onRequest({
     region: "us-central1",
     timeoutSeconds: 120,
     memory: "1GiB",
-    cors: true, // <— THIS fixes the CORS “failed to fetch”
+    cors: true,
 }, async (req, res) => {
     try {
         if (req.method !== "POST" && req.method !== "GET") {
@@ -245,7 +653,6 @@ export const generateJacketInvoice = onRequest({
             return;
         }
         let j = snap.data() || {};
-        // If no invoice ID, generate one transactionally
         if (!j.invoiceId) {
             const counterRef = db.collection("counters").doc("invoices");
             await db.runTransaction(async (transaction) => {
@@ -258,7 +665,7 @@ export const generateJacketInvoice = onRequest({
                 const paddedSeq = newSeq.toString().padStart(4, '0');
                 const newInvoiceId = `INV-${yyyy}${mm}-${paddedSeq}`;
                 transaction.update(docRef, { invoiceId: newInvoiceId });
-                j.invoiceId = newInvoiceId; // Update local object
+                j.invoiceId = newInvoiceId;
             });
         }
         const buyerData = await getBuyerData(j.dealerId);
@@ -325,8 +732,8 @@ ${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
   <div class="invoice-title">
     <h1>INVOICE</h1>
     <div class="invoice-meta">
-      <div class="meta-item"><strong>Invoice ID:</strong> ${safe(j.invoiceId)}</div>
       <div class="meta-item"><strong>Jacket #:</strong> ${safe(j.jacketId || '—')}</div>
+      <div class="meta-item"><strong>Invoice ID:</strong> ${safe(j.invoiceId)}</div>
       <div class="meta-item"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
       <div class="meta-item"><strong>VIN:</strong> ${safe(vin)}</div>
     </div>
@@ -401,7 +808,6 @@ ${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
 </div>
 </body>
 </html>`;
-        // Launch Chromium that works on Firebase
         const browser = await puppeteer.launch({
             args: chromium.args,
             executablePath: await chromium.executablePath(),
@@ -411,7 +817,6 @@ ${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
         await page.setContent(html, { waitUntil: "networkidle0" });
         const pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } });
         await browser.close();
-        // Save to Storage
         const filePath = `jacket-documents/${vin}/invoice.pdf`;
         const file = bucket.file(filePath);
         await file.save(pdfBuffer, {
@@ -419,7 +824,6 @@ ${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
             resumable: false,
             metadata: { cacheControl: "private, max-age=0, no-store" },
         });
-        // Signed URL (7 days)
         const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
         const [signedUrl] = await file.getSignedUrl({ action: "read", expires });
         await docRef.update({
@@ -438,10 +842,6 @@ ${isFullyPaid ? '<div class="wm">PAID</div>' : ''}
         res.status(500).send(err?.message || "Internal error");
     }
 });
-/**
- * Generate Bill of Sale PDF.
- * This function is very similar to the invoice generator but creates a BoS.
- */
 export const generateBillOfSale = onRequest({
     region: "us-central1",
     timeoutSeconds: 120,
@@ -573,7 +973,6 @@ export const generateBillOfSale = onRequest({
 </div>
 </body>
 </html>`;
-        // Launch Chromium
         const browser = await puppeteer.launch({
             args: chromium.args,
             executablePath: await chromium.executablePath(),
@@ -583,7 +982,6 @@ export const generateBillOfSale = onRequest({
         await page.setContent(html, { waitUntil: "networkidle0" });
         const pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } });
         await browser.close();
-        // Save to Storage
         const filePath = `jacket-documents/${vin}/bill-of-sale.pdf`;
         const file = bucket.file(filePath);
         await file.save(pdfBuffer, {
@@ -591,10 +989,8 @@ export const generateBillOfSale = onRequest({
             resumable: false,
             metadata: { cacheControl: "private, max-age=0, no-store" },
         });
-        // Get Signed URL
-        const expires = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+        const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
         const [signedUrl] = await file.getSignedUrl({ action: "read", expires });
-        // Update Firestore
         await docRef.update({
             bosUrl: signedUrl,
             updatedAt: FieldValue.serverTimestamp(),
@@ -635,7 +1031,6 @@ export const generateJacketPacket = onRequest({
             return;
         }
         const j = snap.data() || {};
-        // Ensure invoice and BOS exist
         if (!j.invoiceUrl) {
             res.status(400).send("Invoice must be generated before creating a packet.");
             return;
@@ -644,7 +1039,6 @@ export const generateJacketPacket = onRequest({
             res.status(400).send("Bill of Sale must be generated before creating a packet.");
             return;
         }
-        // 1. Generate Cover Page PDF
         const coverHtml = buildCoverHtml({
             jacketId: j.jacketId,
             vin,
@@ -661,26 +1055,20 @@ export const generateJacketPacket = onRequest({
         await page.setContent(coverHtml, { waitUntil: "networkidle0" });
         const coverPdfBuffer = await page.pdf({ format: "A4", printBackground: true });
         await browser.close();
-        // 2. Fetch existing PDFs from storage
         const invoicePath = `jacket-documents/${vin}/invoice.pdf`;
         const bosPath = `jacket-documents/${vin}/bill-of-sale.pdf`;
         const [invoiceFile] = await bucket.file(invoicePath).download();
         const [bosFile] = await bucket.file(bosPath).download();
-        // 3. Merge PDFs using pdf-lib
         const packetDoc = await PDFDocument.create();
-        // Cover Page
         const coverPdf = await PDFDocument.load(coverPdfBuffer);
         const [coverPage] = await packetDoc.copyPages(coverPdf, [0]);
         packetDoc.addPage(coverPage);
-        // Invoice
         const invoicePdf = await PDFDocument.load(invoiceFile);
         const [invoicePage] = await packetDoc.copyPages(invoicePdf, [0]);
         packetDoc.addPage(invoicePage);
-        // Bill of Sale
         const bosPdf = await PDFDocument.load(bosFile);
         const [bosPage] = await packetDoc.copyPages(bosPdf, [0]);
         packetDoc.addPage(bosPage);
-        // Add other documents from the jacket's `documents` array
         if (j.documents && Array.isArray(j.documents)) {
             for (const doc of j.documents) {
                 if (doc.url && doc.name.toLowerCase().endsWith('.pdf')) {
@@ -704,7 +1092,6 @@ export const generateJacketPacket = onRequest({
             }
         }
         const packetBytes = await packetDoc.save();
-        // 4. Save the merged PDF to storage
         const packetPath = `jacket-documents/${vin}/packet.pdf`;
         const packetFile = bucket.file(packetPath);
         await packetFile.save(packetBytes, {
@@ -712,7 +1099,6 @@ export const generateJacketPacket = onRequest({
             resumable: false,
             metadata: { cacheControl: "private, max-age=0, no-store" },
         });
-        // 5. Get signed URL and update Firestore
         const expires = Date.now() + 7 * 24 * 60 * 60 * 1000;
         const [signedUrl] = await packetFile.getSignedUrl({ action: "read", expires });
         await docRef.update({

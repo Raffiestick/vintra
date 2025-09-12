@@ -1,4 +1,3 @@
-
 // src/functions/src/index.ts
 
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
@@ -8,9 +7,7 @@ import { defineSecret, defineString } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Transaction, DocumentData } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
-import { getVertexAI } from 'firebase-admin/vertex-ai';
 import { PDFDocument } from "pdf-lib";
-import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 
@@ -31,7 +28,7 @@ if (getApps().length === 0) {
 const db = getFirestore();
 const storage = getStorage();
 const bucket = storage.bucket();
-const visionClient = new ImageAnnotatorClient();
+
 
 // --- SHARED HELPERS ---
 
@@ -213,230 +210,12 @@ function assertAdmin(request: CallableRequest) {
   }
 }
 
-// --- PARSING & OCR HELPERS ---
-
-async function extractTextFromPdf(gcsPath: string): Promise<string> {
-    const [result] = await visionClient.asyncBatchAnnotateFiles({
-        requests: [
-            {
-                inputConfig: {
-                    gcsSource: { uri: gcsPath },
-                    mimeType: 'application/pdf',
-                },
-                features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-            },
-        ],
-    });
-
-    const response = result.responses?.[0];
-    return response?.fullTextAnnotation?.text ?? "";
+function getGeminiModel() {
+    const key = GEMINI_API_KEY.value();
+    if (!key) throw new Error("GEMINI_API_KEY missing");
+    const genAI = new GoogleGenerativeAI(key);
+    return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 }
-
-async function extractTextFromImage(gcsPath: string): Promise<string> {
-    const [result] = await visionClient.textDetection(gcsPath);
-    return result.fullTextAnnotation?.text ?? "";
-}
-
-
-async function parseInvoiceWithGemini(text: string): Promise<any> {
-    const vertexAI = getVertexAI();
-    const generativeModel = vertexAI.getGenerativeModel({
-        model: 'gemini-1.5-flash-001',
-        generationConfig: { responseMimeType: 'application/json' },
-    });
-
-    const prompt = `You are an expert auction invoice extraction agent for a vehicle wholesaler.
-The user will provide OCR text from an auction invoice, likely from NPA (National Powersport Auctions).
-Your task is to extract the data for each vehicle unit listed on the invoice and return it as a JSON object that matches the provided schema EXACTLY.
-If a value is not present in the text, omit the key or set it to null.
-The 'managementFee' for each unit should always be set to 100.
-
-SCHEMA:
-{
-  "invoiceMeta": { "aucNo": "string?", "source": "npa", "saleLocation": "string?" },
-  "units": [{
-    "vin": "string", "year": "number?", "make": "string?", "model": "string?",
-    "color": "string?", "hours": "number?", "odometer": "number?", "saleLocation": "string?",
-    "itemPrice": "number?", "buyerFee": "number?", "onlineFee": "number?",
-    "titleInfo": "string?", "stockNo": "string?", "aucNo": "string?",
-    "managementFee": 100
-  }]
-}
-
-OCR TEXT:
-${text}
-`;
-
-    const resp = await generativeModel.generateContent(prompt);
-    const jsonString = resp.response.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!jsonString) {
-        throw new Error("LLM parsing returned no content.");
-    }
-    try {
-        return JSON.parse(jsonString);
-    } catch (e) {
-        console.error("Failed to parse JSON from LLM response:", jsonString);
-        throw new Error("LLM output was not valid JSON.");
-    }
-}
-
-async function classifyDocWithGemini(text: string): Promise<any> {
-    const vertexAI = getVertexAI();
-    const generativeModel = vertexAI.getGenerativeModel({
-        model: 'gemini-1.5-flash-001',
-        generationConfig: { responseMimeType: 'application/json' },
-    });
-
-    const prompt = `You are a document classification agent. Given the OCR text of a document,
-classify its type and extract the VIN if present.
-
-SCHEMA:
-{
-  "type": ("title" | "poa" | "lien" | "other"),
-  "guessVin": "string?"
-}
-
-RULES:
-- "poa" is for "Power of Attorney".
-- "title" is for vehicle titles or certificates of origin.
-- "lien" is for lien releases or related documents.
-- If a 17-character VIN is clearly identifiable, extract it. Otherwise, omit 'guessVin'.
-
-OCR TEXT:
-${text}
-`;
-    const resp = await generativeModel.generateContent(prompt);
-    const jsonString = resp.response.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!jsonString) {
-        throw new Error("LLM classification returned no content.");
-    }
-    try {
-        return JSON.parse(jsonString);
-    } catch (e) {
-        console.error("Failed to parse JSON from LLM response:", jsonString);
-        throw new Error("LLM output was not valid JSON.");
-    }
-}
-
-
-// --- STORAGE TRIGGERS (INGESTION) ---
-
-export const onInvoiceUpload = onObjectFinalized({
-    bucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "default",
-    cpu: 2,
-    memory: "1GiB",
-    timeoutSeconds: 300,
-}, async (event) => {
-    const { bucket, name: filePath, contentType } = event.data;
-    if (!filePath.startsWith('incoming/invoices/')) {
-        console.log(`Skipping file ${filePath} as it is not in incoming/invoices/`);
-        return;
-    }
-    
-    console.log(`Processing invoice: ${filePath}`);
-    const gcsPath = `gs://${bucket}/${filePath}`;
-
-    try {
-        let rawText = "";
-        if (contentType === 'application/pdf') {
-            rawText = await extractTextFromPdf(gcsPath);
-        } else if (contentType?.startsWith('image/')) {
-            rawText = await extractTextFromImage(gcsPath);
-        } else {
-            console.log(`Unsupported content type: ${contentType}`);
-            return;
-        }
-
-        if (!rawText.trim()) {
-            throw new Error("OCR processing returned no text.");
-        }
-
-        const parsedData = await parseInvoiceWithGemini(rawText);
-        
-        if (!parsedData || !parsedData.units || parsedData.units.length === 0) {
-            throw new Error("LLM parsing did not return any units.");
-        }
-
-        const stagingId = db.collection('stagingInvoices').doc().id;
-        const file = storage.bucket(bucket).file(filePath);
-        const [signedUrl] = await file.getSignedUrl({ action: 'read', expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
-
-        const writeBatch = db.batch();
-        
-        const stagingDocRef = db.collection('stagingInvoices').doc(stagingId);
-        writeBatch.set(stagingDocRef, {
-            createdAt: FieldValue.serverTimestamp(),
-            fileUrl: signedUrl,
-            gcsPath,
-            rawText,
-            ...parsedData.invoiceMeta
-        });
-        
-        for (const unit of parsedData.units) {
-            const unitDocRef = db.collection('stagingInvoices').doc(stagingId).collection('units').doc();
-            writeBatch.set(unitDocRef, { ...unit, managementFee: 100 });
-        }
-        
-        await writeBatch.commit();
-        console.log(`Successfully staged ${parsedData.units.length} units from ${filePath} under ID ${stagingId}`);
-
-    } catch (error) {
-        console.error(`Failed to process invoice ${filePath}:`, error);
-        // Optional: Move file to an 'errors' folder
-        const newPath = filePath.replace('incoming/invoices/', 'incoming/errors/');
-        await storage.bucket(bucket).file(filePath).move(newPath);
-    }
-});
-
-
-export const onDocUpload = onObjectFinalized({
-    bucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "default",
-    cpu: 1,
-    memory: "512MiB",
-    timeoutSeconds: 120,
-}, async (event) => {
-    const { bucket, name: filePath, contentType } = event.data;
-    if (!filePath.startsWith('incoming/docs/')) {
-        console.log(`Skipping file ${filePath} as it is not in incoming/docs/`);
-        return;
-    }
-
-    console.log(`Processing document: ${filePath}`);
-    const gcsPath = `gs://${bucket}/${filePath}`;
-
-    try {
-        let rawText = "";
-        if (contentType === 'application/pdf') {
-            rawText = await extractTextFromPdf(gcsPath);
-        } else if (contentType?.startsWith('image/')) {
-            rawText = await extractTextFromImage(gcsPath);
-        } else {
-            console.log(`Unsupported content type: ${contentType}`);
-            return;
-        }
-
-        const { type, guessVin } = await classifyDocWithGemini(rawText);
-        const file = storage.bucket(bucket).file(filePath);
-        const [signedUrl] = await file.getSignedUrl({ action: 'read', expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
-        
-        const docId = db.collection('stagedDocs').doc().id;
-        await db.collection('stagedDocs').doc(docId).set({
-            createdAt: FieldValue.serverTimestamp(),
-            fileUrl: signedUrl,
-            gcsPath,
-            rawText,
-            type,
-            guessVin,
-        });
-
-        console.log(`Successfully staged doc ${filePath} with type: ${type}, VIN: ${guessVin}`);
-
-    } catch (error) {
-        console.error(`Failed to process document ${filePath}:`, error);
-        const newPath = filePath.replace('incoming/docs/', 'incoming/errors/');
-        await storage.bucket(bucket).file(filePath).move(newPath);
-    }
-});
 
 
 // --- ADMIN CALLABLE FUNCTIONS ---
@@ -473,12 +252,12 @@ export const startInvoiceParse = onRequest(
 
       let text = "";
       if (contentType.includes("pdf")) {
-        const pdf = await import("pdf-parse/lib/pdf-parse.js");
+        const pdfParse = (await import("pdf-parse")).default as any;
         const [buffer] = await file.download();
-        const data = await pdf.default(buffer);
+        const data = await pdfParse(buffer);
         text = data.text;
       } else if (contentType.includes("image")) {
-        res.status(400).send({ error: "Image files are not supported yet" });
+        res.status(400).send({ error: "Images not supported yet in MVP" });
         return;
       } else {
         res.status(400).send({ error: `Unsupported content type: ${contentType}` });
@@ -490,40 +269,49 @@ export const startInvoiceParse = onRequest(
       }
 
       // Call Gemini
-      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY.value());
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const prompt = `You are an invoice extraction agent for NPA-style invoices. Your output must be ONLY the JSON object, matching this exact schema. Do not add markdown backticks or any other text.
+      const model = getGeminiModel();
+      const prompt = `
+       You are an invoice extraction agent for NPA-style auction invoices.
+       Return STRICT JSON only matching this schema:
+       {
+         "invoiceMeta": { "aucNo": "string?", "saleLocation": "string?" },
+         "units": [{
+           "vin": "string",
+           "year": "number?",
+           "make": "string?",
+           "model": "string?",
+           "color": "string?",
+           "hours": "number?",
+           "odometer": "number?",
+           "saleLocation": "string?",
+           "itemPrice": "number?",
+           "buyerFee": "number?",
+           "onlineFee": "number?",
+           "titleInfo": "string?",
+           "stockNo": "string?",
+           "aucNo": "string?"
+         }]
+       }
+       Normalize: VIN uppercase, numbers bare (no $ or commas).
+       Text:
+       """${text.substring(0, 20000)}"""
+     `;
+     
+     const result = await model.generateContent(prompt);
+     const raw = result.response?.text() || "{}";
+     let extracted: any = {};
+     try {
+       extracted = JSON.parse(raw);
+     } catch (e) {
+        console.error("Failed to parse JSON from LLM response:", raw);
+        throw new Error("LLM output was not valid JSON.");
+     }
 
-SCHEMA:
-{
-  "invoiceMeta": { "aucNo": "string?", "saleLocation": "string?" },
-  "units": [{
-    "vin": "string", "year": "number?", "make": "string?", "model": "string?",
-    "color": "string?", "hours": "number?", "odometer": "number?",
-    "saleLocation": "string?", "itemPrice": "number?", "buyerFee": "number?",
-    "onlineFee": "number?", "titleInfo": "string?", "stockNo": "string?", "aucNo": "string?"
-  }]
-}
-
-TEXT:
-${text.substring(0, 30000)}
-`;
-
-      const result = await model.generateContent(prompt);
-      const response = result.response;
-      const responseText = response.text();
-      
-      let parsedData;
-      try {
-        parsedData = JSON.parse(responseText);
-      } catch (e) {
-        console.error("Failed to parse JSON from LLM:", responseText);
-        throw new Error("LLM did not return valid JSON.");
-      }
-
-      if (!parsedData || !parsedData.units || !Array.isArray(parsedData.units)) {
+      const units = Array.isArray(extracted?.units) ? extracted.units : [];
+      if (units.length === 0) {
         throw new Error("Parsed data does not contain a 'units' array.");
       }
+      for (const u of units) { if (u && u.managementFee == null) u.managementFee = 100; }
       
       // Write to Firestore
       const stagingId = db.collection("stagingInvoices").doc().id;
@@ -535,13 +323,14 @@ ${text.substring(0, 30000)}
         source: "npa",
         gcsPath,
         fileUrl,
+        rawText: text,
         createdAt: FieldValue.serverTimestamp(),
         uploaderUid: uploaderUid || null,
-        ...(parsedData.invoiceMeta || {}),
+        ...(extracted.invoiceMeta || {}),
       });
 
       const unitsCollection = db.collection("stagingInvoices").doc(stagingId).collection("units");
-      for (const unit of parsedData.units) {
+      for (const unit of units) {
         if (!unit.vin) continue;
         const normalizedUnit = {
           ...unit,
@@ -549,13 +338,11 @@ ${text.substring(0, 30000)}
           itemPrice: num(unit.itemPrice),
           buyerFee: num(unit.buyerFee),
           onlineFee: num(unit.onlineFee),
-          managementFee: 100, // Default value
-          rawText: text, // For reference
         };
         await unitsCollection.add(normalizedUnit);
       }
 
-      res.status(200).json({ ok: true, stagingId, unitsCount: parsedData.units.length });
+      res.status(200).json({ ok: true, stagingId, unitsCount: units.length });
 
     } catch (err: any) {
       console.error(`Error in startInvoiceParse for ${gcsPath}:`, err);
