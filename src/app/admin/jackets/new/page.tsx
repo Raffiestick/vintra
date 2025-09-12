@@ -48,7 +48,7 @@ export default function NewJacketPage() {
   const [itemPrice, setItemPrice] = useState("");
   const [buyerFee, setBuyerFee] = useState("");
   const [onlineFee, setOnlineFee] = useState("");
-  const [managementFee, setManagementFee] = useState("");
+  const [managementFee, setManagementFee] = useState("100");
 
   const [vinError, setVinError] = useState("");
   const [dateError, setDateError] = useState("");
@@ -126,7 +126,7 @@ export default function NewJacketPage() {
         title: "Success!",
         description: "Jacket created successfully.",
       });
-      router.push(`/jacket/preview/${normalizedVin}`);
+      router.push(`/admin/jackets/${normalizedVin}`);
     } catch (error: any) {
       console.error("Error creating jacket:", error);
       const errorMessage = error.message || "An unexpected error occurred.";
@@ -238,7 +238,7 @@ export default function NewJacketPage() {
             </div>
             <div className="space-y-2">
                 <Label htmlFor="managementFee">Management Fee ($)</Label>
-                <Input id="managementFee" type="number" placeholder="250.00" step="0.01" value={managementFee} onChange={(e) => setManagementFee(e.target.value)} />
+                <Input id="managementFee" type="number" placeholder="100.00" step="0.01" value={managementFee} onChange={(e) => setManagementFee(e.target.value)} />
             </div>
           </div>
           {submitError && <p className="text-sm text-destructive">{submitError}</p>}
