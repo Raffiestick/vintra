@@ -147,10 +147,10 @@ export default function LandingPage() {
       </section>
 
       {/* FINAL CTA */}
-      <section className="relative mx-auto my-24 max-w-7xl px-4">
+      <section className="relative mx-auto mt-24 mb-12 max-w-7xl px-4">
         <ShimmerCard>
           <div className="relative overflow-hidden rounded-xl bg-white/[0.02] p-8 text-center">
-            <div className="pointer-events-none absolute -left-10 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(closest-side,rgba(59,130,246,0.35),transparent)] blur-2xl" />
+            <div className="pointer-events-none absolute -inset-12 -z-10 rounded-full bg-[radial-gradient(closest-side,rgba(59,130,246,0.45),transparent)] blur-3xl" />
             <h3 className="font-manrope text-3xl">Ready to stop wrestling PDFs?</h3>
             <p className="mt-3 text-white/80">Get your first jackets live in minutes.</p>
             <div className="mt-6 flex justify-center gap-3">
