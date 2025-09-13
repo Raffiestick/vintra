@@ -147,9 +147,8 @@ export default function LandingPage() {
       </section>
 
       {/* FINAL CTA */}
-      <section className="relative mx-auto mt-24 mb-12 max-w-7xl px-4">
-        <ShimmerCard>
-          <div className="relative overflow-hidden rounded-xl bg-white/[0.02] p-8 text-center">
+      <section className="relative mt-24 py-12">
+        <div className="relative text-center">
             <div className="pointer-events-none absolute -inset-12 -z-10 rounded-full bg-[radial-gradient(closest-side,rgba(59,130,246,0.45),transparent)] blur-3xl" />
             <h3 className="font-manrope text-3xl">Ready to stop wrestling PDFs?</h3>
             <p className="mt-3 text-white/80">Get your first jackets live in minutes.</p>
@@ -161,8 +160,7 @@ export default function LandingPage() {
                 Sign in
               </Link>
             </div>
-          </div>
-        </ShimmerCard>
+        </div>
       </section>
 
       {/* SIMPLE REGISTRATION MODAL WITH GLOW */}
