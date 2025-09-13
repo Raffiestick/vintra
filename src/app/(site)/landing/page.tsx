@@ -15,6 +15,27 @@ function Tag({ children }: any) {
   );
 }
 
+// New component for the thick, shining border
+function AnimatedSilverBorder({ children, className }: { children: React.ReactNode, className?: string }) {
+  return (
+    <div className={`relative rounded-xl p-0.5 ${className}`}>
+      <div className="absolute inset-0 -z-10 rounded-[13px] bg-gradient-to-b from-slate-800 to-slate-900" />
+      <div 
+        className="absolute inset-[-1px] z-0 rounded-xl"
+        style={{
+          background: "linear-gradient(90deg, #334155, #e2e8f0, #94a3b8, #334155)",
+          backgroundSize: "300% 100%",
+          animation: "vintra-border-shimmer 8s linear infinite",
+        }}
+      />
+      <div className="relative z-10 rounded-xl bg-gradient-to-b from-slate-900/90 to-black/80 backdrop-blur-sm">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+
 export default function LandingPage() {
   const [open, setOpen] = useState(false);
 
@@ -147,10 +168,12 @@ export default function LandingPage() {
       </section>
 
       {/* FINAL CTA */}
-      <section className="relative mx-auto my-24 max-w-7xl px-4">
-        <ShimmerCard>
-          <div className="relative overflow-hidden rounded-xl bg-white/[0.02] p-8 text-center">
-            <div className="pointer-events-none absolute -left-10 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(closest-side,rgba(59,130,246,0.35),transparent)] blur-2xl" />
+      <section className="relative mx-auto my-24 max-w-4xl px-4">
+        <div className="pointer-events-none absolute inset-x-0 -top-40 -z-10 flex justify-center">
+            <div className="h-[400px] w-[800px] rounded-full bg-[radial-gradient(closest-side,rgba(99,102,241,0.5),transparent)] blur-3xl" />
+        </div>
+        <AnimatedSilverBorder>
+          <div className="p-8 text-center">
             <h3 className="font-manrope text-3xl">Ready to stop wrestling PDFs?</h3>
             <p className="mt-3 text-white/80">Get your first jackets live in minutes.</p>
             <div className="mt-6 flex justify-center gap-3">
@@ -162,7 +185,7 @@ export default function LandingPage() {
               </Link>
             </div>
           </div>
-        </ShimmerCard>
+        </AnimatedSilverBorder>
       </section>
 
       {/* SIMPLE REGISTRATION MODAL WITH GLOW */}
