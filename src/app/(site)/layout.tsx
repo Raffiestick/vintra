@@ -54,16 +54,16 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                   <div>
                     <h4 className="mb-3 font-manrope font-semibold text-white">Product</h4>
                     <ul className="space-y-2 text-white/70">
-                      <li><Link href="#features" className="hover:text-white">Features</Link></li>
-                      <li><Link href="#integrations" className="hover:text-white">Integrations</Link></li>
-                      <li><Link href="#faq" className="hover:text-white">FAQ</Link></li>
+                      <li><Link href="/landing#features" className="hover:text-white">Features</Link></li>
+                      <li><Link href="/landing#integrations" className="hover:text-white">Integrations</Link></li>
+                      <li><Link href="/landing#faq" className="hover:text-white">FAQ</Link></li>
                     </ul>
                   </div>
                   <div>
                     <h4 className="mb-3 font-manrope font-semibold text-white">Company</h4>
                      <ul className="space-y-2 text-white/70">
-                      <li><Link href="#about" className="hover:text-white">About</Link></li>
-                      <li><Link href="#contact" className="hover:text-white">Contact</Link></li>
+                      <li><Link href="/landing#about" className="hover:text-white">About</Link></li>
+                      <li><Link href="/landing#contact" className="hover:text-white">Contact</Link></li>
                     </ul>
                   </div>
                   <div>
