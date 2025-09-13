@@ -171,13 +171,17 @@
   position: absolute; pointer-events: none;
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent);
 }
-.vintra-runner-x { height: 1px; width: 60%; left: 20%; top: 0; animation: vintra-edge-run-x 5s ease-in-out infinite; }
-.vintra-runner-y { width: 1px; height: 60%; top: 20%; left: 0; animation: vintra-edge-run-y 6s ease-in-out infinite; }
-.vintra-runner-bottom { top: auto; bottom: 0; animation-delay: 2.5s; opacity: .6; }
-.vintra-runner-right { left: auto; right: 0; animation-delay: 3s; opacity: .6; }
+.vintra-runner-x { height: 1px; width: 60%; left: 20%; top: 0; animation: vintra-edge-run-x 10s ease-in-out infinite; }
+.vintra-runner-y { width: 1px; height: 60%; top: 20%; left: 0; animation: vintra-edge-run-y 12s ease-in-out infinite; }
+.vintra-runner-bottom { top: auto; bottom: 0; animation-delay: 5s; opacity: .6; }
+.vintra-runner-right { left: auto; right: 0; animation-delay: 6s; opacity: .6; }
 
 /* grid mask to fade edges */
 .vintra-grid-mask {
   mask-image: radial-gradient(closest-side, white 60%, transparent 95%);
   -webkit-mask-image: radial-gradient(closest-side, white 60%, transparent 95%);
+}
+
+.animate-\[vintra-float_8s_ease-in-out_infinite\] {
+  animation: vintra-float 12s ease-in-out infinite;
 }
