@@ -25,5 +25,5 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "functions", "src/ai/**"]
+  "exclude": ["node_modules", "functions", "src/ai/**", "tools_ai/**"]
 }
