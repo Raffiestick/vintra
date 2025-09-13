@@ -172,110 +172,134 @@ export const startInvoiceParse = onRequest({
             res.status(405).send("Method Not Allowed");
             return;
         }
-        const gcsPath = (req.body?.gcsPath ?? "").toString().trim();
+        const gcsPath = String(req.body?.gcsPath || "").trim();
         if (!gcsPath) {
             res.status(400).json({ error: "Missing gcsPath (e.g., incoming/invoices/<uid>/<file>.pdf)" });
             return;
         }
-        // 1) Read the uploaded file from GCS
+        // 1) Locate the file in GCS
         const file = bucket.file(gcsPath);
         const [exists] = await file.exists();
         if (!exists) {
             res.status(404).json({ error: `File not found at ${gcsPath}` });
             return;
         }
-        const [meta] = await file.getMetadata();
-        const contentType = (meta?.contentType || "").toLowerCase();
-        if (contentType.startsWith("image/")) {
-            res.status(415).send("Image uploads are not yet supported for parsing.");
-            return;
-        }
+        const [meta] = await file.getMetadata().catch(() => [undefined]);
+        const contentType = String(meta?.contentType || "").toLowerCase();
         if (!contentType.includes("pdf")) {
-            res.status(415).json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only for MVP)` });
+            res
+                .status(415)
+                .json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only)` });
             return;
         }
-        // 1) Download bytes (force a real Node Buffer)
+        // 2) Download bytes → force a real Node Buffer
         const [downloaded] = await file.download();
         const nodeBuffer = Buffer.isBuffer(downloaded)
             ? downloaded
             : Buffer.from(downloaded);
-        if (!nodeBuffer || nodeBuffer.length === 0) {
-            console.error("Downloaded buffer empty for", gcsPath, contentType);
+        if (!nodeBuffer?.length) {
+            console.error("Downloaded buffer empty", { gcsPath, contentType });
             res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
             return;
         }
-        // 2) ✅ Use internal entry to avoid top-level test file read
-        const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default;
-        // 3) Parse to text
+        console.log("startInvoiceParse:downloaded", {
+            gcsPath,
+            contentType,
+            length: nodeBuffer.length,
+        });
+        // 3) Extract text with pdf-parse (internal entry; fallback to default if needed)
+        let pdfParse;
+        try {
+            // ✅ preferred: internal path avoids test file reads inside the package
+            pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
+        }
+        catch {
+            // fallback if bundler/path changes
+            const mod = await import("pdf-parse");
+            pdfParse = (mod.default || mod);
+        }
         const { text } = await pdfParse(nodeBuffer);
-        if (!text.trim()) {
-            res.status(500).json({ error: "Extracted text is empty." });
+        if (!text?.trim()) {
+            res.status(500).json({
+                error: "Extracted text is empty (likely a scanned image PDF; OCR not enabled yet).",
+            });
             return;
         }
-        // 4) Gemini extract (strict JSON)
+        // 4) Ask Gemini for STRICT JSON
         const model = getGeminiModel();
         const prompt = `
-You are an invoice extraction agent for NPA-style auction invoices.
-Return STRICT JSON ONLY with this schema (no prose, no extra keys):
+Return STRICT JSON only (no prose) with this schema:
 {
-  "invoiceMeta": { "aucNo": string?, "saleLocation": string?, "invoiceDate": string? },
+  "invoiceMeta": { "aucNo": string?, "saleLocation": string? },
   "units": [{
     "vin": string,
     "year": number?, "make": string?, "model": string?, "color": string?,
     "hours": number?, "odometer": number?,
     "saleLocation": string?,
     "itemPrice": number?, "buyerFee": number?, "onlineFee": number?,
-    "titleInfo": string?, "stockNo": string?, "aucNo": string?, "invoiceDate": string?
+    "titleInfo": string?, "stockNo": string?, "aucNo": string?
   }]
 }
 Rules:
-- VIN uppercase, remove spaces/hyphens
-- Currency fields: numbers only (no $ or commas)
-- Dates must be in MM/DD/YYYY or ISO 8601 format.
+- VIN uppercase; remove spaces/hyphens; alphanumerics only
+- Currency & numeric fields must be numbers (no $ or commas)
+- Omit a field if unknown (do NOT invent values)
+
 TEXT:
-"""${text.substring(0, 20000)}"""`;
+"""${text.slice(0, 20000)}"""`;
         const ai = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
         });
-        let extracted;
-        try {
-            const raw = ai.response?.text() || "{}";
-            extracted = extractJsonStrict(raw);
+        const raw = ai.response?.text() || "{}";
+        function tryParse(s) {
+            try {
+                return JSON.parse(s);
+            }
+            catch {
+                const start = s.indexOf("{");
+                const end = s.lastIndexOf("}");
+                if (start >= 0 && end > start) {
+                    try {
+                        return JSON.parse(s.slice(start, end + 1));
+                    }
+                    catch { }
+                }
+                return null;
+            }
         }
-        catch (err) {
-            console.error("LLM JSON parse error:", err?.message);
-            res.status(500).json({ error: "LLM output was not valid JSON." });
-            return;
-        }
-        // 5) Normalize units + default management fee
-        const invoiceDate = extracted?.invoiceMeta?.invoiceDate;
-        const units = Array.isArray(extracted?.units) ? extracted.units : [];
-        for (const u of units) {
-            if (!u)
-                continue;
-            if (u.managementFee == null)
-                u.managementFee = 100;
-            if (typeof u.vin === "string")
-                u.vin = u.vin.toUpperCase().replace(/[^A-Z0-9]/g, "");
-            u.itemPrice = num(u.itemPrice);
-            u.buyerFee = num(u.buyerFee);
-            u.onlineFee = num(u.onlineFee);
-            if (u.hours != null)
-                u.hours = num(u.hours);
-            if (u.odometer != null)
-                u.odometer = num(u.odometer);
-            if (invoiceDate && !u.invoiceDate)
-                u.invoiceDate = invoiceDate;
-        }
+        const extracted = tryParse(raw) || { units: [] };
+        // 5) Normalize units + defaults
+        const unitsIn = Array.isArray(extracted?.units) ? extracted.units : [];
+        const units = unitsIn.map((u) => {
+            const out = { ...u };
+            // default management fee
+            out.managementFee = Number.isFinite(+out.managementFee) ? Number(out.managementFee) : 100;
+            // VIN normalize
+            if (typeof out.vin === "string") {
+                out.vin = out.vin.toUpperCase().replace(/[^A-Z0-9]/g, "");
+            }
+            // numeric coercions
+            const toNum = (v) => typeof v === "number" ? v : typeof v === "string" ? Number(v.replace(/[$,]/g, "")) || 0 : 0;
+            out.itemPrice = toNum(out.itemPrice);
+            out.buyerFee = toNum(out.buyerFee);
+            out.onlineFee = toNum(out.onlineFee);
+            out.odometer = toNum(out.odometer);
+            out.hours = toNum(out.hours);
+            out.year = toNum(out.year) ? Math.round(toNum(out.year)) : undefined;
+            return out;
+        });
         // 6) Write staging docs
         const now = FieldValue.serverTimestamp();
         const stagingId = db.collection("stagingInvoices").doc().id;
-        const [fileUrl] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
-        // incoming/invoices/{uid}/filename.pdf  -> uid is index 2
-        const pathParts = gcsPath.split("/");
-        const uploaderUid = pathParts.length >= 3 ? pathParts[2] : null;
+        const [fileUrl] = await file.getSignedUrl({
+            action: "read",
+            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        });
+        // incoming/invoices/<uid>/<file>.pdf → uid is index 2
+        const parts = gcsPath.split("/");
+        const uploaderUid = parts[0] === "incoming" && parts[1] === "invoices" && parts[2] ? parts[2] : null;
         await db.collection("stagingInvoices").doc(stagingId).set({
-            source: "npa",
+            source: "auction",
             gcsPath,
             fileUrl,
             createdAt: now,
@@ -286,20 +310,25 @@ TEXT:
         });
         const batch = db.batch();
         for (const u of units) {
-            const unitRef = db.collection("stagingInvoices").doc(stagingId).collection("units").doc();
+            const unitRef = db
+                .collection("stagingInvoices")
+                .doc(stagingId)
+                .collection("units")
+                .doc();
             batch.set(unitRef, {
                 ...u,
-                rawText: text.length > 5000 ? text.substring(0, 5000) + "…" : text,
+                rawText: text.length > 5000 ? text.slice(0, 5000) + "…" : text,
                 createdAt: now,
                 updatedAt: now,
             });
         }
         await batch.commit();
+        // 7) Done
         res.json({ ok: true, stagingId, unitsCount: units.length });
     }
     catch (e) {
-        console.error("startInvoiceParse error:", e);
-        res.status(500).json({ error: e?.message || "Internal server error" });
+        console.error("startInvoiceParse error", e?.stack || e);
+        res.status(500).json({ error: e?.message || "Parse failed" });
     }
 });
 export const startDocParse = onRequest({ region: "us-central1", cors: true }, (_req, res) => {
