@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { generateMarketingContent, type GenerateMarketingContentInput } from '@/ai/flows/generate-marketing-content';
+// import { generateMarketingContent, type GenerateMarketingContentInput } from '@/ai/flows/generate-marketing-content';
 import { Loader2, Sparkles, Clipboard } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -47,24 +47,30 @@ export default function ContentGeneratorPage() {
     const onSubmit = async (data: FormData) => {
         setIsGenerating(true);
         setGeneratedContent('');
-        try {
-            const input: GenerateMarketingContentInput = {
-                ...data,
-                year: data.year.toString(),
-            };
-            const result = await generateMarketingContent(input);
-            setGeneratedContent(result.marketingCopy);
-            toast({ title: 'Content Generated!' });
-        } catch (error: any) {
-            console.error('Error generating content:', error);
-            toast({
-                title: 'Generation Failed',
-                description: error.message || 'An unexpected error occurred.',
-                variant: 'destructive',
-            });
-        } finally {
-            setIsGenerating(false);
-        }
+        toast({
+            title: 'Content Generator Disabled',
+            description: 'This feature is temporarily disabled while we resolve a build issue.',
+            variant: 'destructive',
+        });
+        setIsGenerating(false);
+        // try {
+        //     const input: GenerateMarketingContentInput = {
+        //         ...data,
+        //         year: data.year.toString(),
+        //     };
+        //     const result = await generateMarketingContent(input);
+        //     setGeneratedContent(result.marketingCopy);
+        //     toast({ title: 'Content Generated!' });
+        // } catch (error: any) {
+        //     console.error('Error generating content:', error);
+        //     toast({
+        //         title: 'Generation Failed',
+        //         description: error.message || 'An unexpected error occurred.',
+        //         variant: 'destructive',
+        //     });
+        // } finally {
+        //     setIsGenerating(false);
+        // }
     };
     
     const copyToClipboard = () => {
@@ -152,8 +158,8 @@ export default function ContentGeneratorPage() {
                                             <SelectContent>
                                                 <SelectItem value="Facebook">Facebook</SelectItem>
                                                 <SelectItem value="Instagram">Instagram</SelectItem>
-                                                <SelectItem value="Craigslist">Craigslist</SelectItem>
-                                                <SelectItem value="Website">Website Blurb</SelectItem>
+                                                <SelectItem value="Craigslist">Craigslist</-SelectItem>
+                                                <SelectItem value="Website">Website Blurb</-SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -207,4 +213,3 @@ export default function ContentGeneratorPage() {
         </div>
     );
 }
-
