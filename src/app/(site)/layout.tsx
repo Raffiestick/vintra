@@ -1,42 +1,36 @@
-// app/(site)/layout.tsx
-import type { Metadata } from "next";
-import { Inter, Manrope } from "next/font/google";
+
+"use client";
+import { useState } from "react";
 import Link from "next/link";
+import { AuthDialog } from "@/components/auth/AuthDialog";
 import "../globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope" });
-
-export const metadata: Metadata = {
-  title: "Vintra — Dealer Management Reimagined",
-  description:
-    "Turn auction PDFs into production-ready jackets. AI parses invoices; Vintra generates invoices, bills of sale, and packets automatically.",
-  icons: [{ rel: "icon", url: "/favicon.ico" }],
-};
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  
   return (
-    <div className={`${inter.variable} ${manrope.variable} font-sans`}>
-        <div className="min-h-dvh bg-[radial-gradient(1200px_600px_at_50%_-10%,rgba(99,102,241,0.25),transparent_60%),radial-gradient(1000px_400px_at_90%_20%,rgba(236,72,153,0.18),transparent_60%),#0b0f1a] text-white antialiased">
-            {/* Top nav */}
+    <div className="font-sans">
+      <AuthDialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen} />
+      <div className="min-h-dvh bg-zinc-950 text-white antialiased">
             <header className="sticky top-0 z-50 border-b border-white/10 bg-black/30 backdrop-blur">
               <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
                   <Link href="/landing" className="group flex items-center gap-3">
                   <img src="/vintra/wordmark.svg" alt="Vintra" className="h-6 opacity-90 transition group-hover:opacity-100" />
                   </Link>
                   <nav className="hidden items-center gap-6 text-sm md:flex">
-                  <Link href="#features" className="opacity-80 hover:opacity-100">Features</Link>
-                  <Link href="#how-it-works" className="opacity-80 hover:opacity-100">How it works</Link>
-                  <Link href="#pricing" className="opacity-80 hover:opacity-100">Pricing</Link>
-                  <Link href="#faq" className="opacity-80 hover:opacity-100">FAQ</Link>
+                  <Link href="/landing#features" className="opacity-80 hover:opacity-100">Features</Link>
+                  <Link href="/landing#how-it-works" className="opacity-80 hover:opacity-100">How it works</Link>
+                  <Link href="/landing#pricing" className="opacity-80 hover:opacity-100">Pricing</Link>
+                  <Link href="/landing#faq" className="opacity-80 hover:opacity-100">FAQ</Link>
                   </nav>
                   <div className="flex items-center gap-3">
-                  <Link
-                      href="/register"
+                  <button
+                      onClick={() => setIsAuthModalOpen(true)}
                       className="rounded-md bg-white px-3.5 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200"
                   >
                       Get started
-                  </Link>
+                  </button>
                   </div>
               </div>
             </header>

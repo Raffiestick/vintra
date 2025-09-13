@@ -1,7 +1,9 @@
+
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { AuthDialog } from "@/components/auth/AuthDialog";
 
 // A simple SVG icon component for the footer
 function VintraLogo() {
@@ -107,7 +109,6 @@ function AnimatedBorderCard({ children, className }: { children: React.ReactNode
     return (
         <div className={`relative rounded-xl p-[0.2px] bg-transparent ${className}`}>
             <div className="absolute inset-[-0.2px] rounded-xl -z-10 bg-[linear-gradient(90deg,transparent_45%,#e2e8f0_50%,transparent_55%)] bg-[length:300%_100%] animate-[vintra-border-shimmer_3s_linear_infinite]" />
-            {/* Using ShimmerCard for its bg and shimmer effect, but overriding its border */}
             <ShimmerCard className="w-full h-full !rounded-lg !border-none"> 
                 {children}
             </ShimmerCard>
@@ -161,19 +162,17 @@ export default function LandingPage() {
             '--mouse-y': `${mousePosition.y}px`,
         } as React.CSSProperties}
     >
-      {/* Interactive cursor spotlight */}
+      <AuthDialog open={isModalOpen} onOpenChange={setIsModalOpen} />
+
       <div className="pointer-events-none fixed inset-0 z-30 transition duration-300" style={{
           background: `radial-gradient(600px at var(--mouse-x) var(--mouse-y), rgba(29, 78, 216, 0.1), transparent 80%)`
       }}></div>
 
-      {/* Background Effects */}
       <AuroraBG />
       <GridLines />
 
       <main>
-        {/* HERO */}
         <section className="relative mx-auto max-w-7xl px-4 pt-32 md:pt-40">
-            {/* Enhanced Hero Glow */}
           <div className="pointer-events-none absolute -top-40 left-1/2 h-[40rem] w-[70rem] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(99,102,241,0.6),transparent)] blur-3xl" />
 
           <div className="relative text-center">
@@ -196,11 +195,9 @@ export default function LandingPage() {
              Streamline Operations · Source Inventory · Sell Faster
             </div>
             <div className="relative mt-16">
-              {/* Shining background for dashboard */}
               <div className="absolute -inset-12 top-1/2 -translate-y-1/2 z-0">
                   <div className="h-full w-full rounded-full bg-[radial-gradient(closest-side,rgba(99,102,241,0.25),transparent)] blur-3xl animate-[vintra-pulse_6s_ease-in-out_infinite]" />
               </div>
-              {/* UPDATED: Dashboard image now has full tilt effect AND a back glow */}
               <div className="relative mx-auto max-w-4xl">
                  <div className="pointer-events-none absolute -inset-2.5 rounded-xl bg-indigo-500/15 blur-xl z-0" />
                 <TiltCard className="relative z-10">
@@ -214,7 +211,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* FEATURE CARDS */}
         <section id="features" className="relative mx-auto mt-24 max-w-7xl px-4">
           <div className="grid gap-8 md:grid-cols-3">
             <TiltCard>
@@ -247,7 +243,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* SCREENSHOT DUO 1 */}
         <section className="relative mx-auto mt-24 max-w-7xl px-4">
           <div className="grid items-center gap-12 md:grid-cols-2">
             <div className="order-2 md:order-1">
@@ -274,7 +269,6 @@ export default function LandingPage() {
           </div>
         </section>
         
-         {/* SCREENSHOT DUO 2 */}
         <section className="relative mx-auto mt-24 max-w-7xl px-4">
           <div className="grid items-center gap-12 md:grid-cols-2">
             <div>
@@ -301,9 +295,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* --- REVAMPED FINAL CTA --- */}
         <section className="relative my-24 py-20">
-            {/* Background pattern and glow */}
             <div className="pointer-events-none absolute inset-0 -z-20 bg-[radial-gradient(circle_at_50%_120%,rgba(99,102,241,0.4),transparent_40%)]" />
             <div className="pointer-events-none absolute inset-0 -z-10 bg-zinc-950/50 backdrop-blur-sm"
                 style={{
@@ -326,40 +318,6 @@ export default function LandingPage() {
         </section>
       </main>
 
-      {/* --- ENHANCED REGISTRATION MODAL WITH MASSIVE GLOW --- */}
-      {isModalOpen && (
-        <div 
-            className="fixed inset-0 z-50 grid place-items-center animate-[vintra-fade-in_0.3s_ease-out]"
-            onClick={() => setIsModalOpen(false)}
-        >
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
-          <div 
-            className="relative z-10 w-[92%] max-w-md"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="pointer-events-none absolute -inset-8 -z-10 rounded-3xl bg-[radial-gradient(closest-side,rgba(99,102,241,0.5),transparent)] blur-3xl animate-[vintra-pulse_4s_infinite]" />
-            <ShimmerCard>
-              <div className="rounded-xl p-6 text-center">
-                <h4 className="font-manrope text-2xl font-bold">Welcome to Vintra</h4>
-                <p className="mt-2 text-sm text-white/80">Sign in or create an account to get started.</p>
-                <div className="mt-6 flex flex-col gap-3">
-                  <Link href="/register" className="w-full rounded-md bg-white px-4 py-2.5 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors">
-                    Continue with Email
-                  </Link>
-                   <a href="/login-google" className="w-full rounded-md bg-white/5 border border-white/15 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10 transition-colors">
-                    Continue with Google
-                  </a>
-                </div>
-                <button onClick={() => setIsModalOpen(false)} className="mt-6 text-xs text-white/50 hover:text-white/80 transition-colors">
-                    Cancel
-                </button>
-              </div>
-            </ShimmerCard>
-          </div>
-        </div>
-      )}
-
-      {/* Adding Keyframe animations to a style tag to be self-contained */}
       <style dangerouslySetInnerHTML={{ __html: `
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500&display=swap');
         
