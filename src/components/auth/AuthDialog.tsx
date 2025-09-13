@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -26,16 +26,17 @@ import { DEV_ADMIN_UID } from "@/lib/auth/roles";
 import { Loader2 } from "lucide-react";
 import React from "react";
 
-interface AuthModalProps {
+interface AuthDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  defaultTab?: 'sign-in' | 'create-account';
 }
 
 const ShimmerCard = React.forwardRef<HTMLDivElement, { children: React.ReactNode, className?: string }>(({ children, className, ...props }, ref) => {
     return (
         <div
             ref={ref}
-            className={`relative overflow-hidden rounded-xl border border-white/10 bg-zinc-900/80 shadow-lg ${className}`}
+            className={`relative overflow-hidden rounded-xl border border-white/10 bg-zinc-900/90 shadow-lg ${className}`}
             {...props}
         >
             <div className="absolute inset-0 -z-10 bg-[radial-gradient(40%_120%_at_50%_0%,#fff2,transparent)]" />
@@ -51,7 +52,8 @@ const ShimmerCard = React.forwardRef<HTMLDivElement, { children: React.ReactNode
 });
 ShimmerCard.displayName = "ShimmerCard";
 
-export function AuthDialog({ open, onOpenChange }: AuthModalProps) {
+export function AuthDialog({ open, onOpenChange, defaultTab = 'sign-in' }: AuthDialogProps) {
+  const [activeTab, setActiveTab] = useState(defaultTab);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -65,6 +67,12 @@ export function AuthDialog({ open, onOpenChange }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (open) {
+      setActiveTab(defaultTab);
+    }
+  }, [open, defaultTab]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,68 +136,71 @@ export function AuthDialog({ open, onOpenChange }: AuthModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-transparent border-none shadow-none p-0 w-[92%] max-w-md">
-        <div className="pointer-events-none absolute -inset-8 -z-10 rounded-3xl bg-[radial-gradient(closest-side,rgba(99,102,241,0.5),transparent)] blur-3xl animate-[vintra-pulse_4s_infinite]" />
-        <ShimmerCard>
-            <Tabs defaultValue="sign-in" className="w-full">
-                <CardHeader className="text-center pt-6">
-                    <CardTitle className="font-manrope text-2xl font-bold">Welcome to Vintra</CardTitle>
-                </CardHeader>
-                <TabsList className="grid w-[calc(100%-2rem)] mx-auto grid-cols-2 bg-white/5 border-white/10">
-                    <TabsTrigger value="sign-in" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">Sign In</TabsTrigger>
-                    <TabsTrigger value="create-account" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">Create Account</TabsTrigger>
-                </TabsList>
-                <TabsContent value="sign-in">
-                    <form onSubmit={handleSignIn}>
-                    <Card className="border-0 shadow-none bg-transparent">
-                        <CardContent className="space-y-4 pt-6">
-                        <div className="space-y-2">
-                            <Label htmlFor="email-signin" className="text-white/80">Email</Label>
-                            <Input id="email-signin" type="email" placeholder="dealer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/15" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="password-signin" className="text-white/80">Password</Label>
-                            <Input id="password-signin" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/15" />
-                        </div>
-                        </CardContent>
-                        <CardFooter>
-                        <Button type="submit" className="w-full bg-white text-black hover:bg-zinc-200" disabled={loading}>
-                            {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing In...</> : "Sign In"}
-                        </Button>
-                        </CardFooter>
-                    </Card>
-                    </form>
-                </TabsContent>
-                <TabsContent value="create-account">
-                    <form onSubmit={handleCreateAccount}>
-                    <Card className="border-0 shadow-none bg-transparent">
-                        <CardContent className="h-96 w-full pr-4">
-                        <ScrollArea className="h-full w-full">
-                            <div className="space-y-4 py-4 text-white/80">
-                                <div className="space-y-2"><Label>Company Name</Label><Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                <div className="space-y-2"><Label>Contact Name</Label><Input value={contactName} onChange={(e) => setContactName(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                <div className="space-y-2"><Label>Phone Number</Label><Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                <div className="space-y-2"><Label>Street Address</Label><Input value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                <div className="flex gap-4">
-                                <div className="space-y-2 flex-1"><Label>City</Label><Input value={city} onChange={(e) => setCity(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                <div className="space-y-2 w-20"><Label>State</Label><Input value={state} onChange={(e) => setState(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                <div className="space-y-2 w-24"><Label>Zip</Label><Input value={zip} onChange={(e) => setZip(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                </div>
-                                <div className="space-y-2"><Label>Email Address</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                <div className="space-y-2"><Label>Password</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                <div className="space-y-2"><Label>Confirm Password</Label><Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="bg-white/5 border-white/15"/></div>
+        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
+        <div className="relative z-50">
+            <div className="pointer-events-none absolute -inset-8 -z-10 rounded-3xl bg-[radial-gradient(closest-side,rgba(99,102,241,0.5),transparent)] blur-3xl animate-[vintra-pulse_4s_infinite]" />
+            <ShimmerCard>
+                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="w-full">
+                    <CardHeader className="text-center pt-6">
+                        <CardTitle className="font-manrope text-2xl font-bold">Welcome to Vintra</CardTitle>
+                    </CardHeader>
+                    <TabsList className="grid w-[calc(100%-2rem)] mx-auto grid-cols-2 bg-white/5 border-white/10">
+                        <TabsTrigger value="sign-in" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">Sign In</TabsTrigger>
+                        <TabsTrigger value="create-account" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">Create Account</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="sign-in">
+                        <form onSubmit={handleSignIn}>
+                        <Card className="border-0 shadow-none bg-transparent">
+                            <CardContent className="space-y-4 pt-6">
+                            <div className="space-y-2">
+                                <Label htmlFor="email-signin" className="text-white/80">Email</Label>
+                                <Input id="email-signin" type="email" placeholder="dealer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/15" />
                             </div>
-                        </ScrollArea>
-                        </CardContent>
-                        <CardFooter>
-                        <Button type="submit" className="w-full bg-white text-black hover:bg-zinc-200" disabled={loading}>
-                            {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...</> : "Create Account & Continue"}
-                        </Button>
-                        </CardFooter>
-                    </Card>
-                    </form>
-                </TabsContent>
-            </Tabs>
-        </ShimmerCard>
+                            <div className="space-y-2">
+                                <Label htmlFor="password-signin" className="text-white/80">Password</Label>
+                                <Input id="password-signin" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/15" />
+                            </div>
+                            </CardContent>
+                            <CardFooter>
+                            <Button type="submit" className="w-full bg-white text-black hover:bg-zinc-200" disabled={loading}>
+                                {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing In...</> : "Sign In"}
+                            </Button>
+                            </CardFooter>
+                        </Card>
+                        </form>
+                    </TabsContent>
+                    <TabsContent value="create-account">
+                        <form onSubmit={handleCreateAccount}>
+                        <Card className="border-0 shadow-none bg-transparent">
+                            <CardContent className="h-96 w-full pr-4">
+                            <ScrollArea className="h-full w-full">
+                                <div className="space-y-4 py-4 text-white/80">
+                                    <div className="space-y-2"><Label>Company Name</Label><Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                    <div className="space-y-2"><Label>Contact Name</Label><Input value={contactName} onChange={(e) => setContactName(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                    <div className="space-y-2"><Label>Phone Number</Label><Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                    <div className="space-y-2"><Label>Street Address</Label><Input value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                    <div className="flex gap-4">
+                                    <div className="space-y-2 flex-1"><Label>City</Label><Input value={city} onChange={(e) => setCity(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                    <div className="space-y-2 w-20"><Label>State</Label><Input value={state} onChange={(e) => setState(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                    <div className="space-y-2 w-24"><Label>Zip</Label><Input value={zip} onChange={(e) => setZip(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                    </div>
+                                    <div className="space-y-2"><Label>Email Address</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                    <div className="space-y-2"><Label>Password</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                    <div className="space-y-2"><Label>Confirm Password</Label><Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                </div>
+                            </ScrollArea>
+                            </CardContent>
+                            <CardFooter>
+                            <Button type="submit" className="w-full bg-white text-black hover:bg-zinc-200" disabled={loading}>
+                                {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...</> : "Create Account & Continue"}
+                            </Button>
+                            </CardFooter>
+                        </Card>
+                        </form>
+                    </TabsContent>
+                </Tabs>
+            </ShimmerCard>
+        </div>
       </DialogContent>
     </Dialog>
   );

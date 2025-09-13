@@ -142,6 +142,7 @@ function AuroraBG() {
 // Main Landing Page Component
 export default function LandingPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [defaultTab, setDefaultTab] = useState<'sign-in' | 'create-account'>('sign-in');
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
@@ -154,6 +155,11 @@ export default function LandingPage() {
     };
   }, []);
 
+  const openModal = (tab: 'sign-in' | 'create-account') => {
+    setDefaultTab(tab);
+    setIsModalOpen(true);
+  }
+
   return (
     <div 
         className="relative min-h-dvh overflow-x-hidden bg-zinc-950 font-sans text-white"
@@ -162,7 +168,7 @@ export default function LandingPage() {
             '--mouse-y': `${mousePosition.y}px`,
         } as React.CSSProperties}
     >
-      <AuthDialog open={isModalOpen} onOpenChange={setIsModalOpen} />
+      <AuthDialog open={isModalOpen} onOpenChange={setIsModalOpen} defaultTab={defaultTab} />
 
       <div className="pointer-events-none fixed inset-0 z-30 transition duration-300" style={{
           background: `radial-gradient(600px at var(--mouse-x) var(--mouse-y), rgba(29, 78, 216, 0.1), transparent 80%)`
@@ -184,8 +190,8 @@ export default function LandingPage() {
               Vintra is your unfair advantage. We eliminate paperwork headaches, give you exclusive access to wholesale powersports inventory, and provide the marketing tools you need to sell faster. Spend less time on admin and more time moving units.
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-4">
-              <button onClick={() => setIsModalOpen(true)} className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105">
-                Get started for free
+              <button onClick={() => openModal('create-account')} className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105">
+                Become An Authorized Dealer
               </button>
               <a href="#features" className="rounded-md border border-white/15 px-5 py-3 text-base font-medium hover:bg-white/10 transition-all duration-300">
                 See features
@@ -307,11 +313,8 @@ export default function LandingPage() {
                 <h2 className="font-manrope text-4xl font-bold tracking-tight md:text-5xl">Ready to Supercharge Your Dealership?</h2>
                 <p className="mt-4 text-lg text-white/80">Join the dealers who use Vintra to save time, source inventory, and sell more units. No credit card required.</p>
                 <div className="mt-8 flex justify-center gap-4">
-                    <button onClick={() => setIsModalOpen(true)} className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105">
-                        Start your free trial
-                    </button>
-                    <button onClick={() => setIsModalOpen(true)} className="rounded-md border border-white/15 px-5 py-3 text-base font-medium hover:bg-white/10 transition-colors">
-                        Sign In
+                    <button onClick={() => openModal('create-account')} className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105">
+                        Become An Authorized Dealer
                     </button>
                 </div>
             </div>
