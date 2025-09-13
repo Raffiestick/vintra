@@ -24,6 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DEV_ADMIN_UID } from "@/lib/auth/roles";
 import { Loader2 } from "lucide-react";
+import React from "react";
 
 interface AuthModalProps {
   open: boolean;
@@ -133,7 +134,7 @@ export function AuthDialog({ open, onOpenChange }: AuthModalProps) {
                 <CardHeader className="text-center pt-6">
                     <CardTitle className="font-manrope text-2xl font-bold">Welcome to Vintra</CardTitle>
                 </CardHeader>
-                <TabsList className="grid w-[calc(100%-2rem)] mx-auto grid-cols-2 bg-white/5 border border-white/10">
+                <TabsList className="grid w-[calc(100%-2rem)] mx-auto grid-cols-2 bg-white/5 border-white/10">
                     <TabsTrigger value="sign-in" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">Sign In</TabsTrigger>
                     <TabsTrigger value="create-account" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">Create Account</TabsTrigger>
                 </TabsList>
