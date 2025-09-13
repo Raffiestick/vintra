@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -19,16 +20,15 @@ function Tag({ children }: any) {
 function AnimatedSilverBorder({ children, className }: { children: React.ReactNode, className?: string }) {
   return (
     <div className={`relative rounded-xl p-0.5 ${className}`}>
-      <div className="absolute inset-0 -z-10 rounded-[13px] bg-gradient-to-b from-slate-800 to-slate-900" />
       <div 
-        className="absolute inset-[-1px] z-0 rounded-xl"
+        className="absolute inset-[-1px] -z-10 rounded-xl"
         style={{
           background: "linear-gradient(90deg, #334155, #e2e8f0, #94a3b8, #334155)",
           backgroundSize: "300% 100%",
           animation: "vintra-border-shimmer 8s linear infinite",
         }}
       />
-      <div className="relative z-10 rounded-xl bg-gradient-to-b from-slate-900/90 to-black/80 backdrop-blur-sm">
+      <div className="relative z-10 rounded-xl bg-transparent">
         {children}
       </div>
     </div>
