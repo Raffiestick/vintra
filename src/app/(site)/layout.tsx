@@ -49,16 +49,43 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
 
             <main>{children}</main>
 
-            <footer className="mt-24 border-t border-white/10">
-            <div className="mx-auto max-w-7xl px-4 py-10 text-sm text-white/70">
-                <div className="flex items-center justify-between">
-                <p>© 2024 Vintra. All rights reserved.</p>
-                <div className="flex items-center gap-6">
-                    <Link href="/terms" className="hover:text-white">Terms</Link>
-                    <Link href="/privacy" className="hover:text-white">Privacy</Link>
+            <footer className="mt-24 border-t border-white/10 py-16">
+              <div className="mx-auto max-w-7xl px-4 text-sm text-white/80">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8">
+                  <div className="col-span-2 md:col-span-4 lg:col-span-1">
+                     <Link href="/landing" className="flex items-center gap-3 group mb-4">
+                        <img src="/vintra/wordmark.svg" alt="Vintra" className="h-7 opacity-90 group-hover:opacity-100 transition" />
+                     </Link>
+                     <p className="text-white/60">Automated dealer back-office.</p>
+                  </div>
+                  <div>
+                    <h4 className="font-manrope font-semibold text-white mb-3">Product</h4>
+                    <ul className="space-y-2 text-white/70">
+                      <li><Link href="#features" className="hover:text-white">Features</Link></li>
+                      <li><Link href="#integrations" className="hover:text-white">Integrations</Link></li>
+                      <li><Link href="#pricing" className="hover:text-white">Pricing</Link></li>
+                      <li><Link href="#faq" className="hover:text-white">FAQ</Link></li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-manrope font-semibold text-white mb-3">Company</h4>
+                     <ul className="space-y-2 text-white/70">
+                      <li><Link href="#about" className="hover:text-white">About</Link></li>
+                      <li><Link href="#contact" className="hover:text-white">Contact</Link></li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-manrope font-semibold text-white mb-3">Legal</h4>
+                     <ul className="space-y-2 text-white/70">
+                      <li><Link href="/privacy" className="hover:text-white">Privacy Policy</Link></li>
+                      <li><Link href="/terms" className="hover:text-white">Terms of Service</Link></li>
+                    </ul>
+                  </div>
                 </div>
+                <div className="mt-16 border-t border-white/10 pt-8 flex justify-between items-center text-white/60">
+                  <p>© 2024 Vintra. All rights reserved.</p>
                 </div>
-            </div>
+              </div>
             </footer>
         </div>
     </div>

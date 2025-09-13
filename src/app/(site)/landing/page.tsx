@@ -98,7 +98,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* SCREENSHOT DUO */}
+      {/* SCREENSHOT DUO 1 */}
       <section className="relative mx-auto mt-20 max-w-7xl px-4">
         <div className="grid items-center gap-10 md:grid-cols-2">
           <div className="order-2 md:order-1">
@@ -118,6 +118,30 @@ export default function LandingPage() {
               <li>• Strict JSON extraction; VIN uppercase; numeric coercion</li>
               <li>• Default management fee = 100 on units</li>
             </ul>
+          </div>
+        </div>
+      </section>
+      
+       {/* SCREENSHOT DUO 2 */}
+      <section className="relative mx-auto mt-20 max-w-7xl px-4">
+        <div className="grid items-center gap-10 md:grid-cols-2">
+          <div>
+            <h2 className="font-manrope text-2xl md:text-3xl">A clean portal for every dealer</h2>
+             <ul className="mt-4 space-y-2 text-sm text-white/80">
+              <li>• Dealers see only jackets assigned to them</li>
+              <li>• View financial status and download generated packets</li>
+              <li>• Documents tab unlocks when balance is paid</li>
+            </ul>
+          </div>
+          <div>
+            <ShimmerCard>
+              <div className="p-2">
+                <TiltImage src="/vintra/placeholder-packet.svg" alt="Dealer Portal view" />
+              </div>
+            </ShimmerCard>
+             <p className="mt-3 text-xs text-white/60">
+              Read-only view at <code>/dealer/jackets/[vin]</code>
+            </p>
           </div>
         </div>
       </section>
