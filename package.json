@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "rm -rf .next && next build",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "start": "next start"
   },

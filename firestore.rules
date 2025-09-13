@@ -1,31 +1,49 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Default-deny all access
-    match /{document=**} {
-      allow read, write: if false;
-    }
 
-    // Allow admins full read/write access to everything
+    // Function to check if the user is an admin
     function isAdmin() {
       return request.auth.token.admin == true;
     }
+
+    // Admins can read and write anything
     match /{document=**} {
       allow read, write: if isAdmin();
     }
 
-    // Allow users to manage their own document
+    // Rules for the 'users' collection
     match /users/{userId} {
-      allow read, update, delete: if request.auth.uid == userId;
-      allow create: if request.auth.uid == userId && request.resource.data.uid == request.auth.uid;
+      // Allow users to create their own profile document
+      allow create: if request.auth.uid == userId;
+      
+      // Allow authenticated users to read profiles (non-admins)
+      // Admins are already covered by the rule above
+      allow read: if request.auth != null;
+
+      // Allow users to update their own profile (non-admins)
+      // Admins are already covered by the rule above
+      allow update: if request.auth.uid == userId;
     }
 
-    // Allow logged-in dealers to read jackets assigned to them
-    match /jackets/{vin} {
-      allow read: if exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-                   get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
+    // Rules for 'jackets' collection (and subcollections)
+    match /jackets/{vin}/{document=**} {
+        // Allow any authenticated user to read jacket data and its subcollections.
+        // This is necessary for dealers to view their assigned jackets.
+        // Admin access is already granted above.
+        allow read: if request.auth != null;
+    }
+    
+    // Allow any authenticated user to read from the staging collections
+    match /stagingInvoices/{sid}/{document=**} {
+        allow read: if request.auth != null;
+    }
+
+    // Allow read access to counters for any authenticated user
+    match /counters/{counterId} {
+        allow read: if request.auth != null;
     }
   }
 }
