@@ -170,28 +170,6 @@ export default function LandingPage() {
       <AuroraBG />
       <GridLines />
 
-      {/* Header */}
-      <header className="absolute top-0 left-0 w-full z-30">
-        <div className="mx-auto max-w-7xl px-4 py-4 flex justify-between items-center">
-             <a href="#" className="flex items-center gap-2 text-lg font-bold">
-                <VintraLogo />
-                <span>Vintra</span>
-            </a>
-            <nav className="hidden md:flex items-center gap-6 text-sm">
-                <a href="#features" className="text-white/80 hover:text-white transition-colors">Features</a>
-                <a href="#" className="text-white/80 hover:text-white transition-colors">Docs</a>
-            </nav>
-            <div className="flex items-center gap-2">
-                 <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 text-sm font-medium text-white/80 hover:text-white transition-colors">
-                    Sign In
-                </button>
-                <button onClick={() => setIsModalOpen(true)} className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors">
-                  Get started
-                </button>
-            </div>
-        </div>
-      </header>
-
       <main>
         {/* HERO */}
         <section className="relative mx-auto max-w-7xl px-4 pt-32 md:pt-40">
@@ -347,24 +325,6 @@ export default function LandingPage() {
             </div>
         </section>
       </main>
-
-      {/* --- REVAMPED FOOTER --- */}
-      <footer className="border-t border-white/10">
-          <div className="mx-auto max-w-7xl px-4 py-8">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                  <div className="flex items-center gap-2">
-                    <VintraLogo />
-                    <span className="text-sm text-white/60">&copy; {new Date().getFullYear()} Vintra. All rights reserved.</span>
-                  </div>
-                  <div className="flex items-center gap-6 text-sm text-white/60">
-                      <a href="#" className="hover:text-white transition-colors">Terms</a>
-                      <a href="#" className="hover:text-white transition-colors">Privacy</a>
-                      <a href="#" className="hover:text-white transition-colors">Contact</a>
-                  </div>
-              </div>
-          </div>
-      </footer>
-
 
       {/* --- ENHANCED REGISTRATION MODAL WITH MASSIVE GLOW --- */}
       {isModalOpen && (
