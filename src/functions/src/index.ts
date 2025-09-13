@@ -167,7 +167,6 @@ function buildCoverHtml(opts: { jacketId?: string; vin: string; year?: number; m
 }
 
 /* ───────────────────── Parsing: startInvoiceParse ───────────────────── */
-
 export const startInvoiceParse = onRequest(
   {
     region: "us-central1",
@@ -183,13 +182,13 @@ export const startInvoiceParse = onRequest(
         return;
       }
 
-      const gcsPath = (req.body?.gcsPath ?? "").toString().trim();
+      const gcsPath = String(req.body?.gcsPath || "").trim();
       if (!gcsPath) {
         res.status(400).json({ error: "Missing gcsPath (e.g., incoming/invoices/<uid>/<file>.pdf)" });
         return;
       }
 
-      // 1) Read the uploaded file from GCS
+      // 1) Locate the file in GCS
       const file = bucket.file(gcsPath);
       const [exists] = await file.exists();
       if (!exists) {
@@ -197,18 +196,169 @@ export const startInvoiceParse = onRequest(
         return;
       }
 
-      const [meta] = await file.getMetadata();
-      const contentType = (meta?.contentType || "").toLowerCase();
-
-      if (contentType.startsWith("image/")) {
-        res.status(415).send("Image uploads are not yet supported for parsing.");
-        return;
-      }
-
+      const [meta] = await file.getMetadata().catch(() => [undefined] as any);
+      const contentType = String(meta?.contentType || "").toLowerCase();
       if (!contentType.includes("pdf")) {
-        res.status(415).json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only for MVP)` });
+        res
+          .status(415)
+          .json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only)` });
         return;
       }
+
+      // 2) Download bytes → force a real Node Buffer
+      const [downloaded] = await file.download();
+      const nodeBuffer: Buffer = Buffer.isBuffer(downloaded)
+        ? downloaded
+        : Buffer.from(downloaded as any);
+
+      if (!nodeBuffer?.length) {
+        console.error("Downloaded buffer empty", { gcsPath, contentType });
+        res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
+        return;
+      }
+
+      console.log("startInvoiceParse:downloaded", {
+        gcsPath,
+        contentType,
+        length: nodeBuffer.length,
+      });
+
+      // 3) Extract text with pdf-parse (internal entry; fallback to default if needed)
+      let pdfParse: (data: Buffer | Uint8Array | ArrayBuffer) => Promise<{ text: string }>;
+      try {
+        // ✅ preferred: internal path avoids test file reads inside the package
+        pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default as any;
+      } catch {
+        // fallback if bundler/path changes
+        const mod: any = await import("pdf-parse");
+        pdfParse = (mod.default || mod) as any;
+      }
+
+      const { text } = await pdfParse(nodeBuffer);
+      if (!text?.trim()) {
+        res.status(500).json({
+          error: "Extracted text is empty (likely a scanned image PDF; OCR not enabled yet).",
+        });
+        return;
+      }
+
+      // 4) Ask Gemini for STRICT JSON
+      const model = getGeminiModel();
+      const prompt = `
+Return STRICT JSON only (no prose) with this schema:
+{
+  "invoiceMeta": { "aucNo": string?, "saleLocation": string? },
+  "units": [{
+    "vin": string,
+    "year": number?, "make": string?, "model": string?, "color": string?,
+    "hours": number?, "odometer": number?,
+    "saleLocation": string?,
+    "itemPrice": number?, "buyerFee": number?, "onlineFee": number?,
+    "titleInfo": string?, "stockNo": string?, "aucNo": string?
+  }]
+}
+Rules:
+- VIN uppercase; remove spaces/hyphens; alphanumerics only
+- Currency & numeric fields must be numbers (no $ or commas)
+- Omit a field if unknown (do NOT invent values)
+
+TEXT:
+"""${text.slice(0, 20000)}"""`;
+
+      const ai = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+
+      const raw = ai.response?.text() || "{}";
+
+      function tryParse<T = any>(s: string): T | null {
+        try {
+          return JSON.parse(s);
+        } catch {
+          const start = s.indexOf("{");
+          const end = s.lastIndexOf("}");
+          if (start >= 0 && end > start) {
+            try {
+              return JSON.parse(s.slice(start, end + 1));
+            } catch {}
+          }
+          return null;
+        }
+      }
+
+      const extracted = tryParse<any>(raw) || { units: [] };
+
+      // 5) Normalize units + defaults
+      const unitsIn: any[] = Array.isArray(extracted?.units) ? extracted.units : [];
+      const units = unitsIn.map((u) => {
+        const out: any = { ...u };
+        // default management fee
+        out.managementFee = Number.isFinite(+out.managementFee) ? Number(out.managementFee) : 100;
+        // VIN normalize
+        if (typeof out.vin === "string") {
+          out.vin = out.vin.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        }
+        // numeric coercions
+        const toNum = (v: any) =>
+          typeof v === "number" ? v : typeof v === "string" ? Number(v.replace(/[$,]/g, "")) || 0 : 0;
+        out.itemPrice = toNum(out.itemPrice);
+        out.buyerFee = toNum(out.buyerFee);
+        out.onlineFee = toNum(out.onlineFee);
+        out.odometer = toNum(out.odometer);
+        out.hours = toNum(out.hours);
+        out.year = toNum(out.year) ? Math.round(toNum(out.year)) : undefined;
+        return out;
+      });
+
+      // 6) Write staging docs
+      const now = FieldValue.serverTimestamp();
+      const stagingId = db.collection("stagingInvoices").doc().id;
+
+      const [fileUrl] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+      });
+
+      // incoming/invoices/<uid>/<file>.pdf → uid is index 2
+      const parts = gcsPath.split("/");
+      const uploaderUid =
+        parts[0] === "incoming" && parts[1] === "invoices" && parts[2] ? parts[2] : null;
+
+      await db.collection("stagingInvoices").doc(stagingId).set({
+        source: "auction",
+        gcsPath,
+        fileUrl,
+        createdAt: now,
+        updatedAt: now,
+        invoiceMeta: extracted?.invoiceMeta ?? {},
+        unitsCount: units.length,
+        uploaderUid,
+      });
+
+      const batch = db.batch();
+      for (const u of units) {
+        const unitRef = db
+          .collection("stagingInvoices")
+          .doc(stagingId)
+          .collection("units")
+          .doc();
+        batch.set(unitRef, {
+          ...u,
+          rawText: text.length > 5000 ? text.slice(0, 5000) + "…" : text,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      await batch.commit();
+
+      // 7) Done
+      res.json({ ok: true, stagingId, unitsCount: units.length });
+    } catch (e: any) {
+      console.error("startInvoiceParse error", e?.stack || e);
+      res.status(500).json({ error: e?.message || "Parse failed" });
+    }
+  }
+);
 
       // 1) Download bytes (force a real Node Buffer)
 const [downloaded] = await file.download();

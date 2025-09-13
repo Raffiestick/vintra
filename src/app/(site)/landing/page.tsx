@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
@@ -17,12 +18,13 @@ function Tag({ children }: { children: React.ReactNode }) {
 /* Visual card with glow/shimmer (no event handlers needed here) */
 const ShimmerCard = React.forwardRef<
   HTMLDivElement,
-  { children: React.ReactNode; className?: string }
->(({ children, className }, ref) => {
+  { children: React.ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>
+>(({ children, className, ...props }, ref) => {
   return (
     <div
       ref={ref}
       className={`relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] shadow-lg ${className || ""}`}
+      {...props}
     >
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(40%_120%_at_50%_0%,#fff2,transparent)]" />
       <div
