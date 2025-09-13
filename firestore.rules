@@ -1,43 +1,31 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Default-deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
-    function isSignedIn() { return request.auth != null; }
-
-    // Claims-based admin (kept)
+    // Allow admins full read/write access to everything
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.role == 'admin' ||
-        request.auth.token.admin == true
-      );
+      return request.auth.token.admin == true;
+    }
+    match /{document=**} {
+      allow read, write: if isAdmin();
     }
 
-    // DEV-only hard-coded admin UID bypass
-    function isDevAdmin() {
-      return isSignedIn() && request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
-    }
-
-    // Dealer role (kept)
-    function isDealer() {
-      return isSignedIn() && request.auth.token.role == 'dealer';
-    }
-
-    // Jackets:
-    // Read: admin OR dev-admin UID OR dealer that owns the jacket
-    // Write: admin OR dev-admin UID
-    match /jackets/{vin} {
-      allow read: if isAdmin() || isDevAdmin() || (isDealer() && resource.data.dealerId == request.auth.uid);
-      allow write: if isAdmin() || isDevAdmin();
-    }
-
-    // Users:
-    // Read: Any signed-in user can read their own document. Admins can read any.
-    // Create: Anyone can create their own user document (on signup).
-    // Update: Any signed-in user can update their own document. Admins can update any.
+    // Allow users to manage their own document
     match /users/{userId} {
-      allow read: if (isSignedIn() && request.auth.uid == userId) || isAdmin() || isDevAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if (isSignedIn() && request.auth.uid == userId) || isAdmin() || isDevAdmin();
+      allow read, update, delete: if request.auth.uid == userId;
+      allow create: if request.auth.uid == userId && request.resource.data.uid == request.auth.uid;
+    }
+
+    // Allow logged-in dealers to read jackets assigned to them
+    match /jackets/{vin} {
+      allow read: if exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                   get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
     }
   }
 }

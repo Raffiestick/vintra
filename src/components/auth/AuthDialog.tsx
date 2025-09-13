@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -10,6 +9,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Tabs,
@@ -21,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { DEV_ADMIN_UID } from "@/lib/auth/roles";
 import { Loader2 } from "lucide-react";
 import React from "react";
@@ -32,7 +34,7 @@ interface AuthDialogProps {
   defaultTab?: 'sign-in' | 'create-account';
 }
 
-const ShimmerCard = React.forwardRef<HTMLDivElement, { children: React.ReactNode, className?: string }>(({ children, className, ...props }, ref) => {
+const ShimmerCard = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ children, className, ...props }, ref) => {
     return (
         <div
             ref={ref}
@@ -124,7 +126,11 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'sign-in' }: AuthD
       };
 
       await setDoc(doc(db, "users", user.uid), userData);
-      await user.getIdToken(true);
+      
+      // We don't need to force a token refresh here for the client
+      // The rules allow creation based on the authenticated user's UID.
+      // await user.getIdToken(true); 
+
       onOpenChange(false);
       router.push('/upload-documents');
     } catch (error: any) {
@@ -132,17 +138,40 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'sign-in' }: AuthD
     }
     setLoading(false);
   };
+  
+  const VisuallyHidden = ({ children }: { children: React.ReactNode }) => (
+    <div style={{
+      position: 'absolute',
+      width: '1px',
+      height: '1px',
+      padding: '0',
+      margin: '-1px',
+      overflow: 'hidden',
+      clip: 'rect(0, 0, 0, 0)',
+      whiteSpace: 'nowrap',
+      border: '0',
+    }}>
+      {children}
+    </div>
+  );
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-transparent border-none shadow-none p-0 w-[92%] max-w-md">
+        <DialogHeader>
+            <VisuallyHidden>
+                <DialogTitle>Authentication</DialogTitle>
+                <DialogDescription>Sign in or create an account to continue.</DialogDescription>
+            </VisuallyHidden>
+        </DialogHeader>
         <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
         <div className="relative z-50">
             <div className="pointer-events-none absolute -inset-8 -z-10 rounded-3xl bg-[radial-gradient(closest-side,rgba(99,102,241,0.5),transparent)] blur-3xl animate-[vintra-pulse_4s_infinite]" />
             <ShimmerCard>
                 <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="w-full">
                     <CardHeader className="text-center pt-6">
-                        <CardTitle className="font-manrope text-2xl font-bold">Welcome to Vintra</CardTitle>
+                       <h2 className="font-manrope text-2xl font-bold text-white">Welcome to Vintra</h2>
                     </CardHeader>
                     <TabsList className="grid w-[calc(100%-2rem)] mx-auto grid-cols-2 bg-white/5 border-white/10">
                         <TabsTrigger value="sign-in" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">Sign In</TabsTrigger>

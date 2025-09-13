@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
@@ -15,17 +14,10 @@ function Tag({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* Visual card with glow/shimmer (no event handlers needed here) */
-const ShimmerCard = React.forwardRef<
-  HTMLDivElement,
-  { children: React.ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>
->(({ children, className, ...props }, ref) => {
+/* Visual card with glow/shimmer — NOTE: no ref, no onMouse* props here */
+function GlowCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div
-      ref={ref}
-      className={`relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] shadow-lg ${className || ""}`}
-      {...props}
-    >
+    <div className={`relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] shadow-lg ${className || ""}`}>
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(40%_120%_at_50%_0%,#fff2,transparent)]" />
       <div
         className="absolute -top-1/2 left-0 -z-10 h-[200%] w-full animate-[vintra-shimmer_5s_infinite]"
@@ -37,10 +29,9 @@ const ShimmerCard = React.forwardRef<
       {children}
     </div>
   );
-});
-ShimmerCard.displayName = "ShimmerCard";
+}
 
-/* optional inner image tilt */
+/* Optional inner image tilt */
 function TiltImage({ src, alt }: { src: string; alt: string }) {
   return (
     <div className="group relative [perspective:1000px]" style={{ transformStyle: "preserve-3d" }}>
@@ -53,7 +44,7 @@ function TiltImage({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-/* ✅ Tilt wrapper DIV holds the mouse listeners (not ShimmerCard) */
+/* ✅ Tilt wrapper DIV holds the mouse listeners (not the card component) */
 function TiltCard({ children, className }: { children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [rotate, setRotate] = useState({ x: 0, y: 0 });
@@ -74,13 +65,11 @@ function TiltCard({ children, className }: { children: React.ReactNode; classNam
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
       className={`transition-transform duration-300 ease-out will-change-transform ${className || ""}`}
-      style={{
-        transform: `perspective(1000px) rotateX(${rotate.x}deg) rotateY(${rotate.y}deg) scale(1.05)`,
-      }}
+      style={{ transform: `perspective(1000px) rotateX(${rotate.x}deg) rotateY(${rotate.y}deg) scale(1.05)` }}
     >
-      <ShimmerCard className="w-full h-full">
+      <GlowCard className="w-full h-full">
         <div style={{ transform: "translateZ(20px)", transformStyle: "preserve-3d" }}>{children}</div>
-      </ShimmerCard>
+      </GlowCard>
     </div>
   );
 }
@@ -89,7 +78,7 @@ function AnimatedBorderCard({ children, className }: { children: React.ReactNode
   return (
     <div className={`relative rounded-xl p-[0.2px] bg-transparent ${className || ""}`}>
       <div className="absolute inset-[-0.2px] rounded-xl -z-10 bg-[linear-gradient(90deg,transparent_45%,#e2e8f0_50%,transparent_55%)] bg-[length:300%_100%] animate-[vintra-border-shimmer_3s_linear_infinite]" />
-      <ShimmerCard className="w-full h-full !rounded-lg !border-none">{children}</ShimmerCard>
+      <GlowCard className="w-full h-full !rounded-lg !border-none">{children}</GlowCard>
     </div>
   );
 }
@@ -137,21 +126,14 @@ export default function LandingPage() {
   return (
     <div
       className="relative min-h-dvh overflow-x-hidden bg-zinc-950 font-sans text-white"
-      style={
-        {
-          "--mouse-x": `${mousePosition.x}px`,
-          "--mouse-y": `${mousePosition.y}px`,
-        } as React.CSSProperties
-      }
+      style={{ ["--mouse-x" as any]: `${mousePosition.x}px`, ["--mouse-y" as any]: `${mousePosition.y}px` }}
     >
       <AuthDialog open={isModalOpen} onOpenChange={setIsModalOpen} defaultTab={defaultTab} />
 
       {/* spotlight follows cursor */}
       <div
         className="pointer-events-none fixed inset-0 z-30 transition duration-300"
-        style={{
-          background: `radial-gradient(600px at var(--mouse-x) var(--mouse-y), rgba(29, 78, 216, 0.1), transparent 80%)`,
-        }}
+        style={{ background: `radial-gradient(600px at var(--mouse-x) var(--mouse-y), rgba(29, 78, 216, 0.1), transparent 80%)` }}
       />
 
       <AuroraBG />
@@ -259,18 +241,9 @@ export default function LandingPage() {
             <div className="order-1 md:order-2">
               <h2 className="font-manrope text-3xl font-bold tracking-tight md:text-4xl">Streamline Your Operations</h2>
               <ul className="mt-4 space-y-3 text-base text-white/80">
-                <li className="flex items-start gap-2">
-                  <span>•</span>
-                  <span>Reliable, crash‑free document processing.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span>•</span>
-                  <span>Flawless data accuracy on every single vehicle.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span>•</span>
-                  <span>Automate your fee structures and calculations.</span>
-                </li>
+                <li className="flex items-start gap-2"><span>•</span><span>Reliable, crash‑free document processing.</span></li>
+                <li className="flex items-start gap-2"><span>•</span><span>Flawless data accuracy on every single vehicle.</span></li>
+                <li className="flex items-start gap-2"><span>•</span><span>Automate your fee structures and calculations.</span></li>
               </ul>
             </div>
           </div>
@@ -282,18 +255,9 @@ export default function LandingPage() {
             <div>
               <h2 className="font-manrope text-3xl font-bold tracking-tight md:text-4xl">A Professional Portal for Your Partners</h2>
               <ul className="mt-4 space-y-3 text-base text-white/80">
-                <li className="flex items-start gap-2">
-                  <span>•</span>
-                  <span>Wholesale partners see only the jackets assigned to them.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span>•</span>
-                  <span>Easily track financial status and download generated packets.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span>•</span>
-                  <span>Secure document access unlocks when the balance is paid.</span>
-                </li>
+                <li className="flex items-start gap-2"><span>•</span><span>Wholesale partners see only the jackets assigned to them.</span></li>
+                <li className="flex items-start gap-2"><span>•</span><span>Easily track financial status and download generated packets.</span></li>
+                <li className="flex items-start gap-2"><span>•</span><span>Secure document access unlocks when the balance is paid.</span></li>
               </ul>
             </div>
             <div>
@@ -322,12 +286,8 @@ export default function LandingPage() {
             style={{ maskImage: "linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)" }}
           />
           <div className="relative mx-auto max-w-4xl px-4 text-center">
-            <h2 className="font-manrope text-4xl font-bold tracking-tight md:text-5xl">
-              Ready to Supercharge Your Dealership?
-            </h2>
-            <p className="mt-4 text-lg text-white/80">
-              Join the dealers who use Vintra to save time, source inventory, and sell more units. No credit card required.
-            </p>
+            <h2 className="font-manrope text-4xl font-bold tracking-tight md:text-5xl">Ready to Supercharge Your Dealership?</h2>
+            <p className="mt-4 text-lg text-white/80">Join the dealers who use Vintra to save time, source inventory, and sell more units. No credit card required.</p>
             <div className="mt-8 flex justify-center gap-4">
               <button
                 onClick={() => openModal("create-account")}
