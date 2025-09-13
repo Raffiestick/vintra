@@ -62,7 +62,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                   <div>
                     <h4 className="mb-3 font-manrope font-semibold text-white">Company</h4>
                      <ul className="space-y-2 text-white/70">
-                      <li><Link href="/landing#about" className="hover:text-white">About</Link></li>
+                      <li><Link href="/about" className="hover:text-white">About</Link></li>
                       <li><Link href="/landing#contact" className="hover:text-white">Contact</Link></li>
                     </ul>
                   </div>
