@@ -13,8 +13,6 @@
     "start": "next start"
   },
   "dependencies": {
-    "@genkit-ai/googleai": "^1.14.1",
-    "@genkit-ai/next": "^1.14.1",
     "@google-cloud/vertexai": "^1.8.0",
     "@hookform/resolvers": "^3.3.4",
     "@radix-ui/react-accordion": "^1.1.2",
@@ -46,7 +44,6 @@
     "firebase": "^10.8.1",
     "firebase-admin": "^12.0.0",
     "firebase-functions": "^5.0.1",
-    "genkit": "^1.14.1",
     "lucide-react": "^0.344.0",
     "next": "14.2.15",
     "react": "18.2.0",
