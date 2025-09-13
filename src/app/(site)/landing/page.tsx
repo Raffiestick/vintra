@@ -26,7 +26,7 @@ function Tag({ children }: { children: React.ReactNode }) {
 }
 
 // Reusable ShimmerCard, now accepting a forwardRef to be used by other components
-const ShimmerCard = React.forwardRef<HTMLDivElement, { children: React.ReactNode, className?: string }>(({ children, className, ...props }, ref) => {
+const ShimmerCard = React.forwardRef<HTMLDivElement, { children: React.ReactNode, className?: string } & React.HTMLAttributes<HTMLDivElement>>(({ children, className, ...props }, ref) => {
     return (
         <div
             ref={ref}
