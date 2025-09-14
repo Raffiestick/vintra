@@ -78,7 +78,7 @@ function currency(n?: number) {
 }
 
 // Render invoice/auction date safely
-function formatInvoiceDate(h?: StagingHeader | null): string {
+function formatInvoiceDate(h?: StagingHeader): string {
   const iso = h?.invoiceDate?.trim() ?? '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
     // anchor at midnight UTC so there’s no off-by-one from local TZ
