@@ -3,43 +3,26 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Helper function to check admin status from Firestore claims
+    // Helper function to check admin status
     function isAdmin() {
       return request.auth != null && request.auth.token.admin == true;
     }
 
-    // Helper function to check if a user is the assigned dealer for a jacket
-    function isAssignedDealer(vin) {
-      // Correctly reference the Firestore document for the given VIN
-      let jacketData = firestore.get(/databases/(default)/documents/jackets/$(vin)).data;
-      return request.auth != null && jacketData.dealerId == request.auth.uid;
-    }
-
-    // Admins can read and write all files
+    // Admins can do anything, anywhere.
     match /{allPaths=**} {
       allow read, write: if isAdmin();
     }
 
-    // Rule for user document uploads (resale cert, gov ID)
-    // Users can only write to their own folder.
+    // Dealers can upload their registration documents to their own folder.
+    // 'write' includes create and update, necessary for the full upload flow.
     match /user-documents/{userId}/{fileName} {
       allow write: if request.auth != null && request.auth.uid == userId;
-      // Admins can read these documents. Dealers cannot read other dealers' docs.
-      allow read: if isAdmin();
     }
 
-    // Rules for generated jacket documents (invoice, bos, packet) and uploaded docs (title, poa)
-    match /jacket-documents/{vin}/{document=**} {
-      // Admins can read/write.
-      // Dealers can read if they are the assigned dealer for that VIN.
-      allow read: if isAdmin() || isAssignedDealer(vin);
-      // Only admins can write/delete jacket documents.
-      allow write: if isAdmin();
-    }
-
-    // Fallback: Deny all other access
-    match /{path=**} {
-      allow read, write: if false;
+    // Dealers can read jacket documents (PDFs, etc.) if the jacket is assigned to them in Firestore.
+    match /jacket-documents/{vin}/{allPaths=**} {
+      allow read: if request.auth != null &&
+                   get(/databases/(default)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
     }
   }
 }
