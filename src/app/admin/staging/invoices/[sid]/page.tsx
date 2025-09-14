@@ -122,25 +122,19 @@ export default function StagingInvoiceDetailPage() {
   const remaining = Math.max(0, units.length - processedCount);
   const filtered = useMemo(() => (hideProcessed ? units.filter((u) => !u.processed) : units), [units, hideProcessed]);
 
-  async function createOne(unitId: string) {
+  const processUnit = async (unitId: string) => {
     try {
-      setWorking(unitId);
-      const { getFunctions, httpsCallable } = await import('firebase/functions');
-      const functions = getFunctions(undefined, 'us-central1');
-      const callable = httpsCallable(functions, 'createJacketFromUnit');
-      const resp: any = await callable({ stagingId, unitId });
-      // lookup VIN for redirect
-      const unit = units.find(u => u.id === unitId);
-      const vin = resp?.data?.vin || unit?.vin;
-      toast({ title: 'Jacket created', description: vin ? `Opening ${vin}…` : 'Opening jacket…' });
-      if (vin) router.push(`/admin/jackets/${vin}`);
+      const fn = httpsCallable(functions, 'createJacketFromUnit');
+      const { data } = await fn({ stagingId: sid, unitId });
+      const vin = (data as any)?.vin || ((data as any)?.path || '').split('/').pop();
+      if (!vin) throw new Error('Jacket created, but VIN missing in response.');
+      toast.success(`Jacket ${vin} created`);
+      router.push(`/admin/jackets/${vin}`); // <-- route to the jacket detail screen
     } catch (e: any) {
       console.error(e);
-      toast({ title: 'Create failed', description: e?.message || 'Unknown error', variant: 'destructive' });
-    } finally {
-      setWorking(null);
+      toast.error(e?.message ?? 'Failed to process unit');
     }
-  }
+  };
 
   async function createAllRemaining() {
     try {

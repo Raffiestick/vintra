@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { collection, getDocs, query, orderBy, Timestamp, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, Timestamp, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -14,26 +14,25 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/use-auth';
 import { useSafeSnapshot } from '@/hooks/useSafeSnapshot';
 import Link from 'next/link';
+import { toast } from 'sonner';
+import { cf } from '@/lib/firebase/functions';
 
-interface StagedInvoice {
+interface StagingHeader {
   id: string;
   createdAt?: Timestamp;
-  invoiceDate?: string;      // YYYY-MM-DD
-  invoiceDateTs?: Timestamp; // Firestore timestamp
+  updatedAt?: Timestamp;
   source?: string;
-  invoiceMeta?: { aucNo?: string };
   fileUrl?: string;
   unitsCount: number;
   status?: 'new' | 'in-progress' | 'processed';
+  invoiceMeta?: { aucNo?: string; saleLocation?: string };
+  invoiceDate?: string | null;      // "YYYY-MM-DD" string
+  invoiceDateTs?: Timestamp | null; // server timestamp at midnight UTC
 }
 
-function displayInvoiceDate(inv: StagedInvoice): string {
-  if (inv.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(inv.invoiceDate)) {
-    return new Date(`${inv.invoiceDate}T00:00:00Z`).toLocaleDateString();
-  }
-  if (inv.invoiceDateTs?.toDate) {
-    try { return inv.invoiceDateTs.toDate().toLocaleDateString(); } catch {}
-  }
+function formatInvoiceDate(h: StagingHeader): string {
+  if (h?.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(h.invoiceDate)) return h.invoiceDate;
+  if (h?.invoiceDateTs?.toDate) return h.invoiceDateTs.toDate().toLocaleDateString();
   return '—';
 }
 
@@ -66,7 +65,7 @@ function StagingSkeleton() {
 
 export default function StagedInvoicesPage() {
   const { isAdmin, loading: authLoading } = useAuth();
-  const [invoices, setInvoices] = useState<StagedInvoice[]>([]);
+  const [invoices, setInvoices] = useState<StagingHeader[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hideProcessed, setHideProcessed] = useState(true);
@@ -80,12 +79,16 @@ export default function StagedInvoicesPage() {
 
     const qy = query(collection(db, 'stagingInvoices'), orderBy('createdAt', 'desc'));
     return onSnapshot(qy, async (qs) => {
-      const invoicesData = await Promise.all(qs.docs.map(async (doc) => {
-        const unitsCollection = collection(db, 'stagingInvoices', doc.id, 'units');
-        const unitsSnapshot = await getDocs(unitsCollection);
-        return { id: doc.id, ...doc.data(), unitsCount: unitsSnapshot.size } as StagedInvoice;
+      const rows = await Promise.all(qs.docs.map(async (d) => {
+        const unitsCol = collection(db, 'stagingInvoices', d.id, 'units');
+        const unitsSnapshot = await getDocs(unitsCol);
+        return {
+          id: d.id,
+          unitsCount: unitsSnapshot.size,
+          ...d.data()
+        } as StagingHeader;
       }));
-      setInvoices(invoicesData);
+      setInvoices(rows);
       setLoading(false);
       setError(null);
     }, (err) => {
@@ -93,17 +96,28 @@ export default function StagedInvoicesPage() {
       setError(err.code === 'permission-denied' ? "You don't have permission to view this." : "Failed to load invoices.");
       setLoading(false);
     });
+
   }, [isAdmin, authLoading]);
 
-  const getStatus = (invoice: StagedInvoice) => {
-    if (invoice.status) return invoice.status;
-    return invoice.unitsCount > 0 ? 'in-progress' : 'new';
+  const getStatus = (h: StagingHeader) => {
+    if (h.status) return h.status;
+    return h.unitsCount > 0 ? 'in-progress' : 'new';
   };
 
-  const filteredInvoices = useMemo(() => {
+  const filtered = useMemo(() => {
     if (!hideProcessed) return invoices;
-    return invoices.filter(invoice => getStatus(invoice) !== 'processed');
+    return invoices.filter(i => getStatus(i) !== 'processed');
   }, [invoices, hideProcessed]);
+
+  async function handleProcessAll(stagingId: string) {
+    try {
+      const res = await cf.createJacketsForInvoice({ stagingId });
+      toast.success(`Created ${res.created} jackets`);
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || "Failed to process all");
+    }
+  }
 
   if (loading || authLoading) return <StagingSkeleton />;
   if (!isAdmin) return <p className="text-muted-foreground p-4">Admin access required.</p>;
@@ -114,19 +128,24 @@ export default function StagedInvoicesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Staged Invoices</CardTitle>
-          <CardDescription>Invoices parsed by AI, ready for review.</CardDescription>
+          <CardDescription>Invoices parsed and ready for review. Click a batch to open.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center space-x-2 mb-4">
-            <Checkbox id="hide-processed" checked={hideProcessed} onCheckedChange={(checked) => setHideProcessed(Boolean(checked))}/>
+            <Checkbox
+              id="hide-processed"
+              checked={hideProcessed}
+              onCheckedChange={(checked) => setHideProcessed(Boolean(checked))}
+            />
             <Label htmlFor="hide-processed">Hide processed invoices</Label>
           </div>
 
-          {filteredInvoices.length > 0 ? (
+          {filtered.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Auction Date</TableHead>
+                  <TableHead>Upload Time</TableHead>
+                  <TableHead>Invoice Date</TableHead>
                   <TableHead>Source / Auc #</TableHead>
                   <TableHead>Units</TableHead>
                   <TableHead>Status</TableHead>
@@ -134,23 +153,25 @@ export default function StagedInvoicesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredInvoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell>{displayInvoiceDate(invoice)}</TableCell>
+                {filtered.map((h) => (
+                  <TableRow key={h.id}>
+                    <TableCell>{h.createdAt?.toDate().toLocaleString() ?? 'N/A'}</TableCell>
+                    <TableCell>{formatInvoiceDate(h)}</TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="font-medium uppercase">{invoice.source || 'N/A'}</span>
-                        <span className="text-xs text-muted-foreground">{invoice.invoiceMeta?.aucNo || '—'}</span>
+                        <span className="font-medium uppercase">{h.source || 'N/A'}</span>
+                        <span className="text-xs text-muted-foreground">{h.invoiceMeta?.aucNo || '—'}</span>
                       </div>
                     </TableCell>
-                    <TableCell><Badge variant="secondary">{invoice.unitsCount}</Badge></TableCell>
+                    <TableCell><Badge variant="secondary">{h.unitsCount}</Badge></TableCell>
                     <TableCell>
-                      <Badge variant={getStatus(invoice) === 'processed' ? 'default' : 'outline'} className="capitalize">
-                        {getStatus(invoice)}
+                      <Badge variant={getStatus(h) === 'processed' ? 'default' : 'outline'} className="capitalize">
+                        {getStatus(h)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => router.push(`/admin/staging/invoices/${invoice.id}`)}>Open</Button>
+                    <TableCell className="text-right space-x-2">
+                      <Button variant="outline" size="sm" onClick={() => router.push(`/admin/staging/invoices/${h.id}`)}>Open</Button>
+                      <Button size="sm" onClick={() => handleProcessAll(h.id)}>Process All</Button>
                     </TableCell>
                   </TableRow>
                 ))}

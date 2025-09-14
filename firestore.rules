@@ -1,69 +1,47 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- Auth helpers ---
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    // Two admin UIDs + optional custom claims for flexibility
     function isAdmin() {
-      return isSignedIn() &&
-        (
-          request.auth.token.admin == true ||
-          request.auth.token.role == 'admin' ||
-          request.auth.uid == '8usUL5P3Lde9UmukTHNhfArzDbs2' ||
-          request.auth.uid == 'qY0IICPcxOSf8HTHwO83Qz6fxiG3'
+      return request.auth != null
+        && (
+             request.auth.token.admin == true
+          || request.auth.token.role == 'admin'
+          || request.auth.uid in ['8usUL5P3Lde9UmukTHNhfArzDbs2','qY0IICPcxOSf8HTHwO83Qz6fxiG3']
         );
     }
 
-    // Dealer is assigned to a jacket if jacket.dealerId == uid
-    function isAssignedDealer(vin) {
-      return isSignedIn() &&
-             get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
+    // Users can manage their own profile; admins can manage all.
+    match /users/{userId} {
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update, delete: if isAdmin() || (request.auth != null && request.auth.uid == userId);
     }
 
-    // --- Default deny ---
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Users: admin full control; user can read/update their own profile record
-    match /users/{uid} {
-      allow read, write: if isAdmin();
-      allow read, create, update: if isSignedIn() && request.auth.uid == uid;
-    }
-
-    // Jackets: admin full control; assigned dealer read-only
+    // Dealer jackets
     match /jackets/{vin} {
-      allow read, write: if isAdmin();
-      allow read: if isAssignedDealer(vin);
+      allow read: if isAdmin() || (request.auth != null && resource.data.dealerId == request.auth.uid);
+      allow create, update, delete: if isAdmin();
 
-      // Activity timeline: dealer can read if assigned; only admin writes
-      match /activity/{id} {
-        allow read: if isAdmin() || isAssignedDealer(vin);
+      match /activity/{docId} {
+        allow read: if isAdmin() || (
+          request.auth != null &&
+          get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid
+        );
         allow write: if isAdmin();
       }
     }
 
-    // Staging (AI parsing): admin-only
+    // Staging invoice batches: admin only
     match /stagingInvoices/{stagingId} {
       allow read, write: if isAdmin();
-
       match /units/{unitId} {
         allow read, write: if isAdmin();
       }
     }
 
-    // Staged docs metadata: admin-only
-    match /stagedDocs/{docId} {
-      allow read, write: if isAdmin();
-    }
-
-    // Counters (e.g., invoice ID sequence): admin-only
-    match /counters/{counterId} {
+    // Fallback: admins can still do everything
+    match /{document=**} {
       allow read, write: if isAdmin();
     }
   }
