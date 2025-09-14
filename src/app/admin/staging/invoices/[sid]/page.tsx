@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -17,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 type Status = 'new' | 'in-progress' | 'processed';
 
@@ -122,24 +124,29 @@ export default function StagingInvoiceDetailPage() {
   const remaining = Math.max(0, units.length - processedCount);
   const filtered = useMemo(() => (hideProcessed ? units.filter((u) => !u.processed) : units), [units, hideProcessed]);
 
-  const processUnit = async (unitId: string) => {
+  const createOne = async (unitId: string) => {
+    if (!stagingId) return;
     try {
-      const fn = httpsCallable(functions, 'createJacketFromUnit');
-      const { data } = await fn({ stagingId: sid, unitId });
-      const vin = (data as any)?.vin || ((data as any)?.path || '').split('/').pop();
-      if (!vin) throw new Error('Jacket created, but VIN missing in response.');
-      toast.success(`Jacket ${vin} created`);
-      router.push(`/admin/jackets/${vin}`); // <-- route to the jacket detail screen
+        setWorking(unitId);
+        const functions = getFunctions(undefined, 'us-central1');
+        const fn = httpsCallable(functions, 'createJacketFromUnit');
+        const { data } = await fn({ stagingId, unitId });
+        const vin = (data as any)?.vin || ((data as any)?.path || '').split('/').pop();
+        if (!vin) throw new Error('Jacket created, but VIN missing in response.');
+        toast({ title: `Jacket ${vin} created` });
+        router.push(`/admin/jackets/${vin}`);
     } catch (e: any) {
-      console.error(e);
-      toast.error(e?.message ?? 'Failed to process unit');
+        console.error(e);
+        toast({ title: 'Failed to process unit', description: e?.message ?? 'Unknown error', variant: 'destructive' });
+    } finally {
+        setWorking(null);
     }
   };
+
 
   async function createAllRemaining() {
     try {
       setWorking('all');
-      const { getFunctions, httpsCallable } = await import('firebase/functions');
       const functions = getFunctions(undefined, 'us-central1');
       const callable = httpsCallable(functions, 'createJacketsForInvoice');
       const resp: any = await callable({ stagingId });
