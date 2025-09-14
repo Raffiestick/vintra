@@ -2,12 +2,12 @@
 const admin = require('firebase-admin');
 const fs = require('fs');
 
-const serviceAccountPath = './serviceAccountKey.json';
+const serviceAccountPath = './rizeup-dealer-connect-service-account.json';
 
 // Check if the service account key file exists
 if (!fs.existsSync(serviceAccountPath)) {
   console.error('ERROR: Service Account Key file not found!');
-  console.error(`Please download your service account key from the Google Cloud Console, rename it to "serviceAccountKey.json", and place it in the root directory of your project.`);
+  console.error(`Please make sure the file named "${serviceAccountPath.replace('./', '')}" is in the root directory of your project.`);
   process.exit(1);
 }
 
