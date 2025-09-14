@@ -1,47 +1,91 @@
 rules_version = '2';
-
-// Helper function to check for admin role
-function isAdmin() {
-  return request.auth != null && request.auth.token.admin == true;
-}
-
-// Helper function to check if the user is the owner of a document
-function isOwner(userId) {
-  return request.auth != null && request.auth.uid == userId;
-}
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Admins can do anything, anywhere.
-    match /{document=**} {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Hard-coded admin UIDs (your two admins)
+    function isAdminUid() {
+      return isSignedIn() && (
+        request.auth.uid == "8usUL5P3Lde9UmukTHNhfArzDbs2" ||
+        request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3"
+      );
+    }
+
+    // Custom-claim based admin (+ UID allow-list above)
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == "admin" ||
+        isAdminUid()
+      );
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Dealer is assigned to a jacket if their uid matches jacket.dealerId
+    function isAssignedDealer(vin) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
+    }
+
+    /* users/{uid} — dealers edit their own basic profile; admin can read/write anyone.
+       Prevent non-admins from writing privileged fields like "role", "admin", "status". */
+    match /users/{uid} {
+      allow read: if isAdmin() || isSelf(uid);
+
+      allow create: if isSelf(uid)
+        && !('role' in request.resource.data)
+        && !('admin' in request.resource.data)
+        && !('isAdmin' in request.resource.data)
+        && !('status' in request.resource.data);
+
+      allow update, delete: if isAdmin() || (
+        isSelf(uid)
+        && !('role' in request.resource.data)
+        && !('admin' in request.resource.data)
+        && !('isAdmin' in request.resource.data)
+        && !('status' in request.resource.data)
+      );
+    }
+
+    /* jackets/{vin} — admin full control; assigned dealer read-only */
+    match /jackets/{vin} {
+      allow read: if isAdmin() || isAssignedDealer(vin);
+      allow create, update, delete: if isAdmin();
+
+      // timeline
+      match /activity/{id} {
+        allow read: if isAdmin() || isAssignedDealer(vin);
+        allow create, update, delete: if isAdmin();
+      }
+    }
+
+    /* stagingInvoices — admin only (as per your design) */
+    match /stagingInvoices/{sid} {
+      allow read, write: if isAdmin();
+      match /units/{unitId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    /* stagedDocs — admin only */
+    match /stagedDocs/{docId} {
       allow read, write: if isAdmin();
     }
-    
-    // USERS collection
-    match /users/{userId} {
-      // Users can create their own user document during sign-up.
-      allow create: if isOwner(userId);
-      // Users can read and update their own profile information.
-      allow read, update: if isOwner(userId);
+
+    /* counters — admin only */
+    match /counters/{name} {
+      allow read, write: if isAdmin();
     }
-    
-    // JACKETS collection
-    match /jackets/{vin} {
-      // Dealers can only read jackets that are assigned to them.
-      allow read: if request.auth != null && resource.data.dealerId == request.auth.uid;
-      // No dealer write access to the main jacket document.
-      allow write: if false;
-    }
-    
-    // All other collections are admin-only by default because of the admin wildcard match above.
-    // Explicitly denying dealer access to collections they should never touch.
-    match /stagingInvoices/{docId=**} {
-      allow read, write: if false; // Dealers cannot access staging
-    }
-    
-    match /counters/{docId=**} {
-      allow read, write: if false; // Dealers cannot access counters
+
+    /* everything else: deny */
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

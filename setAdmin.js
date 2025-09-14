@@ -14,7 +14,14 @@ if (!email) {
 async function setAdminClaim() {
   try {
     const user = await admin.auth().getUserByEmail(email);
-    await admin.auth().setCustomUserClaims(user.uid, { role: 'admin' });
+    const existingClaims = user.customClaims || {};
+    
+    await admin.auth().setCustomUserClaims(user.uid, { 
+      ...existingClaims, 
+      admin: true, 
+      role: 'admin' 
+    });
+
     console.log(`✅ Success! ${email} has been made an admin.`);
     console.log("Log out and log back in to see the changes.");
   } catch (error) {

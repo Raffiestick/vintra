@@ -1,28 +1,53 @@
 rules_version = '2';
-
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Helper function to check admin status
-    function isAdmin() {
-      return request.auth != null && request.auth.token.admin == true;
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    // Admins can do anything, anywhere.
+    function isAdminUid() {
+      return isSignedIn() && (
+        request.auth.uid == "8usUL5P3Lde9UmukTHNhfArzDbs2" ||
+        request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3"
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == "admin" ||
+        isAdminUid()
+      );
+    }
+
+    /* Dealer can upload their own registration docs (ID, tax cert) */
+    match /user-documents/{uid}/{path=**} {
+      allow read, write: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+    }
+
+    /* AI Parse uploads (admin page): owner can upload; admin can read/write */
+    match /incoming/invoices/{uid}/{path=**} {
+      allow read, write: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+    }
+
+    /* (future) staged images/docs */
+    match /incoming/docs/{uid}/{path=**} {
+      allow read, write: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+    }
+
+    /* Canonical jacket PDFs — dealer can read only if assigned; admin can read/write */
+    match /jacket-documents/{vin}/{path=**} {
+      allow read: if isAdmin() || (
+        isSignedIn() &&
+        get(/databases/(default)/documents/jackets/$(vin)).data.dealerId == request.auth.uid
+      );
+      allow write: if isAdmin();
+    }
+
+    /* Default: admin only */
     match /{allPaths=**} {
       allow read, write: if isAdmin();
-    }
-
-    // Dealers can upload their registration documents to their own folder.
-    // 'write' includes create and update, necessary for the full upload flow.
-    match /user-documents/{userId}/{fileName} {
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    // Dealers can read jacket documents (PDFs, etc.) if the jacket is assigned to them in Firestore.
-    match /jacket-documents/{vin}/{allPaths=**} {
-      allow read: if request.auth != null &&
-                   get(/databases/(default)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
     }
   }
 }
