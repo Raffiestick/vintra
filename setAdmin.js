@@ -1,8 +1,25 @@
-const admin = require('firebase-admin');
 
-admin.initializeApp({
-  credential: admin.credential.applicationDefault(),
-});
+const admin = require('firebase-admin');
+const fs = require('fs');
+
+const serviceAccountPath = './serviceAccountKey.json';
+
+// Check if the service account key file exists
+if (!fs.existsSync(serviceAccountPath)) {
+  console.error('ERROR: Service Account Key file not found!');
+  console.error(`Please download your service account key from the Google Cloud Console, rename it to "serviceAccountKey.json", and place it in the root directory of your project.`);
+  process.exit(1);
+}
+
+const serviceAccount = require(serviceAccountPath);
+
+// Initialize Firebase Admin SDK if not already initialized
+if (admin.apps.length === 0) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+}
+
 
 const email = process.argv[2];
 
