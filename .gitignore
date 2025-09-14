@@ -35,7 +35,15 @@ src/functions/node_modules/
 # Puppeteer cache (if any)
 .cache/
 
+cat >> .gitignore <<'EOF'
+
 # Upload junk
 *.local
 *.tmp
 EOF
+
+# --- secrets (never commit) ---
+rizeup-dealer-connect-service-account.json
+*service-account*.json
+.env
+.env.*
