@@ -1,43 +1,29 @@
 rules_version = '2';
 
-// Helper function to check for admin role from the auth token
-function isAdmin() {
-  return request.auth != null && request.auth.token.admin == true;
-}
-
-// Helper function to check if the user is the owner based on UID in the path
-function isOwner(userId) {
-  return request.auth != null && request.auth.uid == userId;
-}
-
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Admins can read and write any file in the bucket. This is the master rule.
+    // Helper function to check if a jacket is assigned to the requesting user
+    function isJacketAssigned(vin) {
+      // Use get() on a full path to the document in Firestore
+      return get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
+    }
+
+    // Admins have full access to all files.
     match /{allPaths=**} {
-      allow read, write: if isAdmin();
+      allow read, write: if request.auth.token.admin == true;
     }
 
-    // USER DOCUMENTS: For registration (Resale Cert, Gov ID)
-    // Dealers can only write to their own folder.
-    match /user-documents/{userId}/{fileName} {
-      allow write: if isOwner(userId);
-      // Reading their own documents is implicitly allowed by the admin-read rule if needed,
-      // but dealers generally don't need to re-read these after upload.
+    // Dealers can upload their own initial documents to a path scoped by their UID.
+    match /user-documents/{uid}/{fileName} {
+      allow write: if request.auth != null && request.auth.uid == uid;
+      // Dealers should also be able to read their own uploaded docs
+      allow read: if request.auth != null && request.auth.uid == uid;
     }
 
-    // JACKET DOCUMENTS: Invoices, BOS, Packets, Titles, POAs, etc.
-    // Any authenticated user can read a jacket document IF they are the assigned dealer for that jacket in Firestore.
+    // Dealers can read files inside a specific jacket's folder only if that jacket is assigned to them in Firestore.
     match /jacket-documents/{vin}/{allPaths=**} {
-       allow read: if request.auth != null && 
-                      get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
-       // Write is admin-only (covered by the wildcard rule above)
-    }
-    
-    // INCOMING INVOICES: For AI parsing
-    // Only admins can upload files to the incoming path.
-    match /incoming/invoices/{userId}/{allPaths=**} {
-        allow write: if isAdmin();
+      allow read: if request.auth != null && isJacketAssigned(vin);
     }
   }
 }
