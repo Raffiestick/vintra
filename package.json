@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "rm -rf .next && next build",
+    "build": "rm -rf .next && rm -rf node_modules && npm install && next build",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "start": "next start"
   },

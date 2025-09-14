@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -15,7 +16,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { useSafeSnapshot } from '@/hooks/useSafeSnapshot';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { cf } from '@/lib/firebase/functions';
+import { getClientFunctions } from '@/lib/firebase/functions';
+import type { HttpsCallable } from 'firebase/functions';
 
 interface StagingHeader {
   id: string;
@@ -111,8 +113,13 @@ export default function StagedInvoicesPage() {
 
   async function handleProcessAll(stagingId: string) {
     try {
-      const res = await cf.createJacketsForInvoice({ stagingId });
-      toast.success(`Created ${res.created} jackets`);
+      const { functions, httpsCallable } = await getClientFunctions();
+      if (!functions) throw new Error("Functions not available");
+      const createJacketsForInvoice = httpsCallable(functions, 'createJacketsForInvoice');
+      
+      const res: any = await createJacketsForInvoice({ stagingId });
+      
+      toast.success(`Created ${res.data.created} jackets`);
     } catch (e: any) {
       console.error(e);
       toast.error(e?.message || "Failed to process all");
