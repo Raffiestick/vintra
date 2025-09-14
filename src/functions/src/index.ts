@@ -13,9 +13,8 @@ import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 
 /* ───────────────────── Secrets ───────────────────── */
-const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID");
+const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID"); // optional dev bypass
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
-
 
 /* ───────────────────── Admin init ───────────────────── */
 if (getApps().length === 0) {
@@ -24,6 +23,13 @@ if (getApps().length === 0) {
 const db = getFirestore();
 const storage = getStorage();
 const bucket = storage.bucket();
+
+/* ───────────────────── Admin UIDs (hard-coded bypass) ───────────────────── */
+// Your two admins (still honors custom claims too)
+const HARDCODED_DEV_ADMINS = new Set<string>([
+  "8usUL5P3Lde9UmukTHNhfArzDbs2",
+  "qY0IICPcxOSf8HTHwO83Qz6fxiG3",
+]);
 
 /* ───────────────────── Constants / Helpers ───────────────────── */
 const seller = {
@@ -51,6 +57,12 @@ const safe = (s: any): string =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+
+/** Midnight‑UTC Date from YYYY‑MM‑DD (prevents off‑by‑one). */
+function isoMidnightUTC(iso?: string): Date | null {
+  if (!iso || typeof iso !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  return new Date(`${iso}T00:00:00.000Z`);
+}
 
 async function getBuyerData(dealerId?: string): Promise<any> {
   if (!dealerId) return { name: "Dealer (unassigned)" };
@@ -87,8 +99,12 @@ async function logActivity(vin: string, entry: { type: string; message: string; 
 
 function assertAdmin(request: CallableRequest) {
   if (!request.auth) throw new HttpsError("unauthenticated", "You must be signed in.");
+  // hard-coded bypass
+  if (HARDCODED_DEV_ADMINS.has(request.auth.uid)) return;
+  // secret one-off bypass (optional)
   const devBypass = DEV_ADMIN_UID_SECRET.value();
   if (devBypass && request.auth.uid === devBypass) return;
+  // custom claim
   const token: any = request.auth.token || {};
   const isAdmin = token.role === "admin" || token.admin === true;
   if (!isAdmin) throw new HttpsError("permission-denied", "Admin privileges required.");
@@ -101,7 +117,7 @@ function getGeminiModel() {
   return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 }
 
-/** Strip code fences and slice to outermost JSON so JSON.parse succeeds. */
+/** Strictly pull outer JSON (handles ```json fences). */
 function extractJsonStrict(raw: string): any {
   const trimmed = (raw || "").trim()
     .replace(/^```json/i, "")
@@ -177,76 +193,45 @@ export const startInvoiceParse = onRequest(
   },
   async (req, res) => {
     try {
-      if (req.method !== "POST") {
-        res.status(405).send("Method Not Allowed");
-        return;
-      }
+      if (req.method !== "POST") { res.status(405).send("Method Not Allowed"); return; }
 
       const gcsPath = String(req.body?.gcsPath || "").trim();
-      if (!gcsPath) {
-        res.status(400).json({ error: "Missing gcsPath (e.g., incoming/invoices/<uid>/<file>.pdf)" });
-        return;
-      }
+      if (!gcsPath) { res.status(400).json({ error: "Missing gcsPath (e.g., incoming/invoices/<uid>/<file>.pdf)" }); return; }
 
-      // 1) Locate the file in GCS
-      const file = bucket.file(gcsPath);
-      const [exists] = await file.exists();
-      if (!exists) {
-        res.status(404).json({ error: `File not found at ${gcsPath}` });
-        return;
-      }
+      const storageFile = bucket.file(gcsPath);
+      const [exists] = await storageFile.exists();
+      if (!exists) { res.status(404).json({ error: `File not found at ${gcsPath}` }); return; }
 
-      const [meta] = await file.getMetadata().catch(() => [undefined] as any);
+      const [meta] = await storageFile.getMetadata().catch(() => [undefined] as any);
       const contentType = String(meta?.contentType || "").toLowerCase();
       if (!contentType.includes("pdf")) {
-        res
-          .status(415)
-          .json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only)` });
+        res.status(415).json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only)` });
         return;
       }
 
-      // 2) Download bytes → force a real Node Buffer
-      const [downloaded] = await file.download();
-      const nodeBuffer: Buffer = Buffer.isBuffer(downloaded)
-        ? downloaded
-        : Buffer.from(downloaded as any);
+      // 1) Download → real Node Buffer (prevents ENOENT)
+      const [downloaded] = await storageFile.download();
+      const nodeBuffer: Buffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded as any);
+      if (!nodeBuffer?.length) { res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." }); return; }
+      console.log("startInvoiceParse:downloaded", { gcsPath, contentType, length: nodeBuffer.length });
 
-      if (!nodeBuffer?.length) {
-        console.error("Downloaded buffer empty", { gcsPath, contentType });
-        res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
-        return;
-      }
-
-      console.log("startInvoiceParse:downloaded", {
-        gcsPath,
-        contentType,
-        length: nodeBuffer.length,
-      });
-
-      // 3) Extract text with pdf-parse (internal entry; fallback to default if needed)
-      let pdfParse: (data: Buffer | Uint8Array | ArrayBuffer) => Promise<{ text: string }>;
+      // 2) Extract text (prefer internal entry to avoid opening sample file)
+      let pdfParse!: (data: Buffer | Uint8Array | ArrayBuffer) => Promise<{ text: string }>;
       try {
-        // ✅ preferred: internal path avoids test file reads inside the package
         pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default as any;
       } catch {
-        // fallback if bundler/path changes
         const mod: any = await import("pdf-parse");
         pdfParse = (mod.default || mod) as any;
       }
-
       const { text } = await pdfParse(nodeBuffer);
-      if (!text?.trim()) {
-        res.status(500).json({
-          error: "Extracted text is empty (likely a scanned image PDF; OCR not enabled yet).",
-        });
-        return;
-      }
+      if (!text?.trim()) { res.status(500).json({ error: "Extracted text is empty." }); return; }
 
-      // 4) Ask Gemini for STRICT JSON
+      // 3) Gemini extract (STRICT JSON, includes invoiceDate)
       const model = getGeminiModel();
       const prompt = `
 Return STRICT JSON only (no prose) with this schema:
 {
+  "invoiceDate": "YYYY-MM-DD"?,             // sale/invoice date, normalized
   "invoiceMeta": { "aucNo": string?, "saleLocation": string? },
   "units": [{
     "vin": string,
@@ -258,49 +243,37 @@ Return STRICT JSON only (no prose) with this schema:
   }]
 }
 Rules:
+- "invoiceDate" must be ISO YYYY-MM-DD (convert from MM/DD/YYYY if needed)
 - VIN uppercase; remove spaces/hyphens; alphanumerics only
-- Currency & numeric fields must be numbers (no $ or commas)
-- Omit a field if unknown (do NOT invent values)
-
+- Currency/numerics must be numbers (no $ or commas)
+- Skip fields you cannot find (do NOT invent)
 TEXT:
 """${text.slice(0, 20000)}"""`;
 
-      const ai = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-      });
-
+      const ai = await model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }] });
       const raw = ai.response?.text() || "{}";
 
-      function tryParse<T = any>(s: string): T | null {
-        try {
-          return JSON.parse(s);
-        } catch {
-          const start = s.indexOf("{");
-          const end = s.lastIndexOf("}");
-          if (start >= 0 && end > start) {
-            try {
-              return JSON.parse(s.slice(start, end + 1));
-            } catch {}
-          }
-          return null;
-        }
+      let extracted: any = {};
+      try {
+        extracted = extractJsonStrict(raw);
+      } catch (e) {
+        console.error("LLM non-JSON output:", raw);
+        res.status(500).json({ error: "LLM output was not valid JSON." });
+        return;
       }
 
-      const extracted = tryParse<any>(raw) || { units: [] };
+      // 4) Normalize date & units
+      const invoiceIso = typeof extracted?.invoiceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(extracted.invoiceDate)
+        ? extracted.invoiceDate
+        : null;
+      const invoiceDateTs = invoiceIso ? isoMidnightUTC(invoiceIso) : null;
 
-      // 5) Normalize units + defaults
+      const toNum = (v: any) => (typeof v === "number" ? v : typeof v === "string" ? Number(v.replace(/[$,]/g, "")) || 0 : 0);
       const unitsIn: any[] = Array.isArray(extracted?.units) ? extracted.units : [];
       const units = unitsIn.map((u) => {
         const out: any = { ...u };
-        // default management fee
         out.managementFee = Number.isFinite(+out.managementFee) ? Number(out.managementFee) : 100;
-        // VIN normalize
-        if (typeof out.vin === "string") {
-          out.vin = out.vin.toUpperCase().replace(/[^A-Z0-9]/g, "");
-        }
-        // numeric coercions
-        const toNum = (v: any) =>
-          typeof v === "number" ? v : typeof v === "string" ? Number(v.replace(/[$,]/g, "")) || 0 : 0;
+        if (typeof out.vin === "string") out.vin = out.vin.toUpperCase().replace(/[^A-Z0-9]/g, "");
         out.itemPrice = toNum(out.itemPrice);
         out.buyerFee = toNum(out.buyerFee);
         out.onlineFee = toNum(out.onlineFee);
@@ -310,19 +283,15 @@ TEXT:
         return out;
       });
 
-      // 6) Write staging docs
+      // 5) Write staging document + units
       const now = FieldValue.serverTimestamp();
       const stagingId = db.collection("stagingInvoices").doc().id;
 
-      const [fileUrl] = await file.getSignedUrl({
-        action: "read",
-        expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-      });
+      const [fileUrl] = await storageFile.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
 
-      // incoming/invoices/<uid>/<file>.pdf → uid is index 2
+      // incoming/invoices/<uid>/… → uid at index 2
       const parts = gcsPath.split("/");
-      const uploaderUid =
-        parts[0] === "incoming" && parts[1] === "invoices" && parts[2] ? parts[2] : null;
+      const uploaderUid = parts[2] || null;
 
       await db.collection("stagingInvoices").doc(stagingId).set({
         source: "auction",
@@ -331,27 +300,25 @@ TEXT:
         createdAt: now,
         updatedAt: now,
         invoiceMeta: extracted?.invoiceMeta ?? {},
+        invoiceDate: invoiceIso || null,       // ISO string for UI
+        invoiceDateTs: invoiceDateTs || null,  // Timestamp/Date at midnight UTC
         unitsCount: units.length,
         uploaderUid,
       });
 
       const batch = db.batch();
       for (const u of units) {
-        const unitRef = db
-          .collection("stagingInvoices")
-          .doc(stagingId)
-          .collection("units")
-          .doc();
+        const unitRef = db.collection("stagingInvoices").doc(stagingId).collection("units").doc();
         batch.set(unitRef, {
           ...u,
           rawText: text.length > 5000 ? text.slice(0, 5000) + "…" : text,
           createdAt: now,
           updatedAt: now,
+          processed: false,
         });
       }
       await batch.commit();
 
-      // 7) Done
       res.json({ ok: true, stagingId, unitsCount: units.length });
     } catch (e: any) {
       console.error("startInvoiceParse error", e?.stack || e);
@@ -360,7 +327,6 @@ TEXT:
   }
 );
 
-
 export const startDocParse = onRequest(
   { region: "us-central1", cors: true },
   (_req, res) => {
@@ -368,7 +334,7 @@ export const startDocParse = onRequest(
   }
 );
 
-/* ───────────────────── Staging Actions ───────────────────── */
+/* ───────────────────── Staging → Jackets ───────────────────── */
 
 export const createJacketFromUnit = onCall(
   { region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] },
@@ -378,18 +344,37 @@ export const createJacketFromUnit = onCall(
     if (!stagingId || !unitId) throw new HttpsError("invalid-argument", "stagingId and unitId are required.");
     if (!request.auth) throw new HttpsError("unauthenticated", "Authentication required.");
 
+    // Get batch (for invoiceDate) + unit
+    const stagingRef = db.collection("stagingInvoices").doc(String(stagingId));
+    const stagingSnap = await stagingRef.get();
+    if (!stagingSnap.exists) throw new HttpsError("not-found", "Staging batch not found.");
+    const staging = stagingSnap.data() as any;
 
-    const unitRef = db.collection("stagingInvoices").doc(stagingId).collection("units").doc(unitId);
+    const unitRef = stagingRef.collection("units").doc(String(unitId));
     const unitSnap = await unitRef.get();
     if (!unitSnap.exists) throw new HttpsError("not-found", "Staged unit not found.");
-
     const unit = unitSnap.data() as any;
-    const vin = unit.vin?.trim().toUpperCase();
+
+    const vin = unit.vin?.trim()?.toUpperCase();
     if (!vin) throw new HttpsError("failed-precondition", "Staged unit has no VIN.");
 
     const jacketRef = db.collection("jackets").doc(vin);
-    
-    const parsedDate = unit.invoiceDate ? new Date(unit.invoiceDate) : null;
+
+    // Prefer YYYY-MM-DD on batch, then unit
+    const isIso = (s: any) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const pickedIso: string | null = isIso(staging?.invoiceDate)
+      ? staging.invoiceDate
+      : isIso(unit?.invoiceDate)
+      ? unit.invoiceDate
+      : null;
+
+    // Final value to persist
+    let auctionSaleDate: any = FieldValue.serverTimestamp();
+    if (pickedIso) {
+      auctionSaleDate = isoMidnightUTC(pickedIso) || FieldValue.serverTimestamp();
+    } else if (staging?.invoiceDateTs) {
+      auctionSaleDate = staging.invoiceDateTs;
+    }
 
     await db.runTransaction(async (tx) => {
       const jacketSnap = await tx.get(jacketRef);
@@ -400,12 +385,13 @@ export const createJacketFromUnit = onCall(
         model: unit.model || "",
         color: unit.color || "",
         odometer: num(unit.odometer) || num(unit.hours) || 0,
-        saleLocation: unit.saleLocation || "",
+        saleLocation: unit.saleLocation || staging?.invoiceMeta?.saleLocation || "",
         itemPrice: num(unit.itemPrice),
         buyerFee: num(unit.buyerFee),
         onlineFee: num(unit.onlineFee),
         managementFee: num(unit.managementFee) || 100,
-        auctionSaleDate: parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : FieldValue.serverTimestamp(),
+        auctionSaleDate,                // Timestamp compatible
+        invoiceDate: pickedIso || null, // Keep ISO for printing/UI
         isAuctionPaid: false,
         isMgmtFeePaid: false,
         miscFees: [],
@@ -422,21 +408,21 @@ export const createJacketFromUnit = onCall(
       }
     });
 
-    // Mark unit as processed
+    // Mark unit processed
     await unitRef.update({
       processed: true,
       processedAt: FieldValue.serverTimestamp(),
       processedBy: request.auth.uid,
       jacketVin: vin,
-      jacketPath: jacketRef.path
+      jacketPath: jacketRef.path,
     });
 
-    // Check if all units are now processed
-    const remainingQuery = await db.collection("stagingInvoices").doc(stagingId).collection("units").where("processed", "==", false).limit(1).get();
+    // If all units processed, mark batch
+    const remainingQuery = await stagingRef.collection("units").where("processed", "==", false).limit(1).get();
     if (remainingQuery.empty) {
-      await db.collection("stagingInvoices").doc(stagingId).update({
+      await stagingRef.update({
         status: "processed",
-        processedAt: FieldValue.serverTimestamp()
+        processedAt: FieldValue.serverTimestamp(),
       });
     }
 
@@ -444,79 +430,96 @@ export const createJacketFromUnit = onCall(
   }
 );
 
+/** Create jackets for every unprocessed unit in a batch. */
+export const createJacketsForInvoice = onCall(
+  { region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] },
+  async (request) => {
+    assertAdmin(request);
+    const { stagingId } = request.data || {};
+    if (!stagingId) throw new HttpsError("invalid-argument", "stagingId required");
+    if (!request.auth) throw new HttpsError("unauthenticated", "Authentication required.");
 
-export const createJacketsForInvoice = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
-  assertAdmin(request);
-  const { stagingId } = request.data || {};
-  if (!stagingId) throw new HttpsError("invalid-argument", "stagingId required");
-  if (!request.auth) throw new HttpsError("unauthenticated", "Authentication required.");
+    const stagingRef = db.collection("stagingInvoices").doc(String(stagingId));
+    const stagingSnap = await stagingRef.get();
+    if (!stagingSnap.exists) throw new HttpsError("not-found", "Staging batch not found.");
+    const staging = stagingSnap.data() as any;
 
+    const isIso = (s: any) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const pickedIsoBatch: string | null = isIso(staging?.invoiceDate) ? staging.invoiceDate : null;
 
-  const unitsSnap = await db.collection("stagingInvoices").doc(stagingId).collection("units").where("processed", "in", [false, null]).get();
-  if (unitsSnap.empty) return { success: true, created: 0 };
+    const unitsSnap = await stagingRef.collection("units").where("processed", "in", [false, null]).get();
+    if (unitsSnap.empty) return { success: true, created: 0 };
 
-  let created = 0;
-  for (const doc of unitsSnap.docs) {
-    const unitId = doc.id;
-    const unit = doc.data() || {};
-    const vin = (unit.vin || "").toString().trim().toUpperCase();
-    if (!vin) continue;
+    let created = 0;
+    for (const doc of unitsSnap.docs) {
+      const unitId = doc.id;
+      const unit = doc.data() || {};
+      const vin = (unit.vin || "").toString().trim().toUpperCase();
+      if (!vin) continue;
 
-    const parsedDate = unit.invoiceDate ? new Date(unit.invoiceDate) : null;
-    const jacketRef = db.collection("jackets").doc(vin);
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(jacketRef);
-      const data: any = {
-        vin,
-        year: Number(unit.year) || 0,
-        make: unit.make || "",
-        model: unit.model || "",
-        color: unit.color || "",
-        odometer: Number(unit.odometer) || Number(unit.hours) || 0,
-        saleLocation: unit.saleLocation || "",
-        itemPrice: Number(unit.itemPrice) || 0,
-        buyerFee: Number(unit.buyerFee) || 0,
-        onlineFee: Number(unit.onlineFee) || 0,
-        managementFee: Number(unit.managementFee) || 100,
-        auctionSaleDate: parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : FieldValue.serverTimestamp(),
-        isAuctionPaid: false,
-        isMgmtFeePaid: false,
-        miscFees: [],
-        documents: [],
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-      if (!snap.exists) {
-        data.createdAt = FieldValue.serverTimestamp();
-        data.jacketId = `J${Date.now()}`;
-        tx.set(jacketRef, data);
-      } else {
-        tx.update(jacketRef, data);
+      const pickedIso = pickedIsoBatch || (isIso(unit?.invoiceDate) ? unit.invoiceDate : null);
+      let auctionSaleDate: any = FieldValue.serverTimestamp();
+      if (pickedIso) {
+        auctionSaleDate = isoMidnightUTC(pickedIso) || FieldValue.serverTimestamp();
+      } else if (staging?.invoiceDateTs) {
+        auctionSaleDate = staging.invoiceDateTs;
       }
-    });
 
-    // mark processed
-    await db.collection("stagingInvoices").doc(stagingId).collection("units").doc(unitId).update({
-      processed: true,
-      processedAt: FieldValue.serverTimestamp(),
-      processedBy: request.auth.uid,
-      jacketVin: vin,
-      jacketPath: db.collection("jackets").doc(vin).path
-    });
-    created++;
+      const jacketRef = db.collection("jackets").doc(vin);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(jacketRef);
+        const data: any = {
+          vin,
+          year: Number(unit.year) || 0,
+          make: unit.make || "",
+          model: unit.model || "",
+          color: unit.color || "",
+          odometer: Number(unit.odometer) || Number(unit.hours) || 0,
+          saleLocation: unit.saleLocation || staging?.invoiceMeta?.saleLocation || "",
+          itemPrice: Number(unit.itemPrice) || 0,
+          buyerFee: Number(unit.buyerFee) || 0,
+          onlineFee: Number(unit.onlineFee) || 0,
+          managementFee: Number(unit.managementFee) || 100,
+          auctionSaleDate,
+          invoiceDate: pickedIso || null,
+          isAuctionPaid: false,
+          isMgmtFeePaid: false,
+          miscFees: [],
+          documents: [],
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        if (!snap.exists) {
+          data.createdAt = FieldValue.serverTimestamp();
+          data.jacketId = `J${Date.now()}`;
+          tx.set(jacketRef, data);
+        } else {
+          tx.update(jacketRef, data);
+        }
+      });
+
+      await stagingRef.collection("units").doc(unitId).update({
+        processed: true,
+        processedAt: FieldValue.serverTimestamp(),
+        processedBy: request.auth.uid,
+        jacketVin: vin,
+        jacketPath: db.collection("jackets").doc(vin).path,
+      });
+      created++;
+    }
+
+    const remain = await stagingRef.collection("units").where("processed", "==", false).limit(1).get();
+    if (remain.empty) {
+      await stagingRef.update({
+        status: "processed",
+        processedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    return { success: true, created };
   }
+);
 
-  // if no remaining, mark the parent
-  const remain = await db.collection("stagingInvoices").doc(stagingId).collection("units").where("processed", "==", false).limit(1).get();
-  if (remain.empty) {
-    await db.collection("stagingInvoices").doc(stagingId).update({
-      status: "processed",
-      processedAt: FieldValue.serverTimestamp()
-    });
-  }
-
-  return { success: true, created };
-});
-
+/* ───────────────────── Staged doc attach ───────────────────── */
 
 export const attachStagedDocToJacket = onCall(
   { region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] },
@@ -564,7 +567,7 @@ export const attachStagedDocToJacket = onCall(
   }
 );
 
-/* ───────────────────── Admin Callables (unchanged) ───────────────────── */
+/* ───────────────────── Admin Callables ───────────────────── */
 
 export const manageDealerApplication = onCall(
   { region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] },
@@ -630,22 +633,19 @@ export const generateJacketInvoice = onRequest(
       }
 
       const buyerData = await getBuyerData(j.dealerId);
-      
-      // Corrected financial calculations
+
+      // Financials (includes potential misc fees + paid flags)
       const auctionDue = num(j.itemPrice) + num(j.buyerFee) + num(j.onlineFee);
       const mgmtDue = num(j.managementFee);
       const miscFees: any[] = Array.isArray(j.miscFees) ? j.miscFees : [];
-      
       const totalMisc = miscFees.reduce((s, f) => s + num(f.amount), 0);
-      const subtotal = auctionDue + mgmtDue + totalMisc;
-
       const paidMisc = miscFees.filter(f => f.paid === true).reduce((s, f) => s + num(f.amount), 0);
+
+      const subtotal = auctionDue + mgmtDue + totalMisc;
       const isMgmtFeePaid = j.isMgmtFeePaid ?? j.isMgmtPaid ?? false;
       const amountPaid = (j.isAuctionPaid ? auctionDue : 0) + (isMgmtFeePaid ? mgmtDue : 0) + paidMisc;
-      
-      const balanceDue = subtotal - amountPaid;
-      
-      const unpaidMiscTotal = totalMisc - paidMisc;
+      const balanceDue = Math.max(0, subtotal - amountPaid);
+      const unpaidMiscTotal = Math.max(0, totalMisc - paidMisc);
       const isFullyPaid = !!(j.isAuctionPaid && isMgmtFeePaid && unpaidMiscTotal <= 0);
 
       const yearMakeModel = [j.year, j.make, j.model].filter(Boolean).join(" ");
@@ -974,7 +974,7 @@ export const generateJacketPacket = onRequest(
       if (!j.invoiceUrl) { res.status(400).send("Invoice must be generated before creating a packet."); return; }
       if (!j.bosUrl) { res.status(400).send("Bill of Sale must be generated before creating a packet."); return; }
 
-      // Build cover
+      // Cover
       const coverHtml = buildCoverHtml({ jacketId: j.jacketId, vin, year: j.year, make: j.make, model: j.model });
       const browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
       const page = await browser.newPage();
@@ -982,7 +982,7 @@ export const generateJacketPacket = onRequest(
       const coverPdfBuffer = await page.pdf({ format: "A4", printBackground: true });
       await browser.close();
 
-      // Pull canonical invoice/BOS PDFs from bucket
+      // Pull canonical PDFs
       const [invoiceBuf] = await bucket.file(`jacket-documents/${vin}/invoice.pdf`).download();
       const [bosBuf] = await bucket.file(`jacket-documents/${vin}/bill-of-sale.pdf`).download();
 
@@ -993,15 +993,15 @@ export const generateJacketPacket = onRequest(
       const coverPages = await packetDoc.copyPages(coverPdf, coverPdf.getPageIndices());
       for (const p of coverPages) packetDoc.addPage(p);
 
-      const invPdf = await PDFDocument.load(inlineEnsureUint8Array(invoiceBuf));
+      const invPdf = await PDFDocument.load(ensureU8(invoiceBuf));
       const invPages = await packetDoc.copyPages(invPdf, invPdf.getPageIndices());
       for (const p of invPages) packetDoc.addPage(p);
 
-      const bosPdf = await PDFDocument.load(inlineEnsureUint8Array(bosBuf));
+      const bosPdf = await PDFDocument.load(ensureU8(bosBuf));
       const bosPages = await packetDoc.copyPages(bosPdf, bosPdf.getPageIndices());
       for (const p of bosPages) packetDoc.addPage(p);
 
-      // Optionally append any extra PDF docs from jacket.documents
+      // Optional extra PDFs from jacket.documents
       if (Array.isArray(j.documents)) {
         for (const d of j.documents) {
           try {
@@ -1019,7 +1019,7 @@ export const generateJacketPacket = onRequest(
             }
             if (objectPath) {
               const [buf] = await bucket.file(objectPath).download();
-              const extPdf = await PDFDocument.load(inlineEnsureUint8Array(buf));
+              const extPdf = await PDFDocument.load(ensureU8(buf));
               const pages = await packetDoc.copyPages(extPdf, extPdf.getPageIndices());
               for (const p of pages) packetDoc.addPage(p);
             }
@@ -1052,7 +1052,7 @@ export const generateJacketPacket = onRequest(
   }
 );
 
-/* Helper to ensure Uint8Array for pdf-lib load (satisfies types at runtime) */
-function inlineEnsureUint8Array(buf: any): Uint8Array {
+/* Helper: ensure Uint8Array for pdf-lib */
+function ensureU8(buf: any): Uint8Array {
   return buf instanceof Uint8Array ? buf : new Uint8Array(buf as ArrayBuffer);
 }

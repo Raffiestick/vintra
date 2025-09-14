@@ -1,52 +1,54 @@
 rules_version = '2';
+
 service firebase.storage {
   match /b/{bucket}/o {
 
+    // --- Auth helpers ---
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isAdminUid() {
-      return isSignedIn() && (
-        request.auth.uid == "8usUL5P3Lde9UmukTHNhfArzDbs2" ||
-        request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3"
-      );
-    }
-
+    // Your two hard-coded admin UIDs + optional custom claims
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.admin == true ||
-        request.auth.token.role == "admin" ||
-        isAdminUid()
-      );
+      return isSignedIn() &&
+        (
+          request.auth.token.admin == true ||
+          request.auth.token.role == 'admin' ||
+          request.auth.uid == '8usUL5P3Lde9UmukTHNhfArzDbs2' ||
+          request.auth.uid == 'qY0IICPcxOSf8HTHwO83Qz6fxiG3'
+        );
     }
 
-    /* Dealer can upload their own registration docs (ID, tax cert) */
-    match /user-documents/{uid}/{path=**} {
-      allow read, write: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
-    }
-
-    /* AI Parse uploads (admin page): owner can upload; admin can read/write */
-    match /incoming/invoices/{uid}/{path=**} {
-      allow read, write: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
-    }
-
-    /* (future) staged images/docs */
-    match /incoming/docs/{uid}/{path=**} {
-      allow read, write: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
-    }
-
-    /* Canonical jacket PDFs — dealer can read only if assigned; admin can read/write */
-    match /jacket-documents/{vin}/{path=**} {
-      allow read: if isAdmin() || (
-        isSignedIn() &&
-        get(/databases/(default)/documents/jackets/$(vin)).data.dealerId == request.auth.uid
-      );
-      allow write: if isAdmin();
-    }
-
-    /* Default: admin only */
+    // --- Default admin blanket access (safe because only "allow" rules grant access) ---
     match /{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Dealers upload PDFs to be parsed by AI:
+    // Note: your UI uploads to "incoming/invoices/{uid}/..." directly from the browser.
+    // (See app code calling uploadBytesResumable to that path.)  Dealers need "write" here.
+    match /incoming/invoices/{uid}/{fileName=**} {
+      allow write: if isSignedIn() && request.auth.uid == uid;
+      // These are internal; no direct reads needed.
+      allow read: if false;
+    }
+
+    // Optional: staged images/docs to attach later
+    match /incoming/docs/{uid}/{fileName=**} {
+      allow write: if isSignedIn() && request.auth.uid == uid;
+      // Allow the uploader to re-download their own uploads if you want:
+      allow read: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Dealers' identity/resale docs they upload during onboarding
+    match /user-documents/{uid}/{fileName=**} {
+      allow write: if isSignedIn() && request.auth.uid == uid;
+      allow read:  if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Canonical jacket PDFs (invoice.pdf, bill-of-sale.pdf, packet.pdf)
+    // Only admins read via the SDK. Dealers get **signed URLs** from Cloud Functions.
+    match /jacket-documents/{vin}/{rest=**} {
       allow read, write: if isAdmin();
     }
   }

@@ -1,91 +1,70 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // --- Auth helpers ---
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Hard-coded admin UIDs (your two admins)
-    function isAdminUid() {
-      return isSignedIn() && (
-        request.auth.uid == "8usUL5P3Lde9UmukTHNhfArzDbs2" ||
-        request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3"
-      );
-    }
-
-    // Custom-claim based admin (+ UID allow-list above)
+    // Two admin UIDs + optional custom claims for flexibility
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.admin == true ||
-        request.auth.token.role == "admin" ||
-        isAdminUid()
-      );
+      return isSignedIn() &&
+        (
+          request.auth.token.admin == true ||
+          request.auth.token.role == 'admin' ||
+          request.auth.uid == '8usUL5P3Lde9UmukTHNhfArzDbs2' ||
+          request.auth.uid == 'qY0IICPcxOSf8HTHwO83Qz6fxiG3'
+        );
     }
 
-    function isSelf(uid) {
-      return isSignedIn() && request.auth.uid == uid;
-    }
-
-    // Dealer is assigned to a jacket if their uid matches jacket.dealerId
+    // Dealer is assigned to a jacket if jacket.dealerId == uid
     function isAssignedDealer(vin) {
-      return isSignedIn()
-        && get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
+      return isSignedIn() &&
+             get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
     }
 
-    /* users/{uid} — dealers edit their own basic profile; admin can read/write anyone.
-       Prevent non-admins from writing privileged fields like "role", "admin", "status". */
+    // --- Default deny ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users: admin full control; user can read/update their own profile record
     match /users/{uid} {
-      allow read: if isAdmin() || isSelf(uid);
-
-      allow create: if isSelf(uid)
-        && !('role' in request.resource.data)
-        && !('admin' in request.resource.data)
-        && !('isAdmin' in request.resource.data)
-        && !('status' in request.resource.data);
-
-      allow update, delete: if isAdmin() || (
-        isSelf(uid)
-        && !('role' in request.resource.data)
-        && !('admin' in request.resource.data)
-        && !('isAdmin' in request.resource.data)
-        && !('status' in request.resource.data)
-      );
+      allow read, write: if isAdmin();
+      allow read, create, update: if isSignedIn() && request.auth.uid == uid;
     }
 
-    /* jackets/{vin} — admin full control; assigned dealer read-only */
+    // Jackets: admin full control; assigned dealer read-only
     match /jackets/{vin} {
-      allow read: if isAdmin() || isAssignedDealer(vin);
-      allow create, update, delete: if isAdmin();
+      allow read, write: if isAdmin();
+      allow read: if isAssignedDealer(vin);
 
-      // timeline
+      // Activity timeline: dealer can read if assigned; only admin writes
       match /activity/{id} {
         allow read: if isAdmin() || isAssignedDealer(vin);
-        allow create, update, delete: if isAdmin();
+        allow write: if isAdmin();
       }
     }
 
-    /* stagingInvoices — admin only (as per your design) */
-    match /stagingInvoices/{sid} {
+    // Staging (AI parsing): admin-only
+    match /stagingInvoices/{stagingId} {
       allow read, write: if isAdmin();
+
       match /units/{unitId} {
         allow read, write: if isAdmin();
       }
     }
 
-    /* stagedDocs — admin only */
+    // Staged docs metadata: admin-only
     match /stagedDocs/{docId} {
       allow read, write: if isAdmin();
     }
 
-    /* counters — admin only */
-    match /counters/{name} {
+    // Counters (e.g., invoice ID sequence): admin-only
+    match /counters/{counterId} {
       allow read, write: if isAdmin();
-    }
-
-    /* everything else: deny */
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }
