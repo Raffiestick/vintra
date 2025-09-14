@@ -1,49 +1,47 @@
-
 rules_version = '2';
+
+// Helper function to check for admin role
+function isAdmin() {
+  return request.auth != null && request.auth.token.admin == true;
+}
+
+// Helper function to check if the user is the owner of a document
+function isOwner(userId) {
+  return request.auth != null && request.auth.uid == userId;
+}
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Function to check if the user is an admin
-    function isAdmin() {
-      return request.auth.token.admin == true;
-    }
-
-    // Admins can read and write anything
+    // Admins can do anything, anywhere.
     match /{document=**} {
       allow read, write: if isAdmin();
     }
-
-    // Rules for the 'users' collection
+    
+    // USERS collection
     match /users/{userId} {
-      // Allow users to create their own profile document
-      allow create: if request.auth.uid == userId;
-      
-      // Allow authenticated users to read profiles (non-admins)
-      // Admins are already covered by the rule above
-      allow read: if request.auth != null;
-
-      // Allow users to update their own profile (non-admins)
-      // Admins are already covered by the rule above
-      allow update: if request.auth.uid == userId;
-    }
-
-    // Rules for 'jackets' collection (and subcollections)
-    match /jackets/{vin}/{document=**} {
-        // Allow any authenticated user to read jacket data and its subcollections.
-        // This is necessary for dealers to view their assigned jackets.
-        // Admin access is already granted above.
-        allow read: if request.auth != null;
+      // Users can create their own user document during sign-up.
+      allow create: if isOwner(userId);
+      // Users can read and update their own profile information.
+      allow read, update: if isOwner(userId);
     }
     
-    // Allow any authenticated user to read from the staging collections
-    match /stagingInvoices/{sid}/{document=**} {
-        allow read: if request.auth != null;
+    // JACKETS collection
+    match /jackets/{vin} {
+      // Dealers can only read jackets that are assigned to them.
+      allow read: if request.auth != null && resource.data.dealerId == request.auth.uid;
+      // No dealer write access to the main jacket document.
+      allow write: if false;
     }
-
-    // Allow read access to counters for any authenticated user
-    match /counters/{counterId} {
-        allow read: if request.auth != null;
+    
+    // All other collections are admin-only by default because of the admin wildcard match above.
+    // Explicitly denying dealer access to collections they should never touch.
+    match /stagingInvoices/{docId=**} {
+      allow read, write: if false; // Dealers cannot access staging
+    }
+    
+    match /counters/{docId=**} {
+      allow read, write: if false; // Dealers cannot access counters
     }
   }
 }

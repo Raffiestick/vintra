@@ -1,41 +1,43 @@
 rules_version = '2';
 
+// Helper function to check for admin role from the auth token
+function isAdmin() {
+  return request.auth != null && request.auth.token.admin == true;
+}
+
+// Helper function to check if the user is the owner based on UID in the path
+function isOwner(userId) {
+  return request.auth != null && request.auth.uid == userId;
+}
+
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Helper functions to check user roles, mirroring Firestore rules.
-    function isSignedIn() {
-      return request.auth != null;
+    // Admins can read and write any file in the bucket. This is the master rule.
+    match /{allPaths=**} {
+      allow read, write: if isAdmin();
     }
 
-    function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.role == 'admin' ||
-        request.auth.token.admin == true
-      );
+    // USER DOCUMENTS: For registration (Resale Cert, Gov ID)
+    // Dealers can only write to their own folder.
+    match /user-documents/{userId}/{fileName} {
+      allow write: if isOwner(userId);
+      // Reading their own documents is implicitly allowed by the admin-read rule if needed,
+      // but dealers generally don't need to re-read these after upload.
+    }
+
+    // JACKET DOCUMENTS: Invoices, BOS, Packets, Titles, POAs, etc.
+    // Any authenticated user can read a jacket document IF they are the assigned dealer for that jacket in Firestore.
+    match /jacket-documents/{vin}/{allPaths=**} {
+       allow read: if request.auth != null && 
+                      get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
+       // Write is admin-only (covered by the wildcard rule above)
     }
     
-    // Hard-coded admin UID for development bypass
-    function isDevAdmin() {
-      return isSignedIn() && request.auth.uid == "qY0IICPcxOSf8HTHwO83Qz6fxiG3";
-    }
-
-    // Allow users to upload their own application documents (resale cert, ID).
-    match /user-documents/{userId}/{allPaths=**} {
-      allow read: if isAdmin() || isDevAdmin();
-      allow write: if request.auth.uid == userId;
-    }
-
-    // Allow admins to upload documents for any jacket.
-    match /jacket-documents/{vin}/{allPaths=**} {
-      allow write: if isAdmin() || isDevAdmin();
-    }
-
-    // Allow any authenticated user to read files. This is generally safe because
-    // file paths are not guessable and access to the URLs is controlled by
-    // your Firestore read rules.
-    match /{allPaths=**} {
-      allow read: if isSignedIn();
+    // INCOMING INVOICES: For AI parsing
+    // Only admins can upload files to the incoming path.
+    match /incoming/invoices/{userId}/{allPaths=**} {
+        allow write: if isAdmin();
     }
   }
 }
