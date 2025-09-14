@@ -3,26 +3,40 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // Helper to check for admin role from custom claims
-    function isAdmin() {
-      return request.auth != null && request.auth.token.admin == true;
+    // Helper functions
+    function isAuth() {
+      return request.auth != null;
     }
 
-    // Admins can do anything, anywhere.
+    function isAdmin() {
+      return isAuth() && request.auth.token.admin == true;
+    }
+
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    // Allow users to upload their own registration documents
+    match /user-documents/{userId}/{allPaths=**} {
+      allow write: if isOwner(userId);
+      allow read: if isOwner(userId) || isAdmin();
+    }
+
+    // Rules for generated jacket documents (invoices, BOS, etc.)
+    match /jacket-documents/{vin}/{allPaths=**} {
+      // Admins can read and write all jacket documents.
+      allow write: if isAdmin();
+      
+      // Dealers can only read documents for jackets assigned to them.
+      // This is checked by looking up the corresponding jacket document in Firestore.
+      allow read: if isAdmin() || (
+        isAuth() && get(/databases/(default)/documents/jackets/$(vin)).data.dealerId == request.auth.uid
+      );
+    }
+    
+    // Fallback for any other paths
     match /{allPaths=**} {
       allow read, write: if isAdmin();
-    }
-
-    // Users can upload their own registration documents to their own folder.
-    match /user-documents/{uid}/{fileName} {
-      allow write: if request.auth != null && request.auth.uid == uid;
-    }
-
-    // Users can read jacket documents if they are the assigned dealer.
-    match /jacket-documents/{vin}/{allPaths=**} {
-      allow read: if request.auth != null && 
-                  firestore.exists(/databases/$(database)/documents/jackets/$(vin)) &&
-                  firestore.get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
     }
   }
 }
