@@ -1,130 +1,60 @@
-
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
-import {
-  collection,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  Timestamp,
-} from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useState, useMemo } from 'react';
+import { collection, getDocs, query, orderBy, Timestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
-import { useAuth } from '@/hooks/use-auth';
-
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { useRouter } from 'next/navigation';
+import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { useAuth } from '@/hooks/use-auth';
+import { useSafeSnapshot } from '@/hooks/useSafeSnapshot';
+import Link from 'next/link';
 
-type Status = 'new' | 'in-progress' | 'processed';
-
-interface InvoiceMeta {
-  aucNo?: string;
-  saleLocation?: string;
-}
-
-interface StagingHeader {
+interface StagedInvoice {
   id: string;
-  source?: string;
   createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-  invoiceMeta?: InvoiceMeta;
-  // NEW: the two date fields written by startInvoiceParse
-  invoiceDate?: string;        // "YYYY-MM-DD"
-  invoiceDateTs?: Timestamp;   // Firestore Timestamp
+  invoiceDate?: string;      // YYYY-MM-DD
+  invoiceDateTs?: Timestamp; // Firestore timestamp
+  source?: string;
+  invoiceMeta?: { aucNo?: string };
   fileUrl?: string;
+  unitsCount: number;
+  status?: 'new' | 'in-progress' | 'processed';
 }
 
-interface StagingUnit {
-  id: string;
-  vin?: string;
-  year?: number;
-  make?: string;
-  model?: string;
-  color?: string;
-  stockNo?: string;
-  titleInfo?: string;
-  itemPrice?: number;
-  buyerFee?: number;
-  onlineFee?: number;
-  processed?: boolean;
-}
-
-// ---- small helpers ----
-function currency(n?: number) {
-  const v = typeof n === 'number' ? n : 0;
-  return v.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-}
-
-// Render invoice/auction date safely
-function formatInvoiceDate(h?: StagingHeader): string {
-  const iso = h?.invoiceDate?.trim() ?? '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-    // anchor at midnight UTC so there’s no off-by-one from local TZ
-    return new Date(`${iso}T00:00:00Z`).toLocaleDateString();
+function displayInvoiceDate(inv: StagedInvoice): string {
+  if (inv.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(inv.invoiceDate)) {
+    return new Date(`${inv.invoiceDate}T00:00:00Z`).toLocaleDateString();
   }
-  if (h?.invoiceDateTs?.toDate) {
-    try {
-      return h.invoiceDateTs.toDate().toLocaleDateString();
-    } catch {
-      /* empty */
-    }
+  if (inv.invoiceDateTs?.toDate) {
+    try { return inv.invoiceDateTs.toDate().toLocaleDateString(); } catch {}
   }
   return '—';
 }
 
-function PageSkeleton() {
+function StagingSkeleton() {
   return (
     <Card>
       <CardHeader>
-        <Skeleton className="h-8 w-1/2" />
-        <Skeleton className="h-4 w-2/3 mt-2" />
+        <Skeleton className="h-8 w-1/3" />
+        <Skeleton className="h-4 w-2/3" />
       </CardHeader>
       <CardContent>
-        <div className="flex gap-2 mb-4">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-6 w-28 rounded-full" />
-          ))}
-        </div>
         <Table>
           <TableHeader>
             <TableRow>
-              {[...Array(5)].map((_, i) => (
-                <TableHead key={i}>
-                  <Skeleton className="h-5 w-full" />
-                </TableHead>
-              ))}
+              {[...Array(6)].map((_, i) => <TableHead key={i}><Skeleton className="h-5 w-full" /></TableHead>)}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {[...Array(2)].map((_, r) => (
-              <TableRow key={r}>
-                {[...Array(5)].map((_, c) => (
-                  <TableCell key={c}>
-                    <Skeleton className="h-6 w-full" />
-                  </TableCell>
-                ))}
+            {[...Array(3)].map((_, i) => (
+              <TableRow key={i}>
+                {[...Array(6)].map((_, j) => <TableCell key={j}><Skeleton className="h-6 w-full" /></TableCell>)}
               </TableRow>
             ))}
           </TableBody>
@@ -134,213 +64,108 @@ function PageSkeleton() {
   );
 }
 
-// ---- page ----
-export default function StagingInvoiceDetailPage() {
-  const params = useParams<{ id: string }>();
-  const stagingId = Array.isArray(params?.id) ? params.id[0] : params?.id;
+export default function StagedInvoicesPage() {
   const { isAdmin, loading: authLoading } = useAuth();
-
-  const [hdr, setHdr] = useState<StagingHeader | null>(null);
-  const [units, setUnits] = useState<StagingUnit[]>([]);
+  const [invoices, setInvoices] = useState<StagedInvoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [hideProcessed, setHideProcessed] = useState(true);
-  const [working, setWorking] = useState<string | null>(null); // unitId or 'all'
+  const router = useRouter();
 
-  useEffect(() => {
-    if (!stagingId || !isAdmin) return;
-
-    const unsubHdr = onSnapshot(doc(db, 'stagingInvoices', stagingId), (snap) => {
-      setHdr({ id: snap.id, ...(snap.data() as any) });
-    });
-
-    const qUnits = query(
-      collection(db, 'stagingInvoices', stagingId, 'units'),
-      orderBy('createdAt', 'asc')
-    );
-    const unsubUnits = onSnapshot(qUnits, (qs) => {
-      setUnits(
-        qs.docs.map((d) => ({ id: d.id, ...(d.data() as any) }) as StagingUnit)
-      );
-    });
-
-    return () => {
-      unsubHdr();
-      unsubUnits();
-    };
-  }, [stagingId, isAdmin]);
-
-  const processedCount = useMemo(
-    () => units.filter((u) => u.processed === true).length,
-    [units]
-  );
-  const remaining = Math.max(0, units.length - processedCount);
-
-  const filtered = useMemo(
-    () => (hideProcessed ? units.filter((u) => !u.processed) : units),
-    [units, hideProcessed]
-  );
-
-  const functions = getFunctions(undefined, 'us-central1');
-
-  async function createOne(unitId: string) {
-    try {
-      setWorking(unitId);
-      const callable = httpsCallable(functions, 'createJacketFromUnit');
-      await callable({ stagingId, unitId });
-    } finally {
-      setWorking(null);
+  useSafeSnapshot(() => {
+    if (!isAdmin) {
+      if (!authLoading) setLoading(false);
+      return;
     }
-  }
 
-  async function createAllRemaining() {
-    try {
-      setWorking('all');
-      const callable = httpsCallable(functions, 'createJacketsForInvoice');
-      await callable({ stagingId });
-    } finally {
-      setWorking(null);
-    }
-  }
+    const qy = query(collection(db, 'stagingInvoices'), orderBy('createdAt', 'desc'));
+    return onSnapshot(qy, async (qs) => {
+      const invoicesData = await Promise.all(qs.docs.map(async (doc) => {
+        const unitsCollection = collection(db, 'stagingInvoices', doc.id, 'units');
+        const unitsSnapshot = await getDocs(unitsCollection);
+        return { id: doc.id, ...doc.data(), unitsCount: unitsSnapshot.size } as StagedInvoice;
+      }));
+      setInvoices(invoicesData);
+      setLoading(false);
+      setError(null);
+    }, (err) => {
+      console.error("Error fetching staged invoices:", err);
+      setError(err.code === 'permission-denied' ? "You don't have permission to view this." : "Failed to load invoices.");
+      setLoading(false);
+    });
+  }, [isAdmin, authLoading]);
 
-  if (authLoading || !isAdmin || !stagingId) {
-    return <PageSkeleton />;
-  }
+  const getStatus = (invoice: StagedInvoice) => {
+    if (invoice.status) return invoice.status;
+    return invoice.unitsCount > 0 ? 'in-progress' : 'new';
+  };
+
+  const filteredInvoices = useMemo(() => {
+    if (!hideProcessed) return invoices;
+    return invoices.filter(invoice => getStatus(invoice) !== 'processed');
+  }, [invoices, hideProcessed]);
+
+  if (loading || authLoading) return <StagingSkeleton />;
+  if (!isAdmin) return <p className="text-muted-foreground p-4">Admin access required.</p>;
+  if (error) return <div className="p-4 text-sm text-red-600">{error}</div>;
 
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader className="items-start">
-          <CardTitle>
-            Staged Invoice: {stagingId}
-          </CardTitle>
-
-          <CardDescription className="space-y-1">
-            <div>
-              <span className="font-medium">Source:</span>{' '}
-              {(hdr?.source || 'N/A').toString().toUpperCase()}
-              {'  '}|{'  '}
-              <span className="font-medium">Auction #:</span>{' '}
-              {hdr?.invoiceMeta?.aucNo || (hdr as any)?.aucNo || 'N/A'}
-              {'  '}|{'  '}
-              <span className="font-medium">Invoice Date:</span>{' '}
-              {formatInvoiceDate(hdr)}
-              {'  '}|{'  '}
-              <span className="font-medium">Created:</span>{' '}
-              {hdr?.createdAt?.toDate
-                ? hdr.createdAt.toDate().toLocaleString()
-                : 'N/A'}
-            </div>
-
-            {hdr?.invoiceMeta?.saleLocation ? (
-              <div>
-                <span className="font-medium">Location:</span>{' '}
-                {hdr.invoiceMeta.saleLocation}
-              </div>
-            ) : null}
-          </CardDescription>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Badge variant="secondary">Units: {units.length}</Badge>
-            <Badge variant="secondary">Processed: {processedCount}</Badge>
-            <Badge variant="secondary">Remaining: {remaining}</Badge>
-
-            <div className="ml-auto flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={createAllRemaining}
-                disabled={working === 'all' || remaining === 0}
-              >
-                {working === 'all' ? 'Creating…' : 'Create All Remaining'}
-              </Button>
-
-              {hdr?.fileUrl && (
-                <Button asChild variant="outline" size="sm">
-                  <a
-                    href={hdr.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View Original
-                  </a>
-                </Button>
-              )}
-            </div>
-          </div>
+        <CardHeader>
+          <CardTitle>Staged Invoices</CardTitle>
+          <CardDescription>Invoices parsed by AI, ready for review.</CardDescription>
         </CardHeader>
-
         <CardContent>
           <div className="flex items-center space-x-2 mb-4">
-            <Checkbox
-              id="hide-processed"
-              checked={hideProcessed}
-              onCheckedChange={(checked) => setHideProcessed(Boolean(checked))}
-            />
-            <Label htmlFor="hide-processed">Hide processed units</Label>
+            <Checkbox id="hide-processed" checked={hideProcessed} onCheckedChange={(checked) => setHideProcessed(Boolean(checked))}/>
+            <Label htmlFor="hide-processed">Hide processed invoices</Label>
           </div>
 
-          <div className="text-sm text-muted-foreground mb-3">
-            The following units were extracted from the invoice.
-          </div>
-
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>VIN / Stock #</TableHead>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Fees</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((u) => {
-                const desc = [u.year, u.make, u.model].filter(Boolean).join(' ');
-                return (
-                  <TableRow key={u.id}>
-                    <TableCell className="align-top">
-                      <div className="font-semibold font-mono">{u.vin || '—'}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {u.stockNo ? `Stock: ${u.stockNo}` : 'Stock: —'}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {u.titleInfo ? `Title: ${u.titleInfo}` : 'Title: —'}
+          {filteredInvoices.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Auction Date</TableHead>
+                  <TableHead>Source / Auc #</TableHead>
+                  <TableHead>Units</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredInvoices.map((invoice) => (
+                  <TableRow key={invoice.id}>
+                    <TableCell>{displayInvoiceDate(invoice)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium uppercase">{invoice.source || 'N/A'}</span>
+                        <span className="text-xs text-muted-foreground">{invoice.invoiceMeta?.aucNo || '—'}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="align-top">
-                      {desc || '—'}
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div>Price: {currency(u.itemPrice)}</div>
-                      <div>Buyer Fee: {currency(u.buyerFee)}</div>
-                      <div>Online Fee: {currency(u.onlineFee)}</div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Badge variant={u.processed ? 'default' : 'outline'}>
-                        {u.processed ? 'Processed' : 'Pending'}
+                    <TableCell><Badge variant="secondary">{invoice.unitsCount}</Badge></TableCell>
+                    <TableCell>
+                      <Badge variant={getStatus(invoice) === 'processed' ? 'default' : 'outline'} className="capitalize">
+                        {getStatus(invoice)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right align-top">
-                      <Button
-                        size="sm"
-                        onClick={() => createOne(u.id)}
-                        disabled={!!u.processed || working === u.id}
-                      >
-                        {working === u.id ? 'Creating…' : 'Create Jacket'}
-                      </Button>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" onClick={() => router.push(`/admin/staging/invoices/${invoice.id}`)}>Open</Button>
                     </TableCell>
                   </TableRow>
-                );
-              })}
-              {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
-                    {hideProcessed
-                      ? 'No unprocessed units in this batch.'
-                      : 'No units found in this batch.'}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-10">
+              <p className="text-muted-foreground">
+                {hideProcessed ? "No unprocessed invoices found." : "No invoices are currently in the staging area."}
+              </p>
+              <Button variant="link" asChild>
+                <Link href="/admin/jackets/new">Upload an Invoice</Link>
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

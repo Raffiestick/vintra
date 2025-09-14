@@ -2,14 +2,14 @@
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { PDFDocument } from "pdf-lib";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 /* ───────────────────── Secrets ───────────────────── */
-const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID"); // optional dev bypass
+const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID");
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 /* ───────────────────── Admin init ───────────────────── */
 if (getApps().length === 0) {
@@ -18,12 +18,6 @@ if (getApps().length === 0) {
 const db = getFirestore();
 const storage = getStorage();
 const bucket = storage.bucket();
-/* ───────────────────── Admin UIDs (hard-coded bypass) ───────────────────── */
-// Your two admins (still honors custom claims too)
-const HARDCODED_DEV_ADMINS = new Set([
-    "8usUL5P3Lde9UmukTHNhfArzDbs2",
-    "qY0IICPcxOSf8HTHwO83Qz6fxiG3",
-]);
 /* ───────────────────── Constants / Helpers ───────────────────── */
 const seller = {
     name: "RizeUp Ventures, LLC",
@@ -49,12 +43,6 @@ const safe = (s) => String(s ?? "")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
-/** Midnight‑UTC Date from YYYY‑MM‑DD (prevents off‑by‑one). */
-function isoMidnightUTC(iso) {
-    if (!iso || typeof iso !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(iso))
-        return null;
-    return new Date(`${iso}T00:00:00.000Z`);
-}
 async function getBuyerData(dealerId) {
     if (!dealerId)
         return { name: "Dealer (unassigned)" };
@@ -93,14 +81,9 @@ async function logActivity(vin, entry) {
 function assertAdmin(request) {
     if (!request.auth)
         throw new HttpsError("unauthenticated", "You must be signed in.");
-    // hard-coded bypass
-    if (HARDCODED_DEV_ADMINS.has(request.auth.uid))
-        return;
-    // secret one-off bypass (optional)
     const devBypass = DEV_ADMIN_UID_SECRET.value();
     if (devBypass && request.auth.uid === devBypass)
         return;
-    // custom claim
     const token = request.auth.token || {};
     const isAdmin = token.role === "admin" || token.admin === true;
     if (!isAdmin)
@@ -113,17 +96,45 @@ function getGeminiModel() {
     const genAI = new GoogleGenerativeAI(key);
     return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 }
-/** Strictly pull outer JSON (handles ```json fences). */
-function extractJsonStrict(raw) {
-    const trimmed = (raw || "").trim()
-        .replace(/^```json/i, "")
-        .replace(/^```/, "")
-        .replace(/```$/, "")
-        .trim();
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    const slice = start >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed;
-    return JSON.parse(slice);
+/** US date like 09/14/2025 or 9-14-25 → 'YYYY-MM-DD' (UTC midnight). */
+function parseUsDateToIso(s) {
+    const m = s.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/);
+    if (!m)
+        return null;
+    let [_, mm, dd, yy] = m;
+    const y = yy.length === 2 ? (Number(yy) + 2000) : Number(yy);
+    const M = Number(mm);
+    const D = Number(dd);
+    if (y < 2000 || y > 2100 || M < 1 || M > 12 || D < 1 || D > 31)
+        return null;
+    const iso = `${y.toString().padStart(4, "0")}-${M.toString().padStart(2, "0")}-${D.toString().padStart(2, "0")}`;
+    return iso;
+}
+/** Heuristic fallback: look for a line with "Invoice Date" / "Sale Date" near a date. */
+function findInvoiceDateFromText(text) {
+    const lines = text.split(/\r?\n/).slice(0, 200);
+    for (const line of lines) {
+        if (/invoice\s*date|sale\s*date|date\s*of\s*sale/i.test(line)) {
+            const iso = parseUsDateToIso(line);
+            if (iso)
+                return iso;
+        }
+    }
+    // If not labeled, just pick the first decent US-looking date near the top third
+    for (const line of lines.slice(0, Math.ceil(lines.length / 3))) {
+        const iso = parseUsDateToIso(line);
+        if (iso)
+            return iso;
+    }
+    return null;
+}
+function toIsoAndTs(maybeIso) {
+    if (!maybeIso || !/^\d{4}-\d{2}-\d{2}$/.test(maybeIso))
+        return {};
+    const js = new Date(`${maybeIso}T00:00:00.000Z`);
+    if (isNaN(js.getTime()))
+        return {};
+    return { iso: maybeIso, ts: Timestamp.fromDate(js) };
 }
 /* ───────────────────── Cover Page Builder ───────────────────── */
 function buildCoverHtml(opts) {
@@ -194,27 +205,27 @@ export const startInvoiceParse = onRequest({
             res.status(400).json({ error: "Missing gcsPath (e.g., incoming/invoices/<uid>/<file>.pdf)" });
             return;
         }
-        const storageFile = bucket.file(gcsPath);
-        const [exists] = await storageFile.exists();
+        const file = bucket.file(gcsPath);
+        const [exists] = await file.exists();
         if (!exists) {
             res.status(404).json({ error: `File not found at ${gcsPath}` });
             return;
         }
-        const [meta] = await storageFile.getMetadata().catch(() => [undefined]);
+        const [meta] = await file.getMetadata().catch(() => [undefined]);
         const contentType = String(meta?.contentType || "").toLowerCase();
         if (!contentType.includes("pdf")) {
             res.status(415).json({ error: `Unsupported content type: ${contentType || "unknown"} (PDF only)` });
             return;
         }
-        // 1) Download → real Node Buffer (prevents ENOENT)
-        const [downloaded] = await storageFile.download();
+        // Download bytes → real Node Buffer
+        const [downloaded] = await file.download();
         const nodeBuffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded);
         if (!nodeBuffer?.length) {
             res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." });
             return;
         }
         console.log("startInvoiceParse:downloaded", { gcsPath, contentType, length: nodeBuffer.length });
-        // 2) Extract text (prefer internal entry to avoid opening sample file)
+        // Extract text (prefer internal entry to avoid ENOENT)
         let pdfParse;
         try {
             pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
@@ -228,7 +239,7 @@ export const startInvoiceParse = onRequest({
             res.status(500).json({ error: "Extracted text is empty." });
             return;
         }
-        // 3) Gemini extract (STRICT JSON, includes invoiceDate)
+        // Ask Gemini for STRICT JSON (includes invoiceDate as YYYY-MM-DD)
         const model = getGeminiModel();
         const prompt = `
 Return STRICT JSON only (no prose) with this schema:
@@ -245,29 +256,30 @@ Return STRICT JSON only (no prose) with this schema:
   }]
 }
 Rules:
-- "invoiceDate" must be ISO YYYY-MM-DD (convert from MM/DD/YYYY if needed)
+- "invoiceDate" must be in ISO format YYYY-MM-DD (US source dates are MM/DD/YYYY → convert)
 - VIN uppercase; remove spaces/hyphens; alphanumerics only
-- Currency/numerics must be numbers (no $ or commas)
-- Skip fields you cannot find (do NOT invent)
+- Currency & numeric fields must be numbers (no $ or commas)
+- Omit a field if unknown (do NOT invent values)
 TEXT:
 """${text.slice(0, 20000)}"""`;
         const ai = await model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }] });
         const raw = ai.response?.text() || "{}";
+        // JSON parse (tolerate if model returns plain JSON)
         let extracted = {};
         try {
-            extracted = extractJsonStrict(raw);
+            extracted = JSON.parse(raw);
         }
-        catch (e) {
-            console.error("LLM non-JSON output:", raw);
-            res.status(500).json({ error: "LLM output was not valid JSON." });
-            return;
+        catch {
+            extracted = {};
         }
-        // 4) Normalize date & units
-        const invoiceIso = typeof extracted?.invoiceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(extracted.invoiceDate)
+        // If model missed the date, try regex fallback
+        let pickedIso = typeof extracted?.invoiceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(extracted.invoiceDate)
             ? extracted.invoiceDate
-            : null;
-        const invoiceDateTs = invoiceIso ? isoMidnightUTC(invoiceIso) : null;
-        const toNum = (v) => (typeof v === "number" ? v : typeof v === "string" ? Number(v.replace(/[$,]/g, "")) || 0 : 0);
+            : findInvoiceDateFromText(text);
+        // Normalize YYYY-MM-DD → Firestore Timestamp at UTC midnight
+        const { iso: invoiceDate, ts: invoiceDateTs } = toIsoAndTs(pickedIso || undefined);
+        // Units cleanup & defaults
+        const toNum = (v) => typeof v === "number" ? v : typeof v === "string" ? Number(v.replace(/[$,]/g, "")) || 0 : 0;
         const unitsIn = Array.isArray(extracted?.units) ? extracted.units : [];
         const units = unitsIn.map((u) => {
             const out = { ...u };
@@ -280,37 +292,34 @@ TEXT:
             out.odometer = toNum(out.odometer);
             out.hours = toNum(out.hours);
             out.year = toNum(out.year) ? Math.round(toNum(out.year)) : undefined;
+            // keep a copy of invoiceDate per-unit too (helps UI/printing)
+            if (invoiceDate)
+                out.invoiceDate = invoiceDate;
             return out;
         });
-        // 5) Write staging document + units
+        // Write staging document + units
         const now = FieldValue.serverTimestamp();
         const stagingId = db.collection("stagingInvoices").doc().id;
-        const [fileUrl] = await storageFile.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
-        // incoming/invoices/<uid>/… → uid at index 2
+        const [fileUrl] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+        // incoming/invoices/<uid>/.. → uid at index 2
         const parts = gcsPath.split("/");
         const uploaderUid = parts[2] || null;
         await db.collection("stagingInvoices").doc(stagingId).set({
-            source: "auction",
+            source: "AUCTION",
             gcsPath,
             fileUrl,
             createdAt: now,
             updatedAt: now,
             invoiceMeta: extracted?.invoiceMeta ?? {},
-            invoiceDate: invoiceIso || null, // ISO string for UI
-            invoiceDateTs: invoiceDateTs || null, // Timestamp/Date at midnight UTC
+            invoiceDate: invoiceDate || null, // string YYYY-MM-DD
+            invoiceDateTs: invoiceDateTs || null, // Timestamp
             unitsCount: units.length,
             uploaderUid,
         });
         const batch = db.batch();
         for (const u of units) {
             const unitRef = db.collection("stagingInvoices").doc(stagingId).collection("units").doc();
-            batch.set(unitRef, {
-                ...u,
-                rawText: text.length > 5000 ? text.slice(0, 5000) + "…" : text,
-                createdAt: now,
-                updatedAt: now,
-                processed: false,
-            });
+            batch.set(unitRef, { ...u, rawText: text.length > 5000 ? text.slice(0, 5000) + "…" : text, createdAt: now, updatedAt: now, processed: false });
         }
         await batch.commit();
         res.json({ ok: true, stagingId, unitsCount: units.length });
@@ -320,10 +329,7 @@ TEXT:
         res.status(500).json({ error: e?.message || "Parse failed" });
     }
 });
-export const startDocParse = onRequest({ region: "us-central1", cors: true }, (_req, res) => {
-    res.status(501).json({ error: "Not implemented yet" });
-});
-/* ───────────────────── Staging → Jackets ───────────────────── */
+/* ───────────────────── Staging Actions ───────────────────── */
 export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
     assertAdmin(request);
     const { stagingId, unitId } = request.data || {};
@@ -331,7 +337,7 @@ export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DE
         throw new HttpsError("invalid-argument", "stagingId and unitId are required.");
     if (!request.auth)
         throw new HttpsError("unauthenticated", "Authentication required.");
-    // Get batch (for invoiceDate) + unit
+    // Read batch (for invoiceDate) + unit
     const stagingRef = db.collection("stagingInvoices").doc(String(stagingId));
     const stagingSnap = await stagingRef.get();
     if (!stagingSnap.exists)
@@ -345,22 +351,19 @@ export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DE
     const vin = unit.vin?.trim()?.toUpperCase();
     if (!vin)
         throw new HttpsError("failed-precondition", "Staged unit has no VIN.");
-    const jacketRef = db.collection("jackets").doc(vin);
-    // Prefer YYYY-MM-DD on batch, then unit
+    // prefer the batch ISO; then per-unit ISO
     const isIso = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
     const pickedIso = isIso(staging?.invoiceDate)
         ? staging.invoiceDate
         : isIso(unit?.invoiceDate)
             ? unit.invoiceDate
             : null;
-    // Final value to persist
     let auctionSaleDate = FieldValue.serverTimestamp();
-    if (pickedIso) {
-        auctionSaleDate = isoMidnightUTC(pickedIso) || FieldValue.serverTimestamp();
-    }
-    else if (staging?.invoiceDateTs) {
+    if (pickedIso)
+        auctionSaleDate = new Date(`${pickedIso}T00:00:00.000Z`);
+    else if (staging?.invoiceDateTs?.toDate)
         auctionSaleDate = staging.invoiceDateTs;
-    }
+    const jacketRef = db.collection("jackets").doc(vin);
     await db.runTransaction(async (tx) => {
         const jacketSnap = await tx.get(jacketRef);
         const jacketData = {
@@ -375,8 +378,8 @@ export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DE
             buyerFee: num(unit.buyerFee),
             onlineFee: num(unit.onlineFee),
             managementFee: num(unit.managementFee) || 100,
-            auctionSaleDate, // Timestamp compatible
-            invoiceDate: pickedIso || null, // Keep ISO for printing/UI
+            auctionSaleDate, // Timestamp/Date normalized to midnight UTC
+            invoiceDate: pickedIso || null, // keep ISO string on the jacket
             isAuctionPaid: false,
             isMgmtFeePaid: false,
             miscFees: [],
@@ -392,25 +395,21 @@ export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DE
             tx.update(jacketRef, jacketData);
         }
     });
-    // Mark unit processed
+    // Mark unit as processed
     await unitRef.update({
         processed: true,
         processedAt: FieldValue.serverTimestamp(),
         processedBy: request.auth.uid,
         jacketVin: vin,
-        jacketPath: jacketRef.path,
+        jacketPath: jacketRef.path
     });
-    // If all units processed, mark batch
+    // If all units processed, mark batch processed
     const remainingQuery = await stagingRef.collection("units").where("processed", "==", false).limit(1).get();
     if (remainingQuery.empty) {
-        await stagingRef.update({
-            status: "processed",
-            processedAt: FieldValue.serverTimestamp(),
-        });
+        await stagingRef.update({ status: "processed", processedAt: FieldValue.serverTimestamp() });
     }
-    return { success: true, path: jacketRef.path };
+    return { success: true, path: jacketRef.path, vin };
 });
-/** Create jackets for every unprocessed unit in a batch. */
 export const createJacketsForInvoice = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
     assertAdmin(request);
     const { stagingId } = request.data || {};
@@ -424,7 +423,7 @@ export const createJacketsForInvoice = onCall({ region: "us-central1", secrets: 
         throw new HttpsError("not-found", "Staging batch not found.");
     const staging = stagingSnap.data();
     const isIso = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
-    const pickedIsoBatch = isIso(staging?.invoiceDate) ? staging.invoiceDate : null;
+    const batchIso = isIso(staging?.invoiceDate) ? staging.invoiceDate : null;
     const unitsSnap = await stagingRef.collection("units").where("processed", "in", [false, null]).get();
     if (unitsSnap.empty)
         return { success: true, created: 0 };
@@ -435,14 +434,12 @@ export const createJacketsForInvoice = onCall({ region: "us-central1", secrets: 
         const vin = (unit.vin || "").toString().trim().toUpperCase();
         if (!vin)
             continue;
-        const pickedIso = pickedIsoBatch || (isIso(unit?.invoiceDate) ? unit.invoiceDate : null);
+        const pickedIso = batchIso || (isIso(unit?.invoiceDate) ? unit.invoiceDate : null);
         let auctionSaleDate = FieldValue.serverTimestamp();
-        if (pickedIso) {
-            auctionSaleDate = isoMidnightUTC(pickedIso) || FieldValue.serverTimestamp();
-        }
-        else if (staging?.invoiceDateTs) {
+        if (pickedIso)
+            auctionSaleDate = new Date(`${pickedIso}T00:00:00.000Z`);
+        else if (staging?.invoiceDateTs?.toDate)
             auctionSaleDate = staging.invoiceDateTs;
-        }
         const jacketRef = db.collection("jackets").doc(vin);
         await db.runTransaction(async (tx) => {
             const snap = await tx.get(jacketRef);
@@ -475,81 +472,22 @@ export const createJacketsForInvoice = onCall({ region: "us-central1", secrets: 
                 tx.update(jacketRef, data);
             }
         });
+        // mark processed
         await stagingRef.collection("units").doc(unitId).update({
             processed: true,
             processedAt: FieldValue.serverTimestamp(),
             processedBy: request.auth.uid,
             jacketVin: vin,
-            jacketPath: db.collection("jackets").doc(vin).path,
+            jacketPath: db.collection("jackets").doc(vin).path
         });
         created++;
     }
+    // if no remaining, mark the parent
     const remain = await stagingRef.collection("units").where("processed", "==", false).limit(1).get();
     if (remain.empty) {
-        await stagingRef.update({
-            status: "processed",
-            processedAt: FieldValue.serverTimestamp(),
-        });
+        await stagingRef.update({ status: "processed", processedAt: FieldValue.serverTimestamp() });
     }
     return { success: true, created };
-});
-/* ───────────────────── Staged doc attach ───────────────────── */
-export const attachStagedDocToJacket = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
-    assertAdmin(request);
-    const { docId, vin, typeOverride } = request.data || {};
-    if (!docId || !vin)
-        throw new HttpsError("invalid-argument", "docId and vin are required.");
-    const stagedDocRef = db.collection("stagedDocs").doc(docId);
-    const stagedDocSnap = await stagedDocRef.get();
-    if (!stagedDocSnap.exists)
-        throw new HttpsError("not-found", "Staged document not found.");
-    const stagedDoc = stagedDocSnap.data();
-    const gcsPath = stagedDoc.gcsPath;
-    if (!gcsPath)
-        throw new HttpsError("failed-precondition", "Staged document missing gcsPath.");
-    const fileName = gcsPath.split("/").pop() || `doc-${Date.now()}`;
-    const docType = typeOverride || stagedDoc.type || "other";
-    const newPath = `jacket-documents/${vin}/${docType}/${fileName}`;
-    await bucket.file(gcsPath).move(newPath);
-    const newFile = bucket.file(newPath);
-    const [signedUrl] = await newFile.getSignedUrl({
-        action: "read",
-        expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-    });
-    const newDocument = {
-        id: `doc-${Date.now()}`,
-        name: fileName,
-        type: docType,
-        url: signedUrl,
-        createdAt: FieldValue.serverTimestamp(),
-    };
-    await db.collection("jackets").doc(vin).update({
-        documents: FieldValue.arrayUnion(newDocument),
-        updatedAt: FieldValue.serverTimestamp(),
-    });
-    await stagedDocRef.delete();
-    return { success: true, message: `Document attached to jacket ${vin}.` };
-});
-/* ───────────────────── Admin Callables ───────────────────── */
-export const manageDealerApplication = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
-    assertAdmin(request);
-    const { uid, action } = request.data || {};
-    if (!uid || !action || !["approve", "deny"].includes(String(action))) {
-        throw new HttpsError("invalid-argument", "Provide 'uid' and 'action' of 'approve' or 'deny'.");
-    }
-    const userDocRef = db.collection("users").doc(String(uid));
-    try {
-        await userDocRef.update({ status: action === "approve" ? "approved" : "denied" });
-        return { success: true, message: `User ${uid} has been ${action}d.` };
-    }
-    catch (err) {
-        console.error("manageDealerApplication error:", err);
-        throw new HttpsError("internal", err?.message || "Failed to manage application.");
-    }
-});
-export const generateJacketId = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (_request) => {
-    const jacketId = Math.floor(100000 + Math.random() * 900000).toString();
-    return { jacketId };
 });
 /* ───────────────────── PDF Generators ───────────────────── */
 export const generateJacketInvoice = onRequest({ region: "us-central1", timeoutSeconds: 120, memory: "1GiB", cors: true, secrets: [DEV_ADMIN_UID_SECRET] }, async (req, res) => {
