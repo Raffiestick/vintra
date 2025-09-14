@@ -16,7 +16,8 @@ const serviceAccount = require(serviceAccountPath);
 // Initialize Firebase Admin SDK if not already initialized
 if (admin.apps.length === 0) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: 'https://rizeup-dealer-connect-n6k7r.firebaseio.com'
   });
 }
 
