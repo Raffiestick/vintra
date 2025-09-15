@@ -2,46 +2,49 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isSignedIn() { return request.auth != null; }
     function isAdmin() {
-      return request.auth != null
-        && (
-             request.auth.token.admin == true
-          || request.auth.token.role == 'admin'
-          || request.auth.uid in ['8usUL5P3Lde9UmukTHNhfArzDbs2','qY0IICPcxOSf8HTHwO83Qz6fxiG3']
-        );
+      return isSignedIn() &&
+        (request.auth.token.admin == true || request.auth.token.role == 'admin');
+    }
+    function isSelf(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function dealerOwnsJacket() {
+      // Safe: when resource does not exist, deny by default
+      return isSignedIn() &&
+             resource.data.dealerId != null &&
+             resource.data.dealerId == request.auth.uid;
     }
 
-    // Users can manage their own profile; admins can manage all.
-    match /users/{userId} {
-      allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update, delete: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+    match /users/{uid} {
+      allow read: if isSelf(uid) || isAdmin();
+      allow write: if isSelf(uid) || isAdmin();
     }
 
-    // Dealer jackets
-    match /jackets/{vin} {
-      allow read: if isAdmin() || (request.auth != null && resource.data.dealerId == request.auth.uid);
-      allow create, update, delete: if isAdmin();
-
-      match /activity/{docId} {
-        allow read: if isAdmin() || (
-          request.auth != null &&
-          get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid
-        );
-        allow write: if isAdmin();
-      }
-    }
-
-    // Staging invoice batches: admin only
-    match /stagingInvoices/{stagingId} {
+    // Admin-only staging area
+    match /stagingInvoices/{sid} {
       allow read, write: if isAdmin();
-      match /units/{unitId} {
+      match /units/{uid} {
         allow read, write: if isAdmin();
       }
     }
 
-    // Fallback: admins can still do everything
-    match /{document=**} {
+    // Jackets: admin RW; dealers RO for their assigned units
+    match /jackets/{vin} {
+      allow read: if isAdmin() || dealerOwnsJacket();
+      allow write: if isAdmin();
+      match /activity/{doc} {
+        allow read: if isAdmin() || dealerOwnsJacket();
+        allow write: if isAdmin();
+      }
+    }
+
+    // Invoice counter
+    match /counters/{doc} {
+      allow read, write: if isAdmin();
+    }
+
+    // Optional: where you stage ad-hoc docs before attaching
+    match /stagedDocs/{doc} {
       allow read, write: if isAdmin();
     }
   }

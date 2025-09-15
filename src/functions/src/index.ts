@@ -1,3 +1,4 @@
+
 // src/functions/src/index.ts
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
@@ -150,88 +151,90 @@ function extractVinsFromText(text: string): string[] {
 }
 
 function extractUnitsHeuristic(text: string) {
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  const units: any[] = [];
-  const vinRE = /\b[A-HJ-NPR-Z0-9]{17}\b/; // VIN - excludes I,O,Q
-  const amountRE = /\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?)/;
-  const feeDefs = [
-    { key: 'itemPrice', re: /(?:^|\b)(?:price|winning\s*bid|unit\s*price)(?:\b|:)/i },
-    { key: 'buyerFee', re: /(?:buyer\s*fee|buy\s*fee)/i },
-    { key: 'onlineFee', re: /(?:online\s*fee|internet\s*fee)/i },
-  ];
-
-  for (let i = 0; i < lines.length; i++) {
-    const lineU = lines[i].toUpperCase();
-    const vm = lineU.match(vinRE);
-    if (!vm) continue;
-
-    const vin = vm[0];
-    if (units.some(u => u.vin === vin)) continue;
-
-    const window = lines.slice(Math.max(0, i - 6), Math.min(lines.length, i + 10));
-    const unit: any = { vin };
-
-    // Year / Make / Model
-    const ymmLine = window.find(l => /\b(19|20)\d{2}\b/.test(l) && /[A-Za-z]/.test(l));
-    if (ymmLine) {
-      const yearMatch = ymmLine.match(/\b(19|20)\d{2}\b/);
-      if (yearMatch) unit.year = Number(yearMatch[0]);
-      const idx = yearMatch ? ymmLine.indexOf(yearMatch[0]) : -1;
-      const rest = idx >= 0 ? ymmLine.slice(idx + yearMatch[0].length).trim() : ymmLine;
-      const words = rest.split(/\s+/).filter(Boolean);
-      if (words.length) {
-        unit.make = (unit.make || words[0]).toUpperCase();
-        if (words.length > 1) unit.model = words.slice(1).join(' ');
-      }
-    }
-
-    // Color (very heuristic)
-    const colorLine = window.find(l => /color/i.test(l));
-    if (colorLine) {
-      const after = colorLine.split(/color[:\s-]*/i).pop() || '';
-      const col = after.split(/[,\s]/).filter(Boolean)[0];
-      if (col && col.length <= 20) unit.color = col.toUpperCase();
-    }
-
-    // Fees
-    for (const l of window) {
-      for (const f of feeDefs) {
-        if (f.re.test(l)) {
-          const m = l.match(amountRE);
-          if (m) unit[f.key] = num(m[1]);
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const units: any[] = [];
+    const vinRE = /\b[A-HJ-NPR-Z0-9]{17}\b/; // VIN - excludes I,O,Q
+    const amountRE = /\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?)/;
+    const feeDefs = [
+      { key: 'itemPrice', re: /(?:^|\b)(?:price|winning\s*bid|unit\s*price)(?:\b|:)/i },
+      { key: 'buyerFee', re: /(?:buyer\s*fee|buy\s*fee)/i },
+      { key: 'onlineFee', re: /(?:online\s*fee|internet\s*fee)/i },
+    ];
+  
+    for (let i = 0; i < lines.length; i++) {
+      const lineU = lines[i].toUpperCase();
+      const vm = lineU.match(vinRE);
+      if (!vm) continue;
+  
+      const vin = vm[0];
+      if (units.some(u => u.vin === vin)) continue;
+  
+      const window = lines.slice(Math.max(0, i - 6), Math.min(lines.length, i + 10));
+      const unit: any = { vin };
+  
+      // Year / Make / Model
+      const ymmLine = window.find(l => /\b(19|20)\d{2}\b/.test(l) && /[A-Za-z]/.test(l));
+      if (ymmLine) {
+        const yearMatch = ymmLine.match(/\b(19|20)\d{2}\b/);
+        if (yearMatch) {
+            unit.year = Number(yearMatch[0]);
+            const idx = ymmLine.indexOf(yearMatch[0]);
+            const rest = idx >= 0 ? ymmLine.slice(idx + yearMatch[0].length).trim() : ymmLine;
+            const words = rest.split(/\s+/).filter(Boolean);
+            if (words.length) {
+              unit.make = (unit.make || words[0]).toUpperCase();
+              if (words.length > 1) unit.model = words.slice(1).join(' ');
+            }
         }
       }
+  
+      // Color (very heuristic)
+      const colorLine = window.find(l => /color/i.test(l));
+      if (colorLine) {
+        const after = colorLine.split(/color[:\s-]*/i).pop() || '';
+        const col = after.split(/[,\s]/).filter(Boolean)[0];
+        if (col && col.length <= 20) unit.color = col.toUpperCase();
+      }
+  
+      // Fees
+      for (const l of window) {
+        for (const f of feeDefs) {
+          if (f.re.test(l)) {
+            const m = l.match(amountRE);
+            if (m) unit[f.key] = num(m[1]);
+          }
+        }
+      }
+  
+      // Stock / Title (optional)
+      const stockLine = window.find(l => /stock\s*#?/i.test(l));
+      if (stockLine) {
+        const m = stockLine.match(/stock\s*#?\s*[:\s-]*([A-Za-z0-9-]+)/i);
+        if (m) unit.stockNo = m[1];
+      }
+      const titleLine = window.find(l => /title/i.test(l));
+      if (titleLine) unit.titleInfo = titleLine.replace(/^.*title[:\s-]*/i, '').trim();
+  
+      if (unit.managementFee == null) unit.managementFee = 100;
+      units.push(unit);
     }
-
-    // Stock / Title (optional)
-    const stockLine = window.find(l => /stock\s*#?/i.test(l));
-    if (stockLine) {
-      const m = stockLine.match(/stock\s*#?\s*[:\s-]*([A-Za-z0-9-]+)/i);
-      if (m) unit.stockNo = m[1];
-    }
-    const titleLine = window.find(l => /title/i.test(l));
-    if (titleLine) unit.titleInfo = titleLine.replace(/^.*title[:\s-]*/i, '').trim();
-
-    if (unit.managementFee == null) unit.managementFee = 100;
-    units.push(unit);
-  }
-  return units;
+    return units;
 }
 
 /* ───────────────────── Auth Callables ───────────────────── */
 
 export const signInWithCustomToken = onCall({ region: "us-central1" }, async (request: CallableRequest) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
-  }
-  const uid = request.auth.uid;
-  try {
-    const customToken = await adminAuth.createCustomToken(uid);
-    return { token: customToken };
-  } catch (error: any) {
-    console.error("Error creating custom token:", error);
-    throw new HttpsError("internal", "Unable to create custom token.", error.message);
-  }
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+    }
+    const uid = request.auth.uid;
+    try {
+        const customToken = await getAuth().createCustomToken(uid);
+        return { token: customToken };
+    } catch (error: any) {
+        console.error("Error creating custom token:", error);
+        throw new HttpsError("internal", "Unable to create custom token.", error.message);
+    }
 });
 
 
@@ -464,7 +467,7 @@ export const createJacketFromUnit = onCall(
       await stagingRef.update({ status: "processed", processedAt: FieldValue.serverTimestamp() });
     }
 
-    return { success: true, path: jacketRef.path };
+    return { success: true, path: jacketRef.path, vin };
   }
 );
 
@@ -785,3 +788,5 @@ export const generateBillOfSale = onRequest(
     }
   }
 );
+
+    

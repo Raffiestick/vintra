@@ -149,6 +149,75 @@ function extractVinsFromText(text) {
         found.add(match);
     return [...found];
 }
+function extractUnitsHeuristic(text) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const units = [];
+    const vinRE = /\b[A-HJ-NPR-Z0-9]{17}\b/; // VIN - excludes I,O,Q
+    const amountRE = /\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?)/;
+    const feeDefs = [
+        { key: 'itemPrice', re: /(?:^|\b)(?:price|winning\s*bid|unit\s*price)(?:\b|:)/i },
+        { key: 'buyerFee', re: /(?:buyer\s*fee|buy\s*fee)/i },
+        { key: 'onlineFee', re: /(?:online\s*fee|internet\s*fee)/i },
+    ];
+    for (let i = 0; i < lines.length; i++) {
+        const lineU = lines[i].toUpperCase();
+        const vm = lineU.match(vinRE);
+        if (!vm)
+            continue;
+        const vin = vm[0];
+        if (units.some(u => u.vin === vin))
+            continue;
+        const window = lines.slice(Math.max(0, i - 6), Math.min(lines.length, i + 10));
+        const unit = { vin };
+        // Year / Make / Model
+        const ymmLine = window.find(l => /\b(19|20)\d{2}\b/.test(l) && /[A-Za-z]/.test(l));
+        if (ymmLine) {
+            const yearMatch = ymmLine.match(/\b(19|20)\d{2}\b/);
+            if (yearMatch)
+                unit.year = Number(yearMatch[0]);
+            const idx = yearMatch ? ymmLine.indexOf(yearMatch[0]) : -1;
+            const rest = idx >= 0 ? ymmLine.slice(idx + yearMatch[0].length).trim() : ymmLine;
+            const words = rest.split(/\s+/).filter(Boolean);
+            if (words.length) {
+                unit.make = (unit.make || words[0]).toUpperCase();
+                if (words.length > 1)
+                    unit.model = words.slice(1).join(' ');
+            }
+        }
+        // Color (very heuristic)
+        const colorLine = window.find(l => /color/i.test(l));
+        if (colorLine) {
+            const after = colorLine.split(/color[:\s-]*/i).pop() || '';
+            const col = after.split(/[,\s]/).filter(Boolean)[0];
+            if (col && col.length <= 20)
+                unit.color = col.toUpperCase();
+        }
+        // Fees
+        for (const l of window) {
+            for (const f of feeDefs) {
+                if (f.re.test(l)) {
+                    const m = l.match(amountRE);
+                    if (m)
+                        unit[f.key] = num(m[1]);
+                }
+            }
+        }
+        // Stock / Title (optional)
+        const stockLine = window.find(l => /stock\s*#?/i.test(l));
+        if (stockLine) {
+            const m = stockLine.match(/stock\s*#?\s*[:\s-]*([A-Za-z0-9-]+)/i);
+            if (m)
+                unit.stockNo = m[1];
+        }
+        const titleLine = window.find(l => /title/i.test(l));
+        if (titleLine)
+            unit.titleInfo = titleLine.replace(/^.*title[:\s-]*/i, '').trim();
+        if (unit.managementFee == null)
+            unit.managementFee = 100;
+        units.push(unit);
+    }
+    return units;
+}
 /* ───────────────────── Auth Callables ───────────────────── */
 export const signInWithCustomToken = onCall({ region: "us-central1" }, async (request) => {
     if (!request.auth) {
@@ -157,7 +226,6 @@ export const signInWithCustomToken = onCall({ region: "us-central1" }, async (re
     const uid = request.auth.uid;
     try {
         const customToken = await adminAuth.createCustomToken(uid);
-        // The user deletion logic that was here has been removed.
         return { token: customToken };
     }
     catch (error) {
@@ -231,30 +299,22 @@ Rules:
 - Omit a field if unknown; DO NOT invent values.
 TEXT:
 """${text.slice(0, 20000)}"""`;
-        let extracted = {};
+        let aiResult = {};
         try {
             const ai = await model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }] });
-            extracted = JSON.parse(ai.response?.text() || "{}");
+            aiResult = JSON.parse(ai.response?.text() || "{}");
         }
         catch (e) {
             console.warn("LLM parse failed; falling back to regex only:", e);
         }
-        // 4) Fallbacks if LLM is empty
-        const fallbackDate = guessInvoiceDateFromText(text);
-        if (!extracted.invoiceDate && fallbackDate)
-            extracted.invoiceDate = fallbackDate;
-        const units = Array.isArray(extracted?.units) ? extracted.units : [];
-        if (!units.length) {
-            // Build minimal units list from VINs so the batch is never empty
-            for (const vin of extractVinsFromText(text))
-                units.push({ vin });
-        }
-        // Normalize units
+        // 4) Get heuristic results and merge
+        let units = Array.isArray(aiResult?.units) ? aiResult.units : [];
+        // Normalize early in case LLM returned partials
         for (const u of units) {
             if (!u)
                 continue;
-            if (typeof u.vin === "string")
-                u.vin = u.vin.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "");
+            if (typeof u.vin === 'string')
+                u.vin = u.vin.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
             u.itemPrice = num(u.itemPrice);
             u.buyerFee = num(u.buyerFee);
             u.onlineFee = num(u.onlineFee);
@@ -267,8 +327,20 @@ TEXT:
             if (u.odometer != null)
                 u.odometer = Number(u.odometer) || undefined;
         }
-        const iso = normalizeIsoFromDateLike(extracted?.invoiceDate);
-        const invoiceDateTs = iso ? new Date(`${iso}T00:00:00.000Z`) : null;
+        // If model returned nothing (or only VINs), try the heuristic parser:
+        if (!units.length) {
+            units = extractUnitsHeuristic(text);
+        }
+        // As a last resort, ensure at least VINs exist so the batch isn’t empty:
+        if (!units.length) {
+            const vins = extractVinsFromText(text);
+            units = vins.map(v => ({ vin: v, managementFee: 100 }));
+        }
+        const finalUnits = units;
+        const invoiceDate = aiResult?.invoiceDate || guessInvoiceDateFromText(text);
+        const iso = normalizeIsoFromDateLike(invoiceDate);
+        const invoiceDateTs = iso ? new Date(`${iso}T12:00:00.000Z`) : null;
+        const invoiceMeta = aiResult?.invoiceMeta ?? {};
         // 5) Write staging header + units
         const now = FieldValue.serverTimestamp();
         const stagingId = db.collection("stagingInvoices").doc().id;
@@ -281,15 +353,15 @@ TEXT:
             fileUrl,
             createdAt: now,
             updatedAt: now,
-            invoiceMeta: extracted?.invoiceMeta ?? {},
+            invoiceMeta,
             invoiceDate: iso || null,
             invoiceDateTs: invoiceDateTs || null,
-            unitsCount: units.length,
+            unitsCount: finalUnits.length,
             uploaderUid,
             status: "new",
         });
         const batch = db.batch();
-        for (const u of units) {
+        for (const u of finalUnits) {
             const unitRef = db.collection("stagingInvoices").doc(stagingId).collection("units").doc();
             batch.set(unitRef, {
                 ...u,
@@ -300,13 +372,13 @@ TEXT:
             });
         }
         await batch.commit();
-        res.json({ ok: true, stagingId, unitsCount: units.length });
+        res.json({ ok: true, stagingId, unitsCount: finalUnits.length });
     }
     catch (e) {
         console.error("startInvoiceParse error", e?.stack || e);
         res.status(500).json({ error: e?.message || "Parse failed" });
     }
-}); // ← previously missing invoiceDate & had duplicate pdf-parse; fixed here. :contentReference[oaicite:1]{index=1}
+});
 /* ───────────────────── Staging Actions ───────────────────── */
 export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
     assertAdmin(request);
@@ -385,7 +457,7 @@ export const createJacketFromUnit = onCall({ region: "us-central1", secrets: [DE
     if (remainingQuery.empty) {
         await stagingRef.update({ status: "processed", processedAt: FieldValue.serverTimestamp() });
     }
-    return { success: true, path: jacketRef.path };
+    return { success: true, path: jacketRef.path, vin };
 });
 export const createJacketsForInvoice = onCall({ region: "us-central1", secrets: [DEV_ADMIN_UID_SECRET] }, async (request) => {
     assertAdmin(request);
