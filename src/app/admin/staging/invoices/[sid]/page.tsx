@@ -57,9 +57,16 @@ function currency(n?: number) {
 }
 
 function formatInvoiceDate(h?: StagingHeader | null): string {
-  const iso = h?.invoiceDate?.trim() ?? '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return new Date(`${iso}T00:00:00Z`).toLocaleDateString();
-  if (h?.invoiceDateTs?.toDate) { try { return h.invoiceDateTs.toDate().toLocaleDateString(); } catch {} }
+  if (!h) return '—';
+  if (h.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(h.invoiceDate)) return h.invoiceDate; // show ISO as-is
+  if (h.invoiceDateTs?.toDate) {
+    // render in UTC to avoid “day-before” effect in US timezones
+    const d = h.invoiceDateTs.toDate();
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
   return '—';
 }
 

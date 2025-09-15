@@ -259,7 +259,7 @@ TEXT:
       }
 
       const iso = normalizeIsoFromDateLike(extracted?.invoiceDate);
-      const invoiceDateTs = iso ? new Date(`${iso}T00:00:00.000Z`) : null;
+      const invoiceDateTs = iso ? new Date(`${iso}T12:00:00.000Z`) : null;
 
       // 5) Write staging header + units
       const now = FieldValue.serverTimestamp();
