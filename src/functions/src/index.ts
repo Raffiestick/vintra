@@ -166,7 +166,11 @@ function parseNpaInvoiceText(text: string): {
   invoiceMeta?: { aucNo?: string; saleLocation?: string };
   units: any[];
 } {
-  const out = { invoiceDate: pickInvoiceDateFromHeader(text), invoiceMeta: {}, units: [] as any[] };
+  const out: {
+    invoiceDate: string | null;
+    invoiceMeta: { aucNo?: string; saleLocation?: string };
+    units: any[];
+  } = { invoiceDate: pickInvoiceDateFromHeader(text), invoiceMeta: {}, units: [] as any[] };
 
   // Normalize whitespace a little
   const norm = text.replace(/\r/g, '').replace(/[ \t]+/g, ' ');
