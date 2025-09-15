@@ -57,15 +57,17 @@ function currency(n?: number) {
 }
 
 function formatInvoiceDate(h?: StagingHeader | null): string {
-  if (!h) return '—';
-  if (h.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(h.invoiceDate)) return h.invoiceDate; // show ISO as-is
-  if (h.invoiceDateTs?.toDate) {
-    // render in UTC to avoid “day-before” effect in US timezones
-    const d = h.invoiceDateTs.toDate();
-    const y = d.getUTCFullYear();
-    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+  const iso = h?.invoiceDate?.trim();
+  if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-');
+    return `${+m}/${+d}/${y}`;
+  }
+  if (h?.invoiceDateTs?.toDate) {
+    try {
+      const dt = h.invoiceDateTs.toDate();
+      // render as M/D/YYYY like the invoice header
+      return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear()}`;
+    } catch {}
   }
   return '—';
 }
@@ -280,3 +282,5 @@ export default function StagingInvoiceDetailPage() {
     </div>
   );
 }
+
+    

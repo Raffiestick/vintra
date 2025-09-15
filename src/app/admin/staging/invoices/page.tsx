@@ -33,8 +33,18 @@ interface StagingHeader {
 }
 
 function formatInvoiceDate(h: StagingHeader): string {
-  if (h?.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(h.invoiceDate)) return h.invoiceDate;
-  if (h?.invoiceDateTs?.toDate) return h.invoiceDateTs.toDate().toLocaleDateString();
+  const iso = h?.invoiceDate?.trim();
+  if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-');
+    return `${+m}/${+d}/${y}`;
+  }
+  if (h?.invoiceDateTs?.toDate) {
+    try {
+      const dt = h.invoiceDateTs.toDate();
+      // render as M/D/YYYY like the invoice header
+      return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear()}`;
+    } catch {}
+  }
   return '—';
 }
 
@@ -199,3 +209,5 @@ export default function StagedInvoicesPage() {
     </div>
   );
 }
+
+    

@@ -1,3 +1,4 @@
+
 // src/functions/src/index.ts
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
@@ -787,3 +788,5 @@ export const generateBillOfSale = onRequest(
     }
   }
 );
+
+    
