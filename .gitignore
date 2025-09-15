@@ -55,3 +55,12 @@ rizeup-dealer-connect-service-account.json
 *service-account*.json
 .env
 .env.*
+
+# --- never commit secrets ---
+rizeup-dealer-connect-service-account.json
+*service-account*.json
+.env
+.env.*
+firebase-debug.log
+npm-debug.log*
+.yarn/cache
