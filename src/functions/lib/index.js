@@ -173,15 +173,16 @@ function extractUnitsHeuristic(text) {
         const ymmLine = window.find(l => /\b(19|20)\d{2}\b/.test(l) && /[A-Za-z]/.test(l));
         if (ymmLine) {
             const yearMatch = ymmLine.match(/\b(19|20)\d{2}\b/);
-            if (yearMatch)
+            if (yearMatch) {
                 unit.year = Number(yearMatch[0]);
-            const idx = yearMatch ? ymmLine.indexOf(yearMatch[0]) : -1;
-            const rest = idx >= 0 ? ymmLine.slice(idx + yearMatch[0].length).trim() : ymmLine;
-            const words = rest.split(/\s+/).filter(Boolean);
-            if (words.length) {
-                unit.make = (unit.make || words[0]).toUpperCase();
-                if (words.length > 1)
-                    unit.model = words.slice(1).join(' ');
+                const idx = ymmLine.indexOf(yearMatch[0]);
+                const rest = idx >= 0 ? ymmLine.slice(idx + yearMatch[0].length).trim() : ymmLine;
+                const words = rest.split(/\s+/).filter(Boolean);
+                if (words.length) {
+                    unit.make = (unit.make || words[0]).toUpperCase();
+                    if (words.length > 1)
+                        unit.model = words.slice(1).join(' ');
+                }
             }
         }
         // Color (very heuristic)
@@ -225,7 +226,7 @@ export const signInWithCustomToken = onCall({ region: "us-central1" }, async (re
     }
     const uid = request.auth.uid;
     try {
-        const customToken = await adminAuth.createCustomToken(uid);
+        const customToken = await getAuth().createCustomToken(uid);
         return { token: customToken };
     }
     catch (error) {
