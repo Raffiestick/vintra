@@ -304,31 +304,12 @@ TEXT:
       }
 
       // 4) Get heuristic results and merge
-      const heuristicUnits = extractUnitsHeuristic(text);
-      const aiUnits = Array.isArray(aiResult?.units) ? aiResult.units : [];
-      
-      const combinedUnitsMap = new Map<string, any>();
+      let units: any[] = Array.isArray(aiResult?.units) ? aiResult.units : [];
 
-      // First pass: Heuristic units (baseline)
-      for (const unit of heuristicUnits) {
-          if (unit.vin) combinedUnitsMap.set(unit.vin, unit);
-      }
-
-      // Second pass: AI units (override/augment)
-      for (const unit of aiUnits) {
-          if (unit.vin) {
-              const vin = unit.vin.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "");
-              const existing = combinedUnitsMap.get(vin) || {};
-              combinedUnitsMap.set(vin, { ...existing, ...unit, vin });
-          }
-      }
-      
-      const finalUnits = Array.from(combinedUnitsMap.values());
-
-      // Normalize all units
-      for (const u of finalUnits) {
+      // Normalize early in case LLM returned partials
+      for (const u of units) {
         if (!u) continue;
-        if (typeof u.vin === "string") u.vin = u.vin.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "");
+        if (typeof u.vin === 'string') u.vin = u.vin.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
         u.itemPrice = num(u.itemPrice);
         u.buyerFee = num(u.buyerFee);
         u.onlineFee = num(u.onlineFee);
@@ -337,6 +318,19 @@ TEXT:
         if (u.hours != null) u.hours = Number(u.hours) || undefined;
         if (u.odometer != null) u.odometer = Number(u.odometer) || undefined;
       }
+
+      // If model returned nothing (or only VINs), try the heuristic parser:
+      if (!units.length) {
+        units = extractUnitsHeuristic(text);
+      }
+
+      // As a last resort, ensure at least VINs exist so the batch isn’t empty:
+      if (!units.length) {
+        const vins = extractVinsFromText(text);
+        units = vins.map(v => ({ vin: v, managementFee: 100 }));
+      }
+      
+      const finalUnits = units;
 
       const invoiceDate = aiResult?.invoiceDate || guessInvoiceDateFromText(text);
       const iso = normalizeIsoFromDateLike(invoiceDate);
