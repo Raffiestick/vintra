@@ -1,21 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The 'allowedDevOrigins' option is part of Next.js's security measures for the development server.
+  // It specifies which origins are allowed to make cross-origin requests, which is necessary
+  // in a cloud development environment like this where the frontend is served from a different
+  // origin than the preview iframe.
   experimental: {
-    // NOTE: 'allowedDevOrigins' is intentionally left out of experimental.
-    // It is now a top-level property.
-  },
-  // This is the correct top-level placement for the key.
-  allowedDevOrigins: [
-    'https://*.cloudworkstations.dev',
-    'https://*.firebase.app',
-    'https://*.web.app',
-  ],
-  webpack: (config, { isServer }) => {
-    // Exclude specific modules from the server bundle to prevent errors.
-    if (isServer) {
-      config.externals.push('canvas', '@google-cloud/vertexai');
-    }
-    return config;
+    allowedDevOrigins: [
+      'https://*.cloudworkstations.dev',
+      'https://*.firebase.studio',
+    ],
   },
 };
 
