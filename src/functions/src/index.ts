@@ -4,6 +4,7 @@ import type { CallableRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Transaction, DocumentData } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 import { getStorage } from "firebase-admin/storage";
 import { PDFDocument } from "pdf-lib";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -17,6 +18,7 @@ const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 /* ───────────────────── Admin init ───────────────────── */
 if (getApps().length === 0) initializeApp();
 const db = getFirestore();
+const adminAuth = getAuth();
 const storage = getStorage();
 const bucket = storage.bucket();
 
@@ -146,6 +148,24 @@ function extractVinsFromText(text: string): string[] {
   for (const match of text.toUpperCase().match(vinRe) || []) found.add(match);
   return [...found];
 }
+
+/* ───────────────────── Auth Callables ───────────────────── */
+
+export const signInWithCustomToken = onCall({ region: "us-central1" }, async (request: CallableRequest) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+  const uid = request.auth.uid;
+  try {
+    const customToken = await adminAuth.createCustomToken(uid);
+    // The user deletion logic that was here has been removed.
+    return { token: customToken };
+  } catch (error: any) {
+    console.error("Error creating custom token:", error);
+    throw new HttpsError("internal", "Unable to create custom token.", error.message);
+  }
+});
+
 
 /* ───────────────────── Parsing: startInvoiceParse ───────────────────── */
 export const startInvoiceParse = onRequest(
@@ -584,3 +604,107 @@ export const generateJacketPacket = onRequest(
 export const startDocParse = onRequest({ region: "us-central1", cors: true }, async (_req, res) => {
   res.status(501).json({ error: "Not implemented yet" });
 });
+
+/* ───────────────────── PDF Generators ───────────────────── */
+
+const getInvoiceHtml = async (j: DocumentData, buyer: any) => {
+  const num = (x: any) => Number(x || 0);
+  const itm = num(j.itemPrice);
+  const buy = num(j.buyerFee);
+  const onl = num(j.onlineFee);
+  const mgt = num(j.managementFee);
+  const total = itm + buy + onl + mgt;
+
+  return `
+    <!doctype html><html><head><meta charset="UTF-8"><style>/* CSS */</style></head>
+    <body>
+      <!-- Invoice HTML structure -->
+      <div>Total: ${fmtUSD(total)}</div>
+    </body></html>
+  `;
+};
+
+const getBosHtml = async (j: DocumentData, buyer: any) => {
+  return `
+    <!doctype html><html><head><meta charset="UTF-8"><style>/* CSS */</style></head>
+    <body>
+      <!-- Bill of Sale HTML structure -->
+    </body></html>
+  `;
+};
+
+export const generateJacketInvoice = onRequest(
+  { region: "us-central1", timeoutSeconds: 60, memory: "1GiB", cors: true },
+  async (req, res) => {
+    try {
+      if (req.method !== "POST" && req.method !== "GET") { res.status(405).send("Method Not Allowed"); return; }
+      const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim();
+      const vin = rawVin.toUpperCase();
+      if (!vin) { res.status(400).send("Missing 'vin'"); return; }
+
+      const docRef = db.collection("jackets").doc(vin);
+      const snap = await docRef.get();
+      if (!snap.exists) { res.status(404).send("Jacket not found"); return; }
+      const j = snap.data() || {};
+      const buyer = await getBuyerData(j.dealerId);
+
+      const html = await getInvoiceHtml(j, buyer);
+      const browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "networkidle0" });
+      const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
+      await browser.close();
+
+      const invoicePath = `jacket-documents/${vin}/invoice.pdf`;
+      const file = bucket.file(invoicePath);
+      await file.save(pdfBuffer, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age:0, no-store" } });
+
+      const [signedUrl] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+      await docRef.update({ invoiceUrl: signedUrl, updatedAt: FieldValue.serverTimestamp() });
+
+      await logActivity(vin, { type: "invoiceGenerated", message: `Invoice generated (via HTTP)`, meta: { url: signedUrl } });
+      res.json({ ok: true, vin, url: signedUrl });
+    } catch (err: any) {
+      console.error("generateJacketInvoice error:", err);
+      res.status(500).send(err?.message || "Internal error");
+    }
+  }
+);
+
+
+export const generateBillOfSale = onRequest(
+  { region: "us-central1", timeoutSeconds: 60, memory: "1GiB", cors: true },
+  async (req, res) => {
+    try {
+      if (req.method !== "POST" && req.method !== "GET") { res.status(405).send("Method Not Allowed"); return; }
+      const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim();
+      const vin = rawVin.toUpperCase();
+      if (!vin) { res.status(400).send("Missing 'vin'"); return; }
+
+      const docRef = db.collection("jackets").doc(vin);
+      const snap = await docRef.get();
+      if (!snap.exists) { res.status(404).send("Jacket not found"); return; }
+      const j = snap.data() || {};
+      const buyer = await getBuyerData(j.dealerId);
+
+      const html = await getBosHtml(j, buyer);
+      const browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "networkidle0" });
+      const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
+      await browser.close();
+
+      const bosPath = `jacket-documents/${vin}/bill-of-sale.pdf`;
+      const file = bucket.file(bosPath);
+      await file.save(pdfBuffer, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age:0, no-store" } });
+
+      const [signedUrl] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+      await docRef.update({ bosUrl: signedUrl, updatedAt: FieldValue.serverTimestamp() });
+      await logActivity(vin, { type: "bosGenerated", message: `Bill of Sale generated (via HTTP)`, meta: { url: signedUrl } });
+      res.json({ ok: true, vin, url: signedUrl });
+    } catch (err: any) {
+      console.error("generateBillOfSale error:", err);
+      res.status(500).send(err?.message || "Internal error");
+    }
+  }
+);
