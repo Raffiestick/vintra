@@ -188,7 +188,7 @@ export default function StagedInvoicesPage() {
                     </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="sm" onClick={() => router.push(`/admin/staging/invoices/${h.id}`)}>Open</Button>
-                      <Button size="sm" onClick={() => handleProcessAll(h.id)}>Process All</Button>
+                      <Button size="sm" onClick={() => handleProcessAll(h.id)}>Create Jackets (All)</Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -209,5 +209,3 @@ export default function StagedInvoicesPage() {
     </div>
   );
 }
-
-    

@@ -189,7 +189,7 @@ export default function StagingInvoiceDetailPage() {
               {formatInvoiceDate(hdr)}
               {'  '}|{'  '}
               <span className="font-medium">Created:</span>{' '}
-              {hdr?.createdAt?.toDate ? hdr.createdAt.toDate().toLocaleString() : 'N/A'}
+              {hdr?.createdAt?.toDate ? hdr.createdAt.toDate().toLocaleString() : 'N A'}
             </div>
 
             {hdr?.invoiceMeta?.saleLocation ? (
@@ -207,7 +207,7 @@ export default function StagingInvoiceDetailPage() {
 
             <div className="ml-auto flex items-center gap-2">
               <Button size="sm" onClick={createAllRemaining} disabled={working === 'all' || remaining === 0}>
-                {working === 'all' ? 'Creating…' : 'Create All Remaining'}
+                {working === 'all' ? 'Creating…' : 'Create Jackets (All)'}
               </Button>
 
               {hdr?.fileUrl && (
@@ -282,5 +282,3 @@ export default function StagingInvoiceDetailPage() {
     </div>
   );
 }
-
-    
