@@ -1,10 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    // This is the correct location for this experimental flag
-    allowedDevOrigins: ["3000-firebase-studio-1756843660830.cluster-pgviq6mvsncnqxx6kr7pbz65v6.cloudworkstations.dev", "3001-firebase-studio-1756843660830.cluster-pgviq6mvsncnqxx6kr7pbz65v6.cloudworkstations.dev"],
+    // Keep this empty for now unless other experimental flags are needed.
   },
-  reactStrictMode: true,
+  // The allowedDevOrigins key must be at the top level.
+  allowedDevOrigins: ["https://*.cloudworkstations.dev"],
 };
 
 export default nextConfig;
