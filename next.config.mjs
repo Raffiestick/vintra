@@ -1,8 +1,21 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    // This is the correct configuration for the warning you were seeing.
-    allowedDevOrigins: ["3000-firebase-studio-1756843660830.cluster-pgviq6mvsncnqxx6kr7pbz65v6.cloudworkstations.dev", "3001-firebase-studio-1756843660830.cluster-pgviq6mvsncnqxx6kr7pbz65v6.cloudworkstations.dev"],
+    // NOTE: 'allowedDevOrigins' is intentionally left out of experimental.
+    // It is now a top-level property.
+  },
+  // This is the correct top-level placement for the key.
+  allowedDevOrigins: [
+    'https://*.cloudworkstations.dev',
+    'https://*.firebase.app',
+    'https://*.web.app',
+  ],
+  webpack: (config, { isServer }) => {
+    // Exclude specific modules from the server bundle to prevent errors.
+    if (isServer) {
+      config.externals.push('canvas', '@google-cloud/vertexai');
+    }
+    return config;
   },
 };
 
