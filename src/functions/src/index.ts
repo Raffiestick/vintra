@@ -150,76 +150,101 @@ function extractVinsFromText(text: string): string[] {
   return [...found];
 }
 
-function extractUnitsHeuristic(text: string) {
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const units: any[] = [];
-    const vinRE = /\b[A-HJ-NPR-Z0-9]{17}\b/; // VIN - excludes I,O,Q
-    const amountRE = /\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?)/;
-    const feeDefs = [
-      { key: 'itemPrice', re: /(?:^|\b)(?:price|winning\s*bid|unit\s*price)(?:\b|:)/i },
-      { key: 'buyerFee', re: /(?:buyer\s*fee|buy\s*fee)/i },
-      { key: 'onlineFee', re: /(?:online\s*fee|internet\s*fee)/i },
-    ];
-  
-    for (let i = 0; i < lines.length; i++) {
-      const lineU = lines[i].toUpperCase();
-      const vm = lineU.match(vinRE);
-      if (!vm) continue;
-  
-      const vin = vm[0];
-      if (units.some(u => u.vin === vin)) continue;
-  
-      const window = lines.slice(Math.max(0, i - 6), Math.min(lines.length, i + 10));
-      const unit: any = { vin };
-  
-      // Year / Make / Model
-      const ymmLine = window.find(l => /\b(19|20)\d{2}\b/.test(l) && /[A-Za-z]/.test(l));
-      if (ymmLine) {
-        const yearMatch = ymmLine.match(/\b(19|20)\d{2}\b/);
-        if (yearMatch) {
-            unit.year = Number(yearMatch[0]);
-            const idx = ymmLine.indexOf(yearMatch[0]);
-            const rest = idx >= 0 ? ymmLine.slice(idx + yearMatch[0].length).trim() : ymmLine;
-            const words = rest.split(/\s+/).filter(Boolean);
-            if (words.length) {
-              unit.make = (unit.make || words[0]).toUpperCase();
-              if (words.length > 1) unit.model = words.slice(1).join(' ');
-            }
-        }
-      }
-  
-      // Color (very heuristic)
-      const colorLine = window.find(l => /color/i.test(l));
-      if (colorLine) {
-        const after = colorLine.split(/color[:\s-]*/i).pop() || '';
-        const col = after.split(/[,\s]/).filter(Boolean)[0];
-        if (col && col.length <= 20) unit.color = col.toUpperCase();
-      }
-  
-      // Fees
-      for (const l of window) {
-        for (const f of feeDefs) {
-          if (f.re.test(l)) {
-            const m = l.match(amountRE);
-            if (m) unit[f.key] = num(m[1]);
-          }
-        }
-      }
-  
-      // Stock / Title (optional)
-      const stockLine = window.find(l => /stock\s*#?/i.test(l));
-      if (stockLine) {
-        const m = stockLine.match(/stock\s*#?\s*[:\s-]*([A-Za-z0-9-]+)/i);
-        if (m) unit.stockNo = m[1];
-      }
-      const titleLine = window.find(l => /title/i.test(l));
-      if (titleLine) unit.titleInfo = titleLine.replace(/^.*title[:\s-]*/i, '').trim();
-  
-      if (unit.managementFee == null) unit.managementFee = 100;
-      units.push(unit);
-    }
-    return units;
+/** Return YYYY-MM-DD from "DATE: 5/2/2025" etc., if present. */
+function pickInvoiceDateFromHeader(text: string): string | null {
+  const m = text.match(/DATE:\s*([0-9]{1,2})[\/\-]([0-9]{1,2})[\/\-]([0-9]{2,4})/i);
+  if (!m) return null;
+  const mm = String(+m[1]).padStart(2, '0');
+  const dd = String(+m[2]).padStart(2, '0');
+  const yyyy = String(m[3].length === 2 ? 2000 + +m[3] : +m[3]);
+  return `${yyyy}-${mm}-${dd}`;
 }
+
+/** Heuristic, deterministic parser for NPA-style invoices. */
+function parseNpaInvoiceText(text: string): {
+  invoiceDate?: string | null;
+  invoiceMeta?: { aucNo?: string; saleLocation?: string };
+  units: any[];
+} {
+  const out = { invoiceDate: pickInvoiceDateFromHeader(text), invoiceMeta: {}, units: [] as any[] };
+
+  // Normalize whitespace a little
+  const norm = text.replace(/\r/g, '').replace(/[ \t]+/g, ' ');
+
+  // Index all VINs
+  const VIN_RE = /(?<![A-Z0-9])[A-HJ-NPR-Z0-9]{17}(?![A-Z0-9])/g;
+  const vins = [...norm.matchAll(VIN_RE)];
+
+  for (let i = 0; i < vins.length; i++) {
+    const v = vins[i];
+    const start = v.index ?? 0;
+    const end = i < vins.length - 1 ? (vins[i + 1].index ?? norm.length) : norm.length;
+    const chunk = norm.slice(start, end);
+    const pre   = norm.slice(Math.max(0, start - 300), start + 50); // catch STOCK# that may be before VIN
+
+    const unit: any = { vin: v[0].toUpperCase() };
+
+    // Year / make / model: "2005 HARLEY-DAVIDSON FLHRCI ROAD KING CLASSIC"
+    const ymm = chunk.match(/(?:^|\s)(\d{4})\s+([A-Z][A-Z-]+)\s+([A-Z0-9][A-Z0-9 /()'*-]+?)(?=\s+(?:SALE LOC:|[A-Z]{2}\s+TITLE|Item Price|PRICE|Sub-Total))/);
+    if (ymm) {
+      unit.year  = +ymm[1];
+      unit.make  = ymm[2];
+      unit.model = ymm[3].replace(/\s+/g, ' ').trim();
+    }
+
+    // Color and odometer/hours: "... 38751 [PURPLE]" or "... 914H [WHT/BLU]"
+    const color = chunk.match(/\[([A-Z/ ]+?)\]/);
+    if (color) unit.color = color[1].replace(/\s+/g, '').toUpperCase();
+
+    const hours = chunk.match(/(\d{1,6})\s*H\b/i);
+    if (hours) unit.hours = +hours[1];
+    else if (color) {
+      // look just before the color tag for a 4-6 digit odometer
+      const idx = chunk.indexOf(color[0]);
+      const look = chunk.slice(Math.max(0, idx - 12), idx);
+      const odo = look.match(/(\d{4,6})\s*$/);
+      if (odo) unit.odometer = +odo[1];
+    }
+
+    // Title info: "FL TITLE", "ME TITLE", "OH TITLE /TRL"
+    const t = chunk.match(/([A-Z]{2})\s+TITLE(?:\s*\/\s*TRL)?/i);
+    if (t) unit.titleInfo = t[0].replace(/\s+/g, ' ').toUpperCase();
+
+    // Sale location: "SALE LOC: NPA ATLANTA"
+    const sale = chunk.match(/SALE LOC:\s*([A-Z ]{3,})/i);
+    if (sale) unit.saleLocation = sale[1].replace(/\s+/g, ' ').trim();
+
+    // Stock#: appears before or after VIN depending on PDF text order
+    const stock = (pre.match(/STOCK#\s*(\d{5,})/i) || chunk.match(/STOCK#\s*(\d{5,})/i));
+    if (stock) unit.stockNo = stock[1];
+
+    // Fees: exact labels present in your samples
+    const price = chunk.match(/Item Price:\s*\$?\s*([\d,]+(?:\.\d{2})?)/i);
+    const bfee  = chunk.match(/Buyer Fee:\s*\$?\s*([\d,]+(?:\.\d{2})?)/i);
+    const ofee  = chunk.match(/Online Fee:\s*\$?\s*([\d,]+(?:\.\d{2})?)/i);
+    if (price) unit.itemPrice  = parseFloat(price[1].replace(/,/g, ''));
+    if (bfee)  unit.buyerFee   = parseFloat(bfee[1].replace(/,/g, ''));
+    if (ofee)  unit.onlineFee  = parseFloat(ofee[1].replace(/,/g, ''));
+
+    // Auction number (per row), when it shows up in text
+    const auc = (pre.match(/\bAUC#\s*([0-9]+)\b/i) || chunk.match(/\bAUC#\s*([0-9]+)\b/i));
+    if (auc) unit.aucNo = auc[1];
+
+    // Default mgmt fee if you want it present downstream
+    if (unit.managementFee == null) unit.managementFee = 100;
+
+    out.units.push(unit);
+  }
+
+  // Also capture a header-level auction/sale location if present
+  if (!out.invoiceMeta?.saleLocation) {
+    const headerSale = norm.match(/SALE LOC:\s*([A-Z ]{3,})/i);
+    if (headerSale) out.invoiceMeta = { ...(out.invoiceMeta || {}), saleLocation: headerSale[1].trim() };
+  }
+
+  return out;
+}
+
 
 /* ───────────────────── Auth Callables ───────────────────── */
 
@@ -274,9 +299,14 @@ export const startInvoiceParse = onRequest(
       const text = await extractPdfText(nodeBuffer);
       if (!text?.trim()) { res.status(500).json({ error: "Extracted text is empty." }); return; }
 
-      // 3) Ask Gemini — STRICT JSON with invoiceDate
-      const model = getGeminiModel();
-      const prompt = `
+      // Deterministic parse first (handles NPA invoices reliably)
+      let extracted = parseNpaInvoiceText(text);
+
+      // If still empty or missing many fields, let Gemini try to enrich it
+      if (!extracted.units.length) {
+        try {
+          const model = getGeminiModel();
+          const prompt = `
 Return STRICT JSON only (no prose) with this schema:
 {
   "invoiceDate": "YYYY-MM-DD"?,             // normalized sale/invoice date
@@ -297,48 +327,32 @@ Rules:
 - Omit a field if unknown; DO NOT invent values.
 TEXT:
 """${text.slice(0, 20000)}"""`;
-
-      let aiResult: any = {};
-      try {
-        const ai = await model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }] });
-        aiResult = JSON.parse(ai.response?.text() || "{}");
-      } catch (e) {
-        console.warn("LLM parse failed; falling back to regex only:", e);
+          const ai = await model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }] });
+          const llm = JSON.parse(ai.response?.text() || "{}");
+          // merge LLM over parsed (don't lose good regex fields)
+          extracted = {
+            invoiceDate: extracted.invoiceDate || llm.invoiceDate || guessInvoiceDateFromText(text),
+            invoiceMeta: { ...(extracted.invoiceMeta || {}), ...(llm.invoiceMeta || {}) },
+            units: (Array.isArray(llm.units) ? llm.units : []).map((u: any, i: number) => ({ ...(extracted.units[i] || {}), ...u }))
+                    .filter(Boolean)
+          };
+        } catch (e) {
+          // Fallbacks only
+          if (!extracted.invoiceDate) extracted.invoiceDate = guessInvoiceDateFromText(text);
+        }
       }
 
-      // 4) Get heuristic results and merge
-      let units: any[] = Array.isArray(aiResult?.units) ? aiResult.units : [];
-
-      // Normalize early in case LLM returned partials
-      for (const u of units) {
-        if (!u) continue;
-        if (typeof u.vin === 'string') u.vin = u.vin.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
-        u.itemPrice = num(u.itemPrice);
-        u.buyerFee = num(u.buyerFee);
-        u.onlineFee = num(u.onlineFee);
-        if (u.managementFee == null) u.managementFee = 100;
-        if (u.year != null) u.year = Number(u.year) || undefined;
-        if (u.hours != null) u.hours = Number(u.hours) || undefined;
-        if (u.odometer != null) u.odometer = Number(u.odometer) || undefined;
-      }
-
-      // If model returned nothing (or only VINs), try the heuristic parser:
-      if (!units.length) {
-        units = extractUnitsHeuristic(text);
-      }
-
-      // As a last resort, ensure at least VINs exist so the batch isn’t empty:
-      if (!units.length) {
-        const vins = extractVinsFromText(text);
-        units = vins.map(v => ({ vin: v, managementFee: 100 }));
+      // If still no units, at least seed with VINs so the batch is never empty
+      if (!extracted.units.length) {
+        for (const vin of extractVinsFromText(text)) extracted.units.push({ vin, managementFee: 100 });
       }
       
-      const finalUnits = units;
+      const finalUnits = extracted.units;
 
-      const invoiceDate = aiResult?.invoiceDate || guessInvoiceDateFromText(text);
+      const invoiceDate = extracted.invoiceDate;
       const iso = normalizeIsoFromDateLike(invoiceDate);
       const invoiceDateTs = iso ? new Date(`${iso}T12:00:00.000Z`) : null;
-      const invoiceMeta = aiResult?.invoiceMeta ?? {};
+      const invoiceMeta = extracted.invoiceMeta ?? {};
 
 
       // 5) Write staging header + units
@@ -416,7 +430,7 @@ export const createJacketFromUnit = onCall(
       : null;
 
     let auctionSaleDate: any = FieldValue.serverTimestamp();
-    if (pickedIso) auctionSaleDate = new Date(`${pickedIso}T00:00:00.000Z`);
+    if (pickedIso) auctionSaleDate = new Date(`${pickedIso}T12:00:00.000Z`);
     else if (staging?.invoiceDateTs) auctionSaleDate = staging.invoiceDateTs;
 
     const jacketRef = db.collection("jackets").doc(vin);
