@@ -67,8 +67,6 @@
     "typescript": "^5.5.3"
   },
   "overrides": {
-    "undici": "^6.21.2",
-    "ip": "^2.0.1",
-    "follow-redirects": "^1.15.6"
+    "undici": "^6.21.2"
   }
 }
