@@ -18,7 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallableClient } from '@/lib/firebase/client';
 
 type Status = 'new' | 'in-progress' | 'processed';
 
@@ -136,8 +136,7 @@ export default function StagingInvoiceDetailPage() {
     if (!stagingId) return;
     try {
         setWorking(unitId);
-        const functions = getFunctions(undefined, 'us-central1');
-        const fn = httpsCallable(functions, 'createJacketFromUnit');
+        const fn = httpsCallableClient('createJacketFromUnit');
         const { data } = await fn({ stagingId, unitId });
         const vin = (data as any)?.vin || ((data as any)?.path || '').split('/').pop();
         if (!vin) throw new Error('Jacket created, but VIN missing in response.');
@@ -155,8 +154,7 @@ export default function StagingInvoiceDetailPage() {
   async function createAllRemaining() {
     try {
       setWorking('all');
-      const functions = getFunctions(undefined, 'us-central1');
-      const callable = httpsCallable(functions, 'createJacketsForInvoice');
+      const callable = httpsCallableClient('createJacketsForInvoice');
       const resp: any = await callable({ stagingId });
       const created = resp?.data?.created ?? 0;
       toast({ title: 'Batch complete', description: `Created ${created} jacket(s).` });
