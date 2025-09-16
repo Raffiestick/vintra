@@ -109,26 +109,20 @@ export function getGeminiModel() {
 }
 
 /* --- PDF text extraction --- */
+const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
 export async function extractPdfText(buf: Buffer): Promise<string> {
+  if (buf.length > MAX_PDF_SIZE_BYTES) {
+    throw new HttpsError("invalid-argument", `File is too large. Maximum size is ${MAX_PDF_SIZE_BYTES / 1024 / 1024}MB.`);
+  }
+
   try {
-    const pdfParse = (await import("pdf-parse")).default as (
-      data: Buffer | Uint8Array | ArrayBuffer
-    ) => Promise<{ text: string }>;
-    const { text } = await pdfParse(buf);
-    return String(text || "");
-  } catch (error) {
-    console.error("Failed to extract PDF text:", error);
-    // Fallback attempt for different import structures that can occur
-    // in different environments (like pure CommonJS vs. ESM-interop)
-    try {
-        const mod: any = await import("pdf-parse");
-        const fn = mod?.default || mod;
-        const res = await fn(buf);
-        return String(res?.text || "");
-    } catch (fallbackError) {
-        console.error("Fallback PDF parse failed:", fallbackError);
-        throw new Error("Failed to extract PDF text after multiple attempts.");
-    }
+    const pdf = (await import("pdf-parse")).default;
+    const data = await pdf(buf);
+    return data.text || "";
+  } catch (error: any) {
+    console.error("PDF text extraction failed:", error);
+    throw new HttpsError("internal", "Could not parse the PDF file. It may be corrupted or in an unsupported format.", error.message);
   }
 }
 
