@@ -3,10 +3,13 @@
 import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const DealerManagementClient = dynamic(() => import('./DealerManagementClient'), { 
-  ssr: false,
-  loading: () => <DealerManagementSkeleton />
-});
+const DealerManagementClient = dynamic(
+  () => import('./DealerManagementClient'),
+  { 
+    ssr: false,
+    loading: () => <DealerManagementSkeleton />
+  }
+);
 
 function DealerManagementSkeleton() {
   return (
