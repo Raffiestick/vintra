@@ -36,7 +36,7 @@ interface Jacket extends DocumentData {
     isAuctionPaid?: boolean;
     isMgmtPaid?: boolean; // legacy
     isMgmtFeePaid?: boolean;
-    miscFees?: { amount?: number }[];
+    miscFees?: { amount?: number, paid?: boolean }[];
     invoiceUrl?: string;
     bosUrl?: string;
     packetUrl?: string;
@@ -54,12 +54,19 @@ const num = (x: any): number => Number(x || 0);
 const calculateFinancials = (jacket: Jacket) => {
     const auctionDue = num(jacket.itemPrice) + num(jacket.buyerFee) + num(jacket.onlineFee);
     const mgmtDue = num(jacket.managementFee);
-    const miscTotal = Array.isArray(jacket.miscFees) ? jacket.miscFees.reduce((s, f) => s + num(f?.amount), 0) : 0;
-    const subtotal = auctionDue + mgmtDue + miscTotal;
+
+    const miscFees = jacket.miscFees || [];
+    const unpaidMisc = miscFees.filter(f => !f.paid).reduce((s, f) => s + num(f?.amount), 0);
+    const paidMisc = miscFees.filter(f => f.paid).reduce((s, f) => s + num(f?.amount), 0);
+
+    const totalCost = auctionDue + mgmtDue + unpaidMisc + paidMisc;
+    
     const isMgmtActuallyPaid = (jacket.isMgmtFeePaid ?? jacket.isMgmtPaid) === true;
-    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtActuallyPaid ? mgmtDue : 0);
-    const balanceDue = Math.max(0, subtotal - amountPaid);
-    const isFullyPaid = jacket.isAuctionPaid && isMgmtActuallyPaid;
+    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtActuallyPaid ? mgmtDue : 0) + paidMisc;
+
+    const balanceDue = Math.max(0, totalCost - amountPaid);
+    const isFullyPaid = balanceDue <= 0.01; // Use a small epsilon for float comparison
+
     return { amountPaid, balanceDue, isFullyPaid };
 };
 
