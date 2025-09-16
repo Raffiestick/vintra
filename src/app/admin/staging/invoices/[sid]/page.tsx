@@ -176,27 +176,29 @@ export default function StagingInvoiceDetailPage() {
         <CardHeader className="items-start">
           <CardTitle>Staged Invoice: {stagingId}</CardTitle>
 
-          <CardDescription className="space-y-1">
-            <div>
-              <span className="font-medium">Source:</span>{' '}
-              {(hdr?.source || 'N/A').toString().toUpperCase()}
-              {'  '}|{'  '}
-              <span className="font-medium">Auction #:</span>{' '}
-              {hdr?.invoiceMeta?.aucNo || 'N/A'}
-              {'  '}|{'  '}
-              <span className="font-medium">Invoice Date:</span>{' '}
-              {formatInvoiceDate(hdr)}
-              {'  '}|{'  '}
-              <span className="font-medium">Created:</span>{' '}
-              {hdr?.createdAt?.toDate ? hdr.createdAt.toDate().toLocaleString() : 'N A'}
-            </div>
-
-            {hdr?.invoiceMeta?.saleLocation ? (
+          <CardDescription asChild>
+            <div className="space-y-1">
               <div>
-                <span className="font-medium">Location:</span>{' '}
-                {hdr.invoiceMeta.saleLocation}
+                <span className="font-medium">Source:</span>{' '}
+                {(hdr?.source || 'N/A').toString().toUpperCase()}
+                {'  '}|{'  '}
+                <span className="font-medium">Auction #:</span>{' '}
+                {hdr?.invoiceMeta?.aucNo || 'N/A'}
+                {'  '}|{'  '}
+                <span className="font-medium">Invoice Date:</span>{' '}
+                {formatInvoiceDate(hdr)}
+                {'  '}|{'  '}
+                <span className="font-medium">Created:</span>{' '}
+                {hdr?.createdAt?.toDate ? hdr.createdAt.toDate().toLocaleString() : 'N A'}
               </div>
-            ) : null}
+
+              {hdr?.invoiceMeta?.saleLocation ? (
+                <div>
+                  <span className="font-medium">Location:</span>{' '}
+                  {hdr.invoiceMeta.saleLocation}
+                </div>
+              ) : null}
+            </div>
           </CardDescription>
 
           <div className="mt-3 flex flex-wrap gap-2">
