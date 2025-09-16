@@ -1,3 +1,4 @@
+
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { adminAuth, assertAdmin, db } from "../config";
