@@ -1,12 +1,11 @@
-
 'use client';
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-import dynamicImport from 'next/dynamic';
+import NextDynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const DealerManagementClient = dynamicImport(
+const DealerManagementClient = NextDynamic(
   () => import('./DealerManagementClient'),
   { 
     ssr: false,

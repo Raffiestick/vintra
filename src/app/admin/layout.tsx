@@ -1,14 +1,11 @@
-import AdminSidebar from './AdminSidebar';
+// This layout file is now much simpler.
+// The main AppShell in the parent (app) layout handles the sidebar and header.
+// This file just ensures the children are rendered.
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <AdminSidebar />
-      <main className="flex-1 p-8 overflow-auto">{children}</main>
-    </div>
-  );
+  return <>{children}</>;
 }
