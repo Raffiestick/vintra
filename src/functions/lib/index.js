@@ -1,6 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startDocParse = exports.generateJacketPacket = exports.generateBillOfSale = exports.generateJacketInvoice = exports.attachStagedDocToJacket = exports.createJacketsForInvoice = exports.createJacketFromUnit = exports.generateJacketId = exports.manageDealerApplication = exports.signInWithCustomToken = void 0;
+const v2_1 = require("firebase-functions/v2");
+// Set global options for all functions in this project
+(0, v2_1.setGlobalOptions)({ region: "us-central1", memory: "1GiB", timeoutSeconds: 300 });
 // Re-export all your functions from small modules
 var auth_1 = require("./modules/auth");
 Object.defineProperty(exports, "signInWithCustomToken", { enumerable: true, get: function () { return auth_1.signInWithCustomToken; } });

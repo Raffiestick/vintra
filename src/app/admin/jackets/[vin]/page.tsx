@@ -27,7 +27,7 @@ import {
 } from "firebase/storage";
 import { useAuth } from "@/hooks/use-auth";
 import { useSafeSnapshot } from "@/hooks/useSafeSnapshot";
-import { db, storage, auth } from "@/lib/firebase/client";
+import { db, storage, auth, httpsCallableClient } from "@/lib/firebase/client";
 import {
   Card,
   CardContent,
@@ -416,39 +416,28 @@ export default function JacketDetailPage() {
     if (!vin || !isAdmin) return;
     setIsGeneratingInvoice(true);
     try {
-        const response = await fetch("https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/generateJacketInvoice", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vin: vin })
-        });
+        const generateJacketInvoice = httpsCallableClient('generateJacketInvoice');
+        const result = await generateJacketInvoice({ vin });
+        const { url, invoiceId } = result.data as { url?: string, invoiceId?: string };
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to generate invoice: ${errorText}`);
-        }
-
-        const result = await response.json();
-        
-        if (result?.url) setInvoiceUrlLocal(result.url);
-        if (result?.invoiceId) setInvoiceIdLocal(result.invoiceId);
-        
-        if (result?.url) {
-             toast({
+        if (url) {
+            setInvoiceUrlLocal(url);
+            if (invoiceId) setInvoiceIdLocal(invoiceId);
+            toast({
                 title: "Invoice Ready!",
                 description: (
-                    <a href={result.url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
                         Click here to open the invoice.
                     </a>
                 )
             });
-            await logActivity(vin as string, { type: "invoiceGenerated", message: `Invoice generated ${result?.invoiceId ? " — " + result.invoiceId : ""}`, meta: { invoiceId: result?.invoiceId } });
+            await logActivity(vin, { type: "invoiceGenerated", message: `Invoice generated ${invoiceId ? " — " + invoiceId : ""}`, meta: { invoiceId } });
         } else {
             toast({
                 title: "Invoice Generation Started",
                 description: "The invoice is being generated and will appear here shortly.",
             });
         }
-        
     } catch (err: any) {
         console.error("Error generating invoice:", err);
         toast({
@@ -461,42 +450,31 @@ export default function JacketDetailPage() {
     }
   }, [vin, isAdmin, toast]);
 
-
   const handleGenerateBos = useCallback(async () => {
     if (!vin || !isAdmin) return;
     setIsGeneratingBos(true);
     try {
-        const response = await fetch("https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/generateBillOfSale", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vin: vin })
-        });
+        const generateBillOfSale = httpsCallableClient('generateBillOfSale');
+        const result = await generateBillOfSale({ vin });
+        const { url } = result.data as { url?: string };
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to generate Bill of Sale: ${errorText}`);
-        }
-
-        const result = await response.json();
-        
-        if (result?.url) {
-            setBosUrlLocal(result.url);
+        if (url) {
+            setBosUrlLocal(url);
             toast({
                 title: "Bill of Sale Ready!",
                 description: (
-                    <a href={result.url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
                         Click here to open the BOS.
                     </a>
                 )
             });
-            await logActivity(vin as string, { type: "bosGenerated", message: "Bill of Sale generated", meta: { url: result.url } });
+            await logActivity(vin, { type: "bosGenerated", message: "Bill of Sale generated", meta: { url } });
         } else {
             toast({
                 title: "BOS Generation Started",
                 description: "The Bill of Sale is being generated and will appear here shortly.",
             });
         }
-        
     } catch (err: any) {
         console.error("Error generating Bill of Sale:", err);
         toast({
