@@ -1,10 +1,10 @@
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  experimental: {
-    // leave empty or only supported flags
-  }
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "picsum.photos" },
+      { protocol: "https", hostname: "images.unsplash.com" }
+    ],
+  },
 };
-
 export default nextConfig;

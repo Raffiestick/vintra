@@ -19,8 +19,7 @@ const config = {
     },
     extend: {
       fontFamily: {
-        sans: ["var(--font-inter)"],
-        manrope: ["var(--font-manrope)"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -58,9 +57,9 @@ const config = {
         },
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        lg: "14px",
+        md: "calc(14px - 2px)",
+        sm: "calc(14px - 4px)",
       },
       keyframes: {
         "accordion-down": {
