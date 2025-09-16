@@ -4,7 +4,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AuthDialog } from "@/components/auth/AuthDialog";
-import "../globals.css";
 
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
