@@ -12,36 +12,69 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Download } from 'lucide-react';
 import { useSafeSnapshot } from '@/hooks/useSafeSnapshot';
 import { useAuth } from '@/hooks/use-auth';
+import { Skeleton } from '@/components/ui/skeleton';
+
+function DealerManagementSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-8 w-1/4" />
+        <Skeleton className="h-4 w-1/2" />
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {[...Array(5)].map((_, i) => <TableHead key={i}><Skeleton className="h-5 w-full" /></TableHead>)}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {[...Array(3)].map((_, i) => (
+              <TableRow key={i}>
+                {[...Array(5)].map((_, j) => <TableCell key={j}><Skeleton className="h-6 w-full" /></TableCell>)}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function DealerManagementClient() {
-    const { isAdmin } = useAuth();
+    const { isAdmin, loading: authLoading } = useAuth();
     const [pendingDealers, setPendingDealers] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const { toast } = useToast();
 
     useSafeSnapshot(() => {
         if (!isAdmin) {
-            setLoading(false);
+            if(!authLoading) {
+                setLoadingData(false);
+                setError("You don't have permission to view this page.");
+            }
             return;
         };
 
         const q = query(collection(db, "users"), where("status", "==", "pending"));
-        return onSnapshot(q, (querySnapshot) => {
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const dealersData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setPendingDealers(dealersData);
-            setLoading(false);
+            setLoadingData(false);
             setError(null);
         }, (err) => {
             console.error("Error fetching pending dealers: ", err);
             setError(err.code === 'permission-denied' ? "You don't have permission to view this." : "Failed to load pending dealers.");
-            setLoading(false);
+            setLoadingData(false);
         });
-    }, [isAdmin]);
+
+        return unsubscribe;
+    }, [isAdmin, authLoading]);
 
     const handleApplication = async (uid: string, action: 'approve' | 'deny') => {
         try {
-            const manageDealerApplication = await httpsCallableClient('manageDealerApplication');
+            const manageDealerApplication = httpsCallableClient('manageDealerApplication');
             await manageDealerApplication({ uid, action });
             toast({ title: `Dealer ${action === 'approve' ? 'Approved' : 'Denied'}` });
         } catch (error: any) {
@@ -50,8 +83,21 @@ export default function DealerManagementClient() {
         }
     };
     
+    if (authLoading || loadingData) {
+        return <DealerManagementSkeleton />;
+    }
+
     if (error) {
-        return <div className="p-4 text-sm text-red-600">{error}</div>;
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Error</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-destructive">{error}</p>
+                </CardContent>
+            </Card>
+        );
     }
 
     return (
@@ -72,13 +118,7 @@ export default function DealerManagementClient() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {loading ? (
-                            <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center">
-                                    Loading...
-                                </TableCell>
-                            </TableRow>
-                        ) : pendingDealers.length === 0 ? (
+                        {pendingDealers.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={5} className="h-24 text-center">
                                     No pending applications.
