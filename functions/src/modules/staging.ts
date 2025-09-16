@@ -1,3 +1,4 @@
+
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { db, bucket, FieldValue, normalizeIsoFromDateLike, extractVinsFromText, toUsDate, assertAdmin, getGeminiModel } from "../config";
 import { parseNpaInvoiceText } from "../parsers/npa";
@@ -77,7 +78,7 @@ export const startInvoiceParse = onRequest(
       const invoiceDateTs = iso ? new Date(`${iso}T12:00:00.000Z`) : null; // noon UTC avoids TZ "previous day" issues
 
       // 6) Write staging header + units
-      const now = db.app.firestore.FieldValue.serverTimestamp();
+      const now = FieldValue.serverTimestamp();
       const stagingId = db.collection("stagingInvoices").doc().id;
       const [fileUrl] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
       const uploaderUid = gcsPath.split("/")[2] || null;
@@ -149,7 +150,7 @@ export const createJacketFromUnit = onCall(
       ? unit.invoiceDate
       : null;
 
-    let auctionSaleDate: any = db.app.firestore.FieldValue.serverTimestamp();
+    let auctionSaleDate: any = FieldValue.serverTimestamp();
     if (pickedIso) auctionSaleDate = new Date(`${pickedIso}T12:00:00.000Z`);
     else if (staging?.invoiceDateTs) auctionSaleDate = staging.invoiceDateTs;
 
@@ -186,11 +187,11 @@ export const createJacketFromUnit = onCall(
 
         miscFees: [],
         documents: [],
-        updatedAt: db.app.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       };
 
       if (!jacketSnap.exists) {
-        jacketData.createdAt = db.app.firestore.FieldValue.serverTimestamp();
+        jacketData.createdAt = FieldValue.serverTimestamp();
         jacketData.jacketId = `J${Date.now()}`;
         tx.set(jacketRef, jacketData);
       } else {
@@ -201,7 +202,7 @@ export const createJacketFromUnit = onCall(
     // reference back and mark processed
     await unitRef.update({
       processed: true,
-      processedAt: db.app.firestore.FieldValue.serverTimestamp(),
+      processedAt: FieldValue.serverTimestamp(),
       processedBy: request.auth.uid,
       jacketVin: vin,
       jacketPath: jacketRef.path,
@@ -215,7 +216,7 @@ export const createJacketFromUnit = onCall(
     // If all units processed, mark batch processed
     const remainingQuery = await stagingRef.collection("units").where("processed", "==", false).limit(1).get();
     if (remainingQuery.empty) {
-      await stagingRef.update({ status: "processed", processedAt: db.app.firestore.FieldValue.serverTimestamp() });
+      await stagingRef.update({ status: "processed", processedAt: FieldValue.serverTimestamp() });
     }
 
     return { success: true, path: jacketRef.path, vin };

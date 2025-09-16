@@ -1,5 +1,6 @@
+
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { assertAdmin, bucket, db } from "../config";
+import { assertAdmin, bucket, db, FieldValue } from "../config";
 
 export const attachStagedDocToJacket = onCall(
   { region: "us-central1" },
@@ -33,12 +34,12 @@ export const attachStagedDocToJacket = onCall(
       name: fileName,
       type: docType,
       url: signedUrl,
-      createdAt: db.app.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     };
 
     await db.collection("jackets").doc(vin).update({
-      documents: db.app.firestore.FieldValue.arrayUnion(newDocument),
-      updatedAt: db.app.firestore.FieldValue.serverTimestamp(),
+      documents: FieldValue.arrayUnion(newDocument),
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     await stagedDocRef.delete().catch(() => {}); // optional

@@ -1,3 +1,4 @@
+
 import { defineSecret } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
@@ -16,6 +17,7 @@ if (getApps().length === 0) initializeApp();
 export const db = getFirestore();
 export const adminAuth = getAuth();
 export const bucket = getStorage().bucket();
+export { FieldValue }; // Export FieldValue
 
 /* --- seller info (for PDFs) --- */
 export const seller = {

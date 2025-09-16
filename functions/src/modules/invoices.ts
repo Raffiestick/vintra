@@ -1,7 +1,8 @@
+
 import { onRequest } from "firebase-functions/v2/https";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
-import { bucket, db } from "../config";
+import { bucket, db, FieldValue } from "../config";
 import { renderInvoiceHTML } from "../templates/invoice";
 import { renderBoSHTML } from "../templates/bos";
 
@@ -48,7 +49,7 @@ export const generateJacketInvoice = onRequest(
       await bucket.file(path).save(pdf, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
       const [url] = await bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7*24*60*60*1000 });
 
-      await ref.update({ invoiceUrl: url, updatedAt: db.app.firestore.FieldValue.serverTimestamp() });
+      await ref.update({ invoiceUrl: url, updatedAt: FieldValue.serverTimestamp() });
       res.json({ ok: true, vin: rawVin, url });
     } catch (e: any) {
       console.error("generateJacketInvoice error:", e);
@@ -81,7 +82,7 @@ export const generateBillOfSale = onRequest(
       await bucket.file(path).save(pdf, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
       const [url] = await bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7*24*60*60*1000 });
 
-      await ref.update({ bosUrl: url, updatedAt: db.app.firestore.FieldValue.serverTimestamp() });
+      await ref.update({ bosUrl: url, updatedAt: FieldValue.serverTimestamp() });
       res.json({ ok: true, vin: rawVin, url });
     } catch (e: any) {
       console.error("generateBillOfSale error:", e);

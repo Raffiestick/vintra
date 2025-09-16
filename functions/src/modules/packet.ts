@@ -1,8 +1,9 @@
+
 import { onRequest } from "firebase-functions/v2/https";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { PDFDocument } from "pdf-lib";
-import { bucket, db, logActivity } from "../config";
+import { bucket, db, logActivity, FieldValue } from "../config";
 
 export const generateJacketPacket = onRequest(
   { region: "us-central1", timeoutSeconds: 180, memory: "1GiB", cors: true },
@@ -95,7 +96,7 @@ export const generateJacketPacket = onRequest(
       await bucket.file(packetPath).save(packetBytes, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
 
       const [signedUrl] = await bucket.file(packetPath).getSignedUrl({ action: "read", expires: Date.now() + 7*24*60*60*1000 });
-      await docRef.update({ packetUrl: signedUrl, updatedAt: db.app.firestore.FieldValue.serverTimestamp() });
+      await docRef.update({ packetUrl: signedUrl, updatedAt: FieldValue.serverTimestamp() });
       await logActivity(rawVin, { type: "packetGenerated", message: "Packet generated (cover + invoice + BOS + attachments)", meta: { url: signedUrl } });
 
       res.status(200).json({ ok: true, vin: rawVin, url: signedUrl });
