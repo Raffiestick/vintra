@@ -492,30 +492,21 @@ export default function JacketDetailPage() {
     if (!vin || !isAdmin) return;
     setIsGeneratingPacket(true);
     try {
-        const response = await fetch("https://us-central1-rizeup-dealer-connect-n6k7r.cloudfunctions.net/generateJacketPacket", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vin: vin })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to generate packet: ${errorText}`);
-        }
-
-        const result = await response.json();
+        const generateJacketPacket = httpsCallableClient('generateJacketPacket');
+        const result = await generateJacketPacket({ vin });
+        const { url } = result.data as { url?: string };
         
-        if (result?.url) {
-            setPacketUrlLocal(result.url);
+        if (url) {
+            setPacketUrlLocal(url);
             toast({
                 title: "Jacket Packet Ready!",
                 description: (
-                    <a href={result.url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
                         Click here to open the packet.
                     </a>
                 )
             });
-            await logActivity(vin as string, { type: "packetGenerated", message: "Jacket Packet generated", meta: { url: result.url } });
+            await logActivity(vin as string, { type: "packetGenerated", message: "Jacket Packet generated", meta: { url } });
         } else {
             toast({
                 title: "Packet Generation Started",
