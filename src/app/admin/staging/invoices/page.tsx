@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -119,21 +118,20 @@ export default function StagedInvoicesPage() {
   }, [invoices, hideProcessed]);
 
   async function handleProcessAll(stagingId: string) {
-    const toastId = 'process-all-toast';
-    toast({ id: toastId, title: "Processing Batch...", description: "Please wait while jackets are being created." });
+    const { id: toastId } = toast({ title: "Processing Batch...", description: "Please wait while jackets are being created." });
     try {
-      const createJacketsForInvoice = await httpsCallableClient('createJacketsForInvoice');
+      const createJacketsForInvoice = httpsCallableClient('createJacketsForInvoice');
       const res: any = await createJacketsForInvoice({ stagingId });
       
       const createdCount = res?.data?.created ?? 0;
       if (createdCount > 0) {
-        toast({ id: toastId, title: "Batch Processed!", description: `Successfully created ${createdCount} jackets.` });
+        toast({ title: "Batch Processed!", description: `Successfully created ${createdCount} jackets.` });
       } else {
-        toast({ id: toastId, title: "Batch Complete", description: "No new jackets were created." });
+        toast({ title: "Batch Complete", description: "No new jackets were created." });
       }
     } catch (e: any) {
       console.error(e);
-      toast({ id: toastId, title: "Batch Processing Failed", description: e?.message || "An unknown error occurred.", variant: "destructive" });
+      toast({ title: "Batch Processing Failed", description: e?.message || "An unknown error occurred.", variant: "destructive" });
     }
   }
 
