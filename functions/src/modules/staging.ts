@@ -1,6 +1,6 @@
 
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
-import { db, bucket, FieldValue, normalizeIsoFromDateLike, extractVinsFromText, toUsDate, assertAdmin, getGeminiModel, num } from "../config";
+import { db, bucket, FieldValue, normalizeIsoFromDateLike, extractVinsFromText, toUsDate, assertAdmin, getGeminiModel, num, extractPdfText } from "../config";
 import { parseNpaInvoiceText } from "../parsers/npa";
 import type { Transaction } from "firebase-admin/firestore";
 
@@ -47,7 +47,6 @@ export const startInvoiceParse = onRequest(
       const nodeBuffer: Buffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded as any);
       if (!nodeBuffer?.length) { res.status(500).json({ error: "Downloaded file buffer is empty. Cannot parse." }); return; }
 
-      const { extractPdfText } = await import("../config/index.js");
       const text = await extractPdfText(nodeBuffer);
       if (!text?.trim()) { res.status(500).json({ error: "Extracted text is empty." }); return; }
 
