@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { doc, updateDoc } from "firebase/firestore";
 import { auth, db, storage } from "@/lib/firebase/client";
@@ -18,8 +18,8 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import type { User } from "firebase/auth";
 import { Progress } from "@/components/ui/progress";
+import { Loader2, UploadCloud } from "lucide-react";
 
 export default function UploadDocumentsPage() {
   const router = useRouter();
@@ -125,26 +125,22 @@ export default function UploadDocumentsPage() {
         description: errorMessage,
         variant: "destructive",
       });
-      // Re-throw the error to be caught by the calling function's catch block
-      throw err;
     } finally {
       setUploading(false);
-      setCertProgress(0);
-      setIdProgress(0);
     }
   }, [certFile, idFile, user, router, toast]);
 
   const handleSubmit = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    handleUpload().catch((err) => {
-      // The error is already logged and displayed in the toast by handleUpload.
-      // This catch block simply prevents the unhandled promise rejection crash.
-      console.log("Submit failed, error was caught.");
-    });
+    handleUpload();
   };
 
   if (!user) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
   }
 
   return (
@@ -205,10 +201,12 @@ export default function UploadDocumentsPage() {
             disabled={uploading || !certFile || !idFile}
             className="w-full"
           >
-            {uploading ? "Uploading..." : "Submit Documents"}
+            {uploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Uploading...</> : <><UploadCloud className="mr-2 h-4 w-4"/>Submit Documents</>}
           </Button>
         </CardContent>
       </Card>
     </div>
   );
 }
+
+    
