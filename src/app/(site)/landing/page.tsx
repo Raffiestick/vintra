@@ -1,8 +1,10 @@
+
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { AuthDialog } from "@/components/auth/AuthDialog";
+import { TiltCard } from "@/components/ui/tilt-card"; // Import the new component
 
 /* ---------- small UI bits ---------- */
 
@@ -31,49 +33,6 @@ function GlowCard({ children, className }: { children: React.ReactNode; classNam
   );
 }
 
-/* Optional inner image tilt */
-function TiltImage({ src, alt }: { src: string; alt: string }) {
-  return (
-    <div className="group relative [perspective:1000px]" style={{ transformStyle: "preserve-3d" }}>
-      <img
-        src={src}
-        alt={alt}
-        className="w-full h-auto rounded-lg transition-transform duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover:[transform:rotateX(10deg)_rotateY(-10deg)_translateZ(20px)]"
-      />
-    </div>
-  );
-}
-
-/* ✅ Tilt wrapper DIV holds the mouse listeners (not the card component) */
-function TiltCard({ children, className }: { children: React.ReactNode; className?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [rotate, setRotate] = useState({ x: 0, y: 0 });
-
-  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const el = ref.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const xPct = (e.clientX - r.left) / r.width - 0.5;
-    const yPct = (e.clientY - r.top) / r.height - 0.5;
-    setRotate({ x: yPct * -12, y: xPct * 12 });
-  };
-  const onMouseLeave = () => setRotate({ x: 0, y: 0 });
-
-  return (
-    <div
-      ref={ref}
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
-      className={`transition-transform duration-300 ease-out will-change-transform ${className || ""}`}
-      style={{ transform: `perspective(1000px) rotateX(${rotate.x}deg) rotateY(${rotate.y}deg) scale(1.05)` }}
-    >
-      <GlowCard className="w-full h-full">
-        <div style={{ transform: "translateZ(20px)", transformStyle: "preserve-3d" }}>{children}</div>
-      </GlowCard>
-    </div>
-  );
-}
-
 function AnimatedBorderCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`relative rounded-xl p-[0.2px] bg-transparent ${className || ""}`}>
@@ -82,6 +41,7 @@ function AnimatedBorderCard({ children, className }: { children: React.ReactNode
     </div>
   );
 }
+
 
 /* Moving grid */
 function GridLines() {
@@ -329,3 +289,5 @@ export default function LandingPage() {
     </div>
   );
 }
+
+    
