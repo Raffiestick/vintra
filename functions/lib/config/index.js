@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.safe = exports.fmtUSD = exports.num = exports.seller = exports.bucket = exports.adminAuth = exports.db = exports.GEMINI_API_KEY = exports.DEV_ADMIN_UID_SECRET = void 0;
+exports.safe = exports.fmtUSD = exports.num = exports.seller = exports.FieldValue = exports.bucket = exports.adminAuth = exports.db = exports.GEMINI_API_KEY = exports.DEV_ADMIN_UID_SECRET = void 0;
 exports.normalizeIsoFromDateLike = normalizeIsoFromDateLike;
 exports.toUsDate = toUsDate;
 exports.assertAdmin = assertAdmin;
@@ -44,6 +44,7 @@ exports.logActivity = logActivity;
 const params_1 = require("firebase-functions/params");
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
+Object.defineProperty(exports, "FieldValue", { enumerable: true, get: function () { return firestore_1.FieldValue; } });
 const auth_1 = require("firebase-admin/auth");
 const storage_1 = require("firebase-admin/storage");
 const https_1 = require("firebase-functions/v2/https");

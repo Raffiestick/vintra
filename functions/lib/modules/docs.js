@@ -30,11 +30,11 @@ exports.attachStagedDocToJacket = (0, https_1.onCall)({ region: "us-central1" },
         name: fileName,
         type: docType,
         url: signedUrl,
-        createdAt: config_1.db.app.firestore.FieldValue.serverTimestamp(),
+        createdAt: config_1.FieldValue.serverTimestamp(),
     };
     await config_1.db.collection("jackets").doc(vin).update({
-        documents: config_1.db.app.firestore.FieldValue.arrayUnion(newDocument),
-        updatedAt: config_1.db.app.firestore.FieldValue.serverTimestamp(),
+        documents: config_1.FieldValue.arrayUnion(newDocument),
+        updatedAt: config_1.FieldValue.serverTimestamp(),
     });
     await stagedDocRef.delete().catch(() => { }); // optional
     return { success: true, message: `Document attached to jacket ${vin}.` };

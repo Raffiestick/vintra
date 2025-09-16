@@ -54,7 +54,7 @@ exports.generateJacketInvoice = (0, https_1.onRequest)({ region: "us-central1", 
         const path = `jacket-documents/${rawVin}/invoice.pdf`;
         await config_1.bucket.file(path).save(pdf, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
         const [url] = await config_1.bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
-        await ref.update({ invoiceUrl: url, updatedAt: config_1.db.app.firestore.FieldValue.serverTimestamp() });
+        await ref.update({ invoiceUrl: url, updatedAt: config_1.FieldValue.serverTimestamp() });
         res.json({ ok: true, vin: rawVin, url });
     }
     catch (e) {
@@ -86,7 +86,7 @@ exports.generateBillOfSale = (0, https_1.onRequest)({ region: "us-central1", tim
         const path = `jacket-documents/${rawVin}/bill-of-sale.pdf`;
         await config_1.bucket.file(path).save(pdf, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
         const [url] = await config_1.bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
-        await ref.update({ bosUrl: url, updatedAt: config_1.db.app.firestore.FieldValue.serverTimestamp() });
+        await ref.update({ bosUrl: url, updatedAt: config_1.FieldValue.serverTimestamp() });
         res.json({ ok: true, vin: rawVin, url });
     }
     catch (e) {

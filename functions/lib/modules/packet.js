@@ -103,7 +103,7 @@ exports.generateJacketPacket = (0, https_1.onRequest)({ region: "us-central1", t
         const packetPath = `jacket-documents/${rawVin}/packet.pdf`;
         await config_1.bucket.file(packetPath).save(packetBytes, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
         const [signedUrl] = await config_1.bucket.file(packetPath).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
-        await docRef.update({ packetUrl: signedUrl, updatedAt: config_1.db.app.firestore.FieldValue.serverTimestamp() });
+        await docRef.update({ packetUrl: signedUrl, updatedAt: config_1.FieldValue.serverTimestamp() });
         await (0, config_1.logActivity)(rawVin, { type: "packetGenerated", message: "Packet generated (cover + invoice + BOS + attachments)", meta: { url: signedUrl } });
         res.status(200).json({ ok: true, vin: rawVin, url: signedUrl });
     }
