@@ -1,6 +1,7 @@
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { db, bucket, FieldValue, normalizeIsoFromDateLike, extractVinsFromText, toUsDate, assertAdmin, getGeminiModel } from "../config";
 import { parseNpaInvoiceText } from "../parsers/npa";
+import type { Transaction } from "firebase-admin/firestore";
 
 /** helper: copy the auction PDF to the jacket folder (keeps original in staging) */
 async function copyAuctionPdfToJacket(stagingGcsPath: string, vin: string) {
@@ -8,7 +9,7 @@ async function copyAuctionPdfToJacket(stagingGcsPath: string, vin: string) {
   const src = bucket.file(stagingGcsPath);
   const dstPath = `jacket-documents/${vin}/auction-invoice.pdf`;
   await src.copy(bucket.file(dstPath));
-  const [url] = await bucket.file(dstPath).getSignedUrl({ action: "read", expires: Date.now() + 7*24*60*60*1000 });
+  const [url] = await bucket.file(dstPath).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
   return { dstPath, url };
 }
 
@@ -153,7 +154,7 @@ export const createJacketFromUnit = onCall(
     else if (staging?.invoiceDateTs) auctionSaleDate = staging.invoiceDateTs;
 
     const jacketRef = db.collection("jackets").doc(vin);
-    await db.runTransaction(async (tx) => {
+    await db.runTransaction(async (tx: Transaction) => {
       const jacketSnap = await tx.get(jacketRef);
       const jacketData: any = {
         vin,
