@@ -1,4 +1,3 @@
-
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";

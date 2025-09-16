@@ -1,4 +1,3 @@
-
 import { setGlobalOptions } from "firebase-functions/v2";
 
 // Set global options for all functions in this project
