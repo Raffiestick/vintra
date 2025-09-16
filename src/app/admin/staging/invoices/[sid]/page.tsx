@@ -61,6 +61,7 @@ function currency(n?: number) {
 }
 
 function formatInvoiceDate(h: any): string {
+  if (h?.invoiceDateDisplay) return h.invoiceDateDisplay;
   if (h?.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(h.invoiceDate)) {
     const [y,m,d] = h.invoiceDate.split("-");
     return `${+m}/${+d}/${y}`; // M/D/YYYY
@@ -232,6 +233,8 @@ export default function StagingInvoiceDetailPage() {
               <TableRow>
                 <TableHead>VIN</TableHead>
                 <TableHead>Vehicle</TableHead>
+                <TableHead>Title / Loc</TableHead>
+                <TableHead>Fees</TableHead>
                 <TableHead>Subtotal</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -239,12 +242,23 @@ export default function StagingInvoiceDetailPage() {
             </TableHeader>
             <TableBody>
               {filtered.map((u) => {
-                const desc = [u.year, u.make, u.model].filter(Boolean).join(' ');
                 const subtotal = (u.itemPrice||0) + (u.buyerFee||0) + (u.onlineFee||0) + 100;
                 return (
                   <TableRow key={u.id}>
                     <TableCell className="font-mono">{u.vin || '—'}</TableCell>
-                    <TableCell>{desc || '—'}</TableCell>
+                    <TableCell>
+                      <div>{[u.year, u.make, u.model].filter(Boolean).join(' ')}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Color: {u.color ?? '—'}{u.hours ? ` • Hours: ${u.hours}` : u.odometer ? ` • Odometer: ${u.odometer}` : ''}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div>{u.titleInfo || '—'}</div>
+                      <div className="text-xs text-muted-foreground">{u.saleLocation || '—'}</div>
+                    </TableCell>
+                     <TableCell className="text-xs">
+                        Price: {currency(u.itemPrice)} • Buyer: {currency(u.buyerFee)} • Online: {currency(u.onlineFee)} • Mgmt: $100
+                    </TableCell>
                     <TableCell>{currency(subtotal)}</TableCell>
                     <TableCell>
                       <Badge variant={u.processed ? 'default' : 'outline'}>
@@ -261,7 +275,7 @@ export default function StagingInvoiceDetailPage() {
               })}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
                     {hideProcessed ? 'No unprocessed units in this batch.' : 'No units found in this batch.'}
                   </TableCell>
                 </TableRow>
