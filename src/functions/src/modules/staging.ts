@@ -2,7 +2,7 @@
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { db, bucket, FieldValue, normalizeIsoFromDateLike, extractVinsFromText, toUsDate, assertAdmin, getGeminiModel, num, extractPdfText } from "../config";
 import { parseNpaInvoiceText } from "../parsers/npa";
-import type { Transaction } from "firebase-admin/firestore";
+import { Transaction } from "firebase-admin/firestore";
 
 /** helper: copy the auction PDF to the jacket folder (keeps original in staging) */
 async function copyAuctionPdfToJacket(stagingGcsPath: string, vin: string) {

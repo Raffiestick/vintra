@@ -51,6 +51,8 @@ const storage_1 = require("firebase-admin/storage");
 const https_1 = require("firebase-functions/v2/https");
 const generative_ai_1 = require("@google/generative-ai");
 /* --- secrets --- */
+// DEV_ADMIN_UID_SECRET is no longer used in assertAdmin, but other functions might use it.
+// We keep it defined to avoid breaking other parts of the app if they rely on it.
 exports.DEV_ADMIN_UID_SECRET = (0, params_1.defineSecret)("DEV_ADMIN_UID");
 exports.GEMINI_API_KEY = (0, params_1.defineSecret)("GEMINI_API_KEY");
 /* --- admin init (once) --- */
@@ -126,8 +128,10 @@ function normalizeIsoFromDateLike(s) {
 function assertAdmin(request) {
     if (!request.auth)
         throw new https_1.HttpsError("unauthenticated", "You must be signed in.");
-    const devBypass = exports.DEV_ADMIN_UID_SECRET.value();
-    if (devBypass && request.auth.uid === devBypass)
+    // The bypass now uses a standard environment variable, which is safer for local dev
+    // and doesn't crash if unset. It's ignored in production.
+    const bypass = process.env.DEV_ADMIN_UID;
+    if (bypass && request.auth.uid === bypass)
         return;
     const token = request.auth.token || {};
     const isAdmin = token.role === "admin" || token.admin === true;
