@@ -3,66 +3,51 @@ import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
-import { connectFunctionsEmulator, getFunctions } from 'firebase/functions';
+import { getFunctions, httpsCallable, connectFunctionsEmulator } from 'firebase/functions';
+
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
 
 let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
 let storage: FirebaseStorage;
 
-// Initialize Firebase services only in the browser.
 if (typeof window !== 'undefined' && !getApps().length) {
-  // This config object is now created only in the browser,
-  // ensuring `process.env` variables are available.
-  const firebaseConfig = {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  };
-
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
   storage = getStorage(app);
 } else {
-  // On the server or if already initialized, use existing or placeholder instances.
   app = getApps().length > 0 ? getApp() : ({} as FirebaseApp);
   auth = {} as Auth;
   db = {} as Firestore;
   storage = {} as FirebaseStorage;
 }
 
-
-/**
- * Client-only accessor for Functions. It uses a dynamic import so
- * the `firebase/functions` package is never bundled into the server build.
- */
-export async function getClientFunctions() {
-  if (typeof window !== 'undefined') {
-    const functions = getFunctions(app, 'us-central1');
+const getClientFunctions = () => {
+    if (typeof window === 'undefined') {
+        throw new Error("Firebase Functions can only be used on the client.");
+    }
+    const functions = getFunctions(getApp(), 'us-central1');
     if (process.env.NODE_ENV === 'development') {
-      // Uncomment the following line to connect to the local functions emulator
-      // connectFunctionsEmulator(functions, 'localhost', 5001);
+        // To connect to the local emulator, uncomment the line below.
+        // Make sure you're running the emulator with `firebase emulators:start`
+        // connectFunctionsEmulator(functions, "localhost", 5001);
     }
     return functions;
-  }
-  return null;
 }
 
-/** Helper to lazy-load httpsCallable on the client */
-export async function httpsCallableClient<I = unknown, O = unknown>(name: string) {
-  const [functions, mod] = await Promise.all([
-    getClientFunctions(),
-    import('firebase/functions'), // Dynamically import the functions module
-  ]);
-  if (!functions) {
-    throw new Error("Firebase Functions is not available on the server.");
-  }
-  return mod.httpsCallable<I, O>(functions, name);
-}
+const httpsCallableClient = (name: string) => {
+    const functions = getClientFunctions();
+    return httpsCallable(functions, name);
+};
 
 
-export { app, auth, db, storage };
+export { app, auth, db, storage, httpsCallableClient };
