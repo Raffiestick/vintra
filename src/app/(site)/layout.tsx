@@ -1,23 +1,24 @@
 
-"use client";
-
 import { useState } from "react";
 import Link from "next/link";
 import { AuthDialog } from "@/components/auth/AuthDialog";
 
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
-    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-    const [defaultTab, setDefaultTab] = useState<'sign-in' | 'create-account'>('sign-in');
+    // Note: State management for the dialog will be handled within a client component if needed,
+    // but the layout itself can remain a server component. For now, the dialog is triggered
+    // from the landing page which is a client component.
+    // const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+    // const [defaultTab, setDefaultTab] = useState<'sign-in' | 'create-account'>('sign-in');
 
-    const openModal = (tab: 'sign-in' | 'create-account') => {
-        setDefaultTab(tab);
-        setIsAuthModalOpen(true);
-    }
+    // const openModal = (tab: 'sign-in' | 'create-account') => {
+    //     setDefaultTab(tab);
+    //     setIsAuthModalOpen(true);
+    // }
   
   return (
     <>
-        <AuthDialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen} defaultTab={defaultTab} />
+        {/* <AuthDialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen} defaultTab={defaultTab} /> */}
         <div className="min-h-dvh bg-zinc-950 text-white antialiased">
                 <header className="sticky top-0 z-50 border-b border-white/10 bg-black/30 backdrop-blur">
                   <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
@@ -28,18 +29,13 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                       <Link href="/landing#features" className="opacity-80 hover:opacity-100">Features</Link>
                       </nav>
                       <div className="flex items-center gap-3">
-                      <button
-                          onClick={() => openModal('sign-in')}
-                          className="rounded-md px-3.5 py-2 text-sm font-semibold text-white/80 transition hover:text-white hover:bg-white/10"
-                      >
+                      {/* The buttons on the landing page will now control the dialog */}
+                      <Link href="/landing" className="rounded-md px-3.5 py-2 text-sm font-semibold text-white/80 transition hover:text-white hover:bg-white/10">
                           Login
-                      </button>
-                      <button
-                          onClick={() => openModal('create-account')}
-                          className="rounded-md bg-white px-3.5 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200"
-                      >
+                      </Link>
+                      <Link href="/landing" className="rounded-md bg-white px-3.5 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200">
                           Sign Up
-                      </button>
+                      </Link>
                       </div>
                   </div>
                 </header>
