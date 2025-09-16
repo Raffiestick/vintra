@@ -1,33 +1,33 @@
-import { fmtUSD, safe, seller } from "../config";
-
-export function renderBoSHTML(j: any, buyer: any) {
-  const total = Number(j.itemPrice || 0) + Number(j.buyerFee || 0) + Number(j.onlineFee || 0) + Number(j.managementFee || 0);
-
+import type { DocumentData } from "firebase-admin/firestore";
+export function renderBoSHTML(j: DocumentData, seller: any, buyer: any) {
+  const bosDate = j.invoiceDate ? new Date(`${j.invoiceDate}T00:00:00Z`).toLocaleDateString('en-US') : '';
   return `<!doctype html>
-<html><head><meta charset="UTF-8"/>
-<style>
-  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; color: #111; }
-  .wrap { max-width: 800px; margin: 24px auto; }
-  h1 { margin: 0 0 12px; letter-spacing: 2px; }
-  table { width:100%; border-collapse: collapse; margin-top: 18px; }
-  th, td { border:1px solid #ddd; padding:8px; font-size: 14px; }
-  th { background:#f5f5f5; text-align:left; }
-</style>
+<html><head><meta charset="UTF-8">
+  <style>
+    body{font-family: Arial, Helvetica, sans-serif; color:#111;}
+    .wrap{width:760px; margin:20px auto;}
+    h1{font-size:26px; letter-spacing:1px;}
+    .box{border:1px solid #ddd; padding:12px; border-radius:6px; font-size:14px; margin-bottom:12px;}
+    table{width:100%; border-collapse:collapse; margin-top:8px;}
+    th,td{border:1px solid #e5e5e5; padding:8px; text-align:left; font-size:13px;}
+    th{background:#f6f6f6; font-weight:600;}
+  </style>
 </head>
-<body>
-  <div class="wrap">
-    <h1>BILL OF SALE</h1>
+<body><div class="wrap">
+  <h1>Bill of Sale</h1>
+  <div class="box"><b>Date:</b> ${bosDate || '—'}</div>
+  <div class="box"><b>Seller:</b> ${seller.name}${seller.dba ? ` (${seller.dba})` : ''}</div>
+  <div class="box"><b>Buyer:</b> ${buyer.name || '—'}</div>
 
-    <table>
-      <tr><th>Seller</th><td>${safe(seller.name)}${seller.dba ? " dba " + safe(seller.dba) : ""}, ${safe(seller.addr1)}, ${safe(seller.addr2)}</td></tr>
-      <tr><th>Buyer</th><td>${safe(buyer?.name || "")}, ${safe(buyer?.line1 || "")} ${safe(buyer?.line2 || "")}</td></tr>
-      <tr><th>Vehicle</th><td>${[j.year, j.make, j.model].filter(Boolean).join(" ")} — VIN ${safe(j.vin || "")}</td></tr>
-      <tr><th>Sale Location</th><td>${safe(j.saleLocation || "—")}</td></tr>
-      <tr><th>Sale Date</th><td>${safe(j.invoiceDateDisplay || "")}</td></tr>
-      <tr><th>Amount</th><td>${fmtUSD(total)}</td></tr>
-    </table>
+  <table>
+    <thead><tr><th>Year</th><th>Make</th><th>Model</th><th>VIN</th><th>Color</th><th>Odom/Hrs</th></tr></thead>
+    <tbody><tr>
+      <td>${j.year ?? ''}</td><td>${j.make ?? ''}</td><td>${j.model ?? ''}</td>
+      <td>${j.vin ?? ''}</td><td>${j.color ?? ''}</td><td>${j.odometer || j.hours || ''}</td>
+    </tr></tbody>
+  </table>
 
-    <p style="margin-top:12px">Seller hereby sells the vehicle described above to the Buyer. Titles and documents will be provided as applicable.</p>
-  </div>
-</body></html>`;
+  ${j.saleLocation ? `<div class="box"><b>Sale Location:</b> ${j.saleLocation}</div>` : '' }
+  ${j.titleInfo ? `<div class="box"><b>Title Info:</b> ${j.titleInfo}</div>` : '' }
+</div></body></html>`;
 }
