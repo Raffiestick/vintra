@@ -119,7 +119,7 @@ export default function StagedInvoicesPage() {
   }, [invoices, hideProcessed]);
 
   async function handleProcessAll(stagingId: string) {
-    const { id: toastId, update, dismiss } = toast({ 
+    const { id: toastId, update } = toast({ 
         title: "Processing Batch...", 
         description: "Please wait while jackets are being created." 
     });
