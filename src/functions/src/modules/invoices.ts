@@ -1,4 +1,5 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import type { DocumentData } from "firebase-admin/firestore";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { bucket, db, FieldValue, seller } from "../config";
@@ -25,70 +26,58 @@ async function getBuyerData(dealerId?: string): Promise<any> {
   return { name: `Dealer ${dealerId || ""}` };
 }
 
-export const generateJacketInvoice = onCall(async (req) => {
-  try {
-    const { vin } = (req.data || {}) as InvoiceInput;
-    if (!vin) throw new HttpsError("invalid-argument", "VIN is required.");
-    const rawVin = vin.trim().toUpperCase();
-    
-    const ref = db.collection("jackets").doc(rawVin);
-    const snap = await ref.get();
-    if (!snap.exists) throw new HttpsError("not-found", "Jacket not found");
-    
-    const j = snap.data() || {};
-    const buyer = await getBuyerData(j.dealerId);
+export const generateJacketInvoice = onCall({ region: "us-central1" }, async (req) => {
+  const { vin } = (req.data || {}) as InvoiceInput;
+  if (!vin) throw new HttpsError("invalid-argument", "VIN is required.");
+  const rawVin = vin.trim().toUpperCase();
+  
+  const ref = db.collection("jackets").doc(rawVin);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Jacket not found");
+  
+  const j = snap.data() || {};
+  const buyer = await getBuyerData(j.dealerId);
 
-    const html = renderInvoiceHTML(j, seller, buyer);
-    const browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdf = await page.pdf({ format: "A4", printBackground: true });
-    await browser.close();
+  const html = renderInvoiceHTML(j, seller, buyer);
+  const browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
+  const page = await browser.newPage();
+  await page.setContent(html, { waitUntil: "networkidle0" });
+  const pdf = await page.pdf({ format: "A4", printBackground: true });
+  await browser.close();
 
-    const path = `jacket-documents/${rawVin}/invoice.pdf`;
-    await bucket.file(path).save(pdf, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
-    const [url] = await bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+  const path = `jacket-documents/${rawVin}/invoice.pdf`;
+  await bucket.file(path).save(pdf, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
+  const [url] = await bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
 
-    await ref.update({ invoiceUrl: url, updatedAt: FieldValue.serverTimestamp() });
-    
-    return { ok: true, vin: rawVin, url };
-  } catch (err: any) {
-    console.error("generateJacketInvoice error:", err);
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError("internal", err?.message || "Unexpected error generating invoice.");
-  }
+  await ref.update({ invoiceUrl: url, updatedAt: FieldValue.serverTimestamp() });
+  
+  return { ok: true, vin: rawVin, url };
 });
 
-export const generateBillOfSale = onCall(async (req) => {
-  try {
-    const { vin } = (req.data || {}) as InvoiceInput;
-    if (!vin) throw new HttpsError("invalid-argument", "VIN is required.");
-    const rawVin = vin.trim().toUpperCase();
+export const generateBillOfSale = onCall({ region: "us-central1" }, async (req) => {
+  const { vin } = (req.data || {}) as InvoiceInput;
+  if (!vin) throw new HttpsError("invalid-argument", "VIN is required.");
+  const rawVin = vin.trim().toUpperCase();
 
-    const ref = db.collection("jackets").doc(rawVin);
-    const snap = await ref.get();
-    if (!snap.exists) throw new HttpsError("not-found", "Jacket not found");
+  const ref = db.collection("jackets").doc(rawVin);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Jacket not found");
 
-    const j = snap.data() || {};
-    const buyer = await getBuyerData(j.dealerId);
+  const j = snap.data() || {};
+  const buyer = await getBuyerData(j.dealerId);
 
-    const html = renderBoSHTML(j, seller, buyer);
-    const browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdf = await page.pdf({ format: "A4", printBackground: true });
-    await browser.close();
+  const html = renderBoSHTML(j, seller, buyer);
+  const browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
+  const page = await browser.newPage();
+  await page.setContent(html, { waitUntil: "networkidle0" });
+  const pdf = await page.pdf({ format: "A4", printBackground: true });
+  await browser.close();
 
-    const path = `jacket-documents/${rawVin}/bill-of-sale.pdf`;
-    await bucket.file(path).save(pdf, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
-    const [url] = await bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+  const path = `jacket-documents/${rawVin}/bill-of-sale.pdf`;
+  await bucket.file(path).save(pdf, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
+  const [url] = await bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
 
-    await ref.update({ bosUrl: url, updatedAt: FieldValue.serverTimestamp() });
+  await ref.update({ bosUrl: url, updatedAt: FieldValue.serverTimestamp() });
 
-    return { ok: true, vin: rawVin, url };
-  } catch (err: any) {
-    console.error("generateBillOfSale error:", err);
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError("internal", err?.message || "Unexpected error generating bill of sale.");
-  }
+  return { ok: true, vin: rawVin, url };
 });
