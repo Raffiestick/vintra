@@ -15,9 +15,9 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/use-auth';
 import { useSafeSnapshot } from '@/hooks/useSafeSnapshot';
 import Link from 'next/link';
-import { toast } from 'sonner';
-import { getClientFunctions } from '@/lib/firebase/functions';
-import type { HttpsCallable } from 'firebase/functions';
+import { useToast } from '@/hooks/use-toast';
+import { httpsCallableClient } from '@/lib/firebase/client';
+
 
 interface StagingHeader {
   id: string;
@@ -78,6 +78,7 @@ export default function StagedInvoicesPage() {
   const [error, setError] = useState<string | null>(null);
   const [hideProcessed, setHideProcessed] = useState(true);
   const router = useRouter();
+  const { toast } = useToast();
 
   useSafeSnapshot(() => {
     if (!isAdmin) {
@@ -118,17 +119,21 @@ export default function StagedInvoicesPage() {
   }, [invoices, hideProcessed]);
 
   async function handleProcessAll(stagingId: string) {
+    const toastId = 'process-all-toast';
+    toast({ id: toastId, title: "Processing Batch...", description: "Please wait while jackets are being created." });
     try {
-      const { functions, httpsCallable } = await getClientFunctions();
-      if (!functions) throw new Error("Functions not available");
-      const createJacketsForInvoice = httpsCallable(functions, 'createJacketsForInvoice');
-      
+      const createJacketsForInvoice = await httpsCallableClient('createJacketsForInvoice');
       const res: any = await createJacketsForInvoice({ stagingId });
       
-      toast.success(`Created ${res.data.created} jackets`);
+      const createdCount = res?.data?.created ?? 0;
+      if (createdCount > 0) {
+        toast({ id: toastId, title: "Batch Processed!", description: `Successfully created ${createdCount} jackets.` });
+      } else {
+        toast({ id: toastId, title: "Batch Complete", description: "No new jackets were created." });
+      }
     } catch (e: any) {
       console.error(e);
-      toast.error(e?.message || "Failed to process all");
+      toast({ id: toastId, title: "Batch Processing Failed", description: e?.message || "An unknown error occurred.", variant: "destructive" });
     }
   }
 
@@ -184,7 +189,7 @@ export default function StagedInvoicesPage() {
                     </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="sm" onClick={() => router.push(`/admin/staging/invoices/${h.id}`)}>Open</Button>
-                      <Button size="sm" onClick={() => handleProcessAll(h.id)}>Create Jackets (All)</Button>
+                      <Button size="sm" onClick={() => handleProcessAll(h.id)} disabled={h.status === 'processed'}>Create Jackets (All)</Button>
                     </TableCell>
                   </TableRow>
                 ))}

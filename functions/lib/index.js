@@ -1,13 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.startDocParse = exports.generateJacketPacket = exports.generateBillOfSale = exports.generateJacketInvoice = exports.attachStagedDocToJacket = exports.createJacketsForInvoice = exports.createJacketFromUnit = exports.startInvoiceParse = exports.generateJacketId = exports.manageDealerApplication = exports.signInWithCustomToken = void 0;
+exports.startDocParse = exports.generateJacketPacket = exports.generateBillOfSale = exports.generateJacketInvoice = exports.attachStagedDocToJacket = exports.createJacketsForInvoice = exports.createJacketFromUnit = exports.generateJacketId = exports.manageDealerApplication = exports.signInWithCustomToken = void 0;
 // Re-export all your functions from small modules
 var auth_1 = require("./modules/auth");
 Object.defineProperty(exports, "signInWithCustomToken", { enumerable: true, get: function () { return auth_1.signInWithCustomToken; } });
 Object.defineProperty(exports, "manageDealerApplication", { enumerable: true, get: function () { return auth_1.manageDealerApplication; } });
 Object.defineProperty(exports, "generateJacketId", { enumerable: true, get: function () { return auth_1.generateJacketId; } });
 var staging_1 = require("./modules/staging");
-Object.defineProperty(exports, "startInvoiceParse", { enumerable: true, get: function () { return staging_1.startInvoiceParse; } });
 Object.defineProperty(exports, "createJacketFromUnit", { enumerable: true, get: function () { return staging_1.createJacketFromUnit; } });
 Object.defineProperty(exports, "createJacketsForInvoice", { enumerable: true, get: function () { return staging_1.createJacketsForInvoice; } });
 var docs_1 = require("./modules/docs");
