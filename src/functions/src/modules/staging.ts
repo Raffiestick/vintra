@@ -2,7 +2,7 @@
 // functions/src/modules/staging.ts
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
-import { FieldValue, Transaction, DocumentReference } from "firebase-admin/firestore";
+import { FieldValue, Transaction } from "firebase-admin/firestore";
 import { db, assertAdmin } from "../config";
 
 /**
@@ -112,7 +112,6 @@ async function _createJacketFromUnit(stagingId: string, unitId: string, actorUid
 
 
 export const createJacketFromUnit = onCall(
-  { region: "us-central1", secrets: [] },
   async (request: CallableRequest) => {
     try {
       assertAdmin(request);
@@ -136,7 +135,6 @@ export const createJacketFromUnit = onCall(
 
 
 export const createJacketsForInvoice = onCall(
-  { region: "us-central1", secrets: [] },
   async (request) => {
     try {
       assertAdmin(request);
