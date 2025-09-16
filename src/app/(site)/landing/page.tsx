@@ -193,7 +193,7 @@ export default function LandingPage() {
             <TiltCard>
               <div className="p-6">
                 <div className="text-sm opacity-80">Automate Your Paperwork</div>
-                <h3 className="mt-1 font-manrope text-lg font-semibold">From Auction PDF to Deal Jacket in Seconds</h3>
+                <h3 className="mt-1 font-manrope text-lg font-semibold">From Auction to Deal Jacket in Seconds</h3>
                 <p className="mt-2 text-sm text-white/80">
                   Stop wasting hours on manual data entry. Our AI instantly processes auction sheets, invoices, and titles to create perfect deal jackets so you can focus on the sale.
                 </p>
@@ -213,7 +213,7 @@ export default function LandingPage() {
                 <div className="text-sm opacity-80">Pro Marketing Tools</div>
                 <h3 className="mt-1 font-manrope text-lg font-semibold">Sell Faster, Smarter</h3>
                 <p className="mt-2 text-sm text-white/80">
-                  Leverage our world‑class marketing services and data insights to reach more buyers. We help you market your inventory effectively and close deals quicker.
+                  Leverage our world‑class marketing tools and services with percision data to reach more buyers. We help you market your inventory effectively and close deals quicker.
                 </p>
               </div>
             </TiltCard>
