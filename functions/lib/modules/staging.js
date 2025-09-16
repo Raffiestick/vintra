@@ -53,7 +53,7 @@ exports.startInvoiceParse = (0, https_1.onRequest)({
     cors: true,
     timeoutSeconds: 120,
     memory: "1GiB",
-    secrets: [],
+    secrets: ["GEMINI_API_KEY"],
 }, async (req, res) => {
     try {
         if (req.method !== "POST") {
@@ -91,63 +91,78 @@ exports.startInvoiceParse = (0, https_1.onRequest)({
             res.status(500).json({ error: "Extracted text is empty." });
             return;
         }
-        // 3) Deterministic parse first
+        // 1) Deterministic parse
         let extracted = (0, npa_1.parseNpaInvoiceText)(text);
-        // 4) Fallbacks if empty: use Gemini once to seed units
+        // 2) If zero units, try LLM enrich (kept optional)
         if (!extracted.units.length) {
             try {
                 const model = (0, config_1.getGeminiModel)();
                 const prompt = `Return STRICT JSON: { invoiceDate?: "YYYY-MM-DD", invoiceMeta?: { aucNo?: string, saleLocation?: string }, units: [{ vin: string, year?: number, make?: string, model?: string, color?: string, hours?: number, odometer?: number, saleLocation?: string, itemPrice?: number, buyerFee?: number, onlineFee?: number, titleInfo?: string, stockNo?: string, aucNo?: string }] } from the following TEXT.\nTEXT:\n"""${text.slice(0, 20000)}"""`;
                 const ai = await model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }] });
                 const llm = JSON.parse(ai.response?.text() || "{}");
-                extracted.invoiceDate = extracted.invoiceDate || (0, config_1.normalizeIsoFromDateLike)(llm.invoiceDate);
-                extracted.invoiceMeta = { ...(extracted.invoiceMeta || {}), ...(llm.invoiceMeta || {}) };
-                extracted.units = Array.isArray(llm.units) ? llm.units : [];
+                extracted = {
+                    invoiceDate: extracted.invoiceDate || llm.invoiceDate,
+                    invoiceMeta: { ...(extracted.invoiceMeta || {}), ...(llm.invoiceMeta || {}) },
+                    units: (Array.isArray(llm.units) ? llm.units : []).map((u, i) => ({ ...(extracted.units[i] || {}), ...u }))
+                };
             }
-            catch { }
+            catch { /* ignore */ }
         }
-        // 5) If still no units, seed with VINs
-        if (!extracted.units.length) {
+        // 3) Seed with VINs if still empty
+        if (!Array.isArray(extracted.units) || !extracted.units.length) {
             for (const vin of (0, config_1.extractVinsFromText)(text))
                 extracted.units.push({ vin, managementFee: 100 });
         }
-        // Final date handling (store ISO, US display, and a safe timestamp at noon UTC)
-        const iso = (0, config_1.normalizeIsoFromDateLike)(extracted.invoiceDate || null);
-        const invoiceDateDisplay = (0, config_1.toUsDate)(iso) || null;
-        const invoiceDateTs = iso ? new Date(`${iso}T12:00:00.000Z`) : null; // noon UTC avoids TZ "previous day" issues
-        // 6) Write staging header + units
-        const now = config_1.FieldValue.serverTimestamp();
+        // 4) Normalize values
+        for (const u of extracted.units) {
+            if (!u)
+                continue;
+            if (typeof u.vin === "string")
+                u.vin = u.vin.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "");
+            u.itemPrice = (0, config_1.num)(u.itemPrice);
+            u.buyerFee = (0, config_1.num)(u.buyerFee);
+            u.onlineFee = (0, config_1.num)(u.onlineFee);
+            u.managementFee = u.managementFee == null ? 100 : (0, config_1.num)(u.managementFee);
+            if (u.year != null)
+                u.year = Number(u.year) || undefined;
+            if (u.hours != null)
+                u.hours = Number(u.hours) || undefined;
+            if (u.odometer != null)
+                u.odometer = Number(u.odometer) || undefined;
+        }
+        // 5) Correct invoice date & ts (pin to noon UTC to avoid UTC shift)
+        const iso = (0, config_1.normalizeIsoFromDateLike)(extracted.invoiceDate);
+        const invoiceDateTs = iso ? new Date(`${iso}T12:00:00.000Z`) : null;
+        // 6) Create a stable copy of the original invoice alongside the batch
         const stagingId = config_1.db.collection("stagingInvoices").doc().id;
-        const [fileUrl] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
-        const uploaderUid = gcsPath.split("/")[2] || null;
+        const srcFile = config_1.bucket.file(gcsPath);
+        const dstPath = `staging-invoices/${stagingId}/original.pdf`;
+        await srcFile.copy(config_1.bucket.file(dstPath));
+        const [fileUrl] = await config_1.bucket.file(dstPath).getSignedUrl({
+            action: "read",
+            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        });
         await config_1.db.collection("stagingInvoices").doc(stagingId).set({
             source: "auction",
-            gcsPath,
-            fileUrl,
-            createdAt: now,
-            updatedAt: now,
-            invoiceMeta: extracted?.invoiceMeta ?? {},
+            gcsPath: dstPath, // point to the stable copy
+            fileUrl, // signed URL to stable copy
+            createdAt: config_1.FieldValue.serverTimestamp(),
+            updatedAt: config_1.FieldValue.serverTimestamp(),
+            invoiceMeta: extracted.invoiceMeta ?? {},
             invoiceDate: iso || null,
-            invoiceDateDisplay,
-            invoiceDateTs,
+            invoiceDateTs: invoiceDateTs || null,
             unitsCount: extracted.units.length,
-            uploaderUid,
+            uploaderUid: gcsPath.split("/")[2] || null,
             status: "new",
         });
+        // 7) write units
         const batch = config_1.db.batch();
         for (const u of extracted.units) {
             const unitRef = config_1.db.collection("stagingInvoices").doc(stagingId).collection("units").doc();
-            batch.set(unitRef, {
-                ...u,
-                createdAt: now,
-                updatedAt: now,
-                processed: false,
-                invoiceDate: iso || null,
-                invoiceDateDisplay,
-            });
+            batch.set(unitRef, { ...u, createdAt: config_1.FieldValue.serverTimestamp(), updatedAt: config_1.FieldValue.serverTimestamp(), processed: false });
         }
         await batch.commit();
-        res.json({ ok: true, stagingId, unitsCount: extracted.units.length });
+        res.json({ ok: true, stagingId, unitsCount: extracted.units.length, invoiceDate: iso, invoiceDateDisplay: (0, config_1.toUsDate)(iso) });
     }
     catch (e) {
         console.error("startInvoiceParse error", e?.stack || e);

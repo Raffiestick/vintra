@@ -34,8 +34,9 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.safe = exports.fmtUSD = exports.num = exports.seller = exports.FieldValue = exports.bucket = exports.adminAuth = exports.db = exports.GEMINI_API_KEY = exports.DEV_ADMIN_UID_SECRET = void 0;
-exports.normalizeIsoFromDateLike = normalizeIsoFromDateLike;
+exports.pickInvoiceDateFromHeader = pickInvoiceDateFromHeader;
 exports.toUsDate = toUsDate;
+exports.normalizeIsoFromDateLike = normalizeIsoFromDateLike;
 exports.assertAdmin = assertAdmin;
 exports.getGeminiModel = getGeminiModel;
 exports.extractPdfText = extractPdfText;
@@ -87,13 +88,32 @@ const safe = (s) => String(s ?? "")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 exports.safe = safe;
+/** Return YYYY-MM-DD from "DATE: 5/2/2025" etc., if present. */
+function pickInvoiceDateFromHeader(text) {
+    const m = text.match(/DATE:\s*([0-9]{1,2})[\/\-]([0-9]{1,2})[\/\-]([0-9]{2,4})/i);
+    if (!m)
+        return null;
+    const mm = String(+m[1]).padStart(2, '0');
+    const dd = String(+m[2]).padStart(2, '0');
+    const yyyy = String(m[3].length === 2 ? 2000 + +m[3] : +m[3]);
+    return `${yyyy}-${mm}-${dd}`;
+}
+function toUsDate(iso) {
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso))
+        return null;
+    const [y, m, d] = iso.split('-');
+    return `${+m}/${+d}/${y}`;
+}
+/** Normalize a date-like string to YYYY-MM-DD or null. */
 function normalizeIsoFromDateLike(s) {
     if (!s)
         return null;
     const t = s.trim();
+    // "2024-05-15" (already ISO)
     const iso = t.match(/^(\d{4})[-/.](\d{2})[-/.](\d{2})$/);
     if (iso)
         return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    // "5/15/2024" or "5-15-24" etc.
     const mdY = t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
     if (mdY) {
         const mm = String(+mdY[1]).padStart(2, "0");
@@ -102,12 +122,6 @@ function normalizeIsoFromDateLike(s) {
         return `${yyyy}-${mm}-${dd}`;
     }
     return null;
-}
-function toUsDate(iso) {
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso))
-        return null;
-    const [y, m, d] = iso.split("-");
-    return `${+m}/${+d}/${y}`;
 }
 function assertAdmin(request) {
     if (!request.auth)

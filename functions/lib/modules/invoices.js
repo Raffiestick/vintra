@@ -45,7 +45,7 @@ exports.generateJacketInvoice = (0, https_1.onRequest)({ region: "us-central1", 
         }
         const j = snap.data() || {};
         const buyer = await getBuyerData(j.dealerId);
-        const html = (0, invoice_1.renderInvoiceHTML)(j, buyer);
+        const html = (0, invoice_1.renderInvoiceHTML)(j, config_1.seller, buyer);
         const browser = await puppeteer_core_1.default.launch({ args: chromium_1.default.args, executablePath: await chromium_1.default.executablePath(), headless: true });
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: "networkidle0" });
@@ -77,7 +77,7 @@ exports.generateBillOfSale = (0, https_1.onRequest)({ region: "us-central1", tim
         }
         const j = snap.data() || {};
         const buyer = await getBuyerData(j.dealerId);
-        const html = (0, bos_1.renderBoSHTML)(j, buyer);
+        const html = (0, bos_1.renderBoSHTML)(j, config_1.seller, buyer);
         const browser = await puppeteer_core_1.default.launch({ args: chromium_1.default.args, executablePath: await chromium_1.default.executablePath(), headless: true });
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: "networkidle0" });
