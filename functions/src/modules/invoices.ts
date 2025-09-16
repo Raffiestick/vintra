@@ -2,7 +2,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
-import { bucket, db, FieldValue } from "../config";
+import { bucket, db, FieldValue, seller } from "../config";
 import { renderInvoiceHTML } from "../templates/invoice";
 import { renderBoSHTML } from "../templates/bos";
 
@@ -38,7 +38,7 @@ export const generateJacketInvoice = onRequest(
       const j = snap.data() || {};
       const buyer = await getBuyerData(j.dealerId);
 
-      const html = renderInvoiceHTML(j, buyer);
+      const html = renderInvoiceHTML(j, seller, buyer);
       const browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "networkidle0" });
@@ -71,7 +71,7 @@ export const generateBillOfSale = onRequest(
       const j = snap.data() || {};
       const buyer = await getBuyerData(j.dealerId);
 
-      const html = renderBoSHTML(j, buyer);
+      const html = renderBoSHTML(j, seller, buyer);
       const browser = await puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "networkidle0" });
