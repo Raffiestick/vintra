@@ -176,7 +176,7 @@ export default function StagingInvoiceDetailPage() {
         <CardHeader className="items-start">
           <CardTitle>Staged Invoice: {stagingId}</CardTitle>
 
-          <CardDescription asChild>
+          <div className="text-sm text-muted-foreground">
             <div className="space-y-1">
               <div>
                 <span className="font-medium">Source:</span>{' '}
@@ -199,7 +199,7 @@ export default function StagingInvoiceDetailPage() {
                 </div>
               ) : null}
             </div>
-          </CardDescription>
+          </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
             <Badge variant="secondary">Units: {units.length}</Badge>

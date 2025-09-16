@@ -24,7 +24,6 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { DEV_ADMIN_UID } from "@/lib/auth/roles";
 import { Loader2 } from "lucide-react";
 import React from "react";
 
@@ -84,7 +83,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'sign-in' }: AuthD
       const user = userCredential.user;
 
       const tokenResult = await user.getIdTokenResult(true);
-      const isAdmin = tokenResult.claims.admin === true || user.uid === DEV_ADMIN_UID;
+      const isAdmin = tokenResult.claims.admin === true;
 
       onOpenChange(false);
       if (isAdmin) {
@@ -214,7 +213,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'sign-in' }: AuthD
                                     <div className="space-y-2 w-24"><Label>Zip</Label><Input value={zip} onChange={(e) => setZip(e.target.value)} className="bg-white/5 border-white/15"/></div>
                                     </div>
                                     <div className="space-y-2"><Label>Email Address</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                    <div className="space-y-2"><Label>Password</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/15"/></div>
+                                    <div className="space-y-2"><Label>Password</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/1_5"/></div>
                                     <div className="space-y-2"><Label>Confirm Password</Label><Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="bg-white/5 border-white/15"/></div>
                                 </div>
                             </ScrollArea>
