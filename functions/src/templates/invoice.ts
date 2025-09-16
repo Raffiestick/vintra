@@ -1,11 +1,14 @@
+import type { DocumentData } from "firebase-admin/firestore";
 import { fmtUSD, safe, seller } from "../config";
 
-export function renderInvoiceHTML(j: any, buyer: any) {
-  const itm = Number(j.itemPrice || 0);
-  const buy = Number(j.buyerFee || 0);
-  const onl = Number(j.onlineFee || 0);
-  const mgt = Number(j.managementFee || 0);
+export function renderInvoiceHTML(j: DocumentData, buyer: any) {
+  const itm = Number(j.itemPrice||0);
+  const buy = Number(j.buyerFee||0);
+  const onl = Number(j.onlineFee||0);
+  const mgt = Number(j.managementFee||100);
   const total = itm + buy + onl + mgt;
+
+  const invoiceDate = j.invoiceDateDisplay || (j.invoiceDate ? new Date(`${j.invoiceDate}T12:00:00Z`).toLocaleDateString('en-US') : '');
 
   const left = `${safe(seller.name)}${seller.dba ? " dba " + safe(seller.dba) : ""}<br/>
   ${safe(seller.addr1)}<br/>${safe(seller.addr2)}<br/>${safe(seller.phone)}<br/>${safe(seller.email)}`;
@@ -14,56 +17,68 @@ export function renderInvoiceHTML(j: any, buyer: any) {
   ${safe(buyer?.line1 || "")}<br/>${safe(buyer?.line2 || "")}<br/>${safe(buyer?.phone || "")}<br/>${safe(buyer?.email || "")}`;
 
   return `<!doctype html>
-<html><head><meta charset="UTF-8"/>
-<style>
-  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; color: #111; }
-  .wrap { max-width: 800px; margin: 24px auto; }
-  .hdr { display:flex; justify-content:space-between; align-items:flex-start; }
-  h1 { margin: 0 0 8px; letter-spacing: 2px; }
-  .muted { color:#666; }
-  table { width:100%; border-collapse: collapse; margin-top: 18px; }
-  th, td { border:1px solid #ddd; padding:8px; font-size: 14px; }
-  th { background:#f5f5f5; text-align:left; }
-  .right { text-align:right; }
-  .totals { margin-top:12px; width: 320px; margin-left:auto; }
-</style>
+<html><head><meta charset="UTF-8">
+  <style>
+    body{font-family: Arial, Helvetica, sans-serif; color:#111; font-size: 14px; }
+    .wrap{width: 780px; margin: 24px auto;}
+    .hdr{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 20px;}
+    .title{font-size: 32px; font-weight:700; letter-spacing:1px;}
+    .box{border:1px solid #ddd; padding:12px; border-radius:6px;}
+    table{width:100%; border-collapse:collapse; margin-top:16px;}
+    th,td{border:1px solid #e5e5e5; padding:8px; text-align:left;}
+    th{background:#f6f6f6; font-weight:600;}
+    .totals td{border:none; padding:4px 8px;}
+    .right{text-align:right;}
+    .muted{color:#666;}
+    .label{font-weight:600; color:#444;}
+    .vehicle-table td { padding: 10px; vertical-align: top; }
+  </style>
 </head>
-<body>
-  <div class="wrap">
-    <div class="hdr">
-      <div>
-        <h1>INVOICE</h1>
-        <div class="muted">Jacket: ${safe(j.jacketId || "")}</div>
-        <div class="muted">VIN: ${safe(j.vin || "")}</div>
-        <div class="muted">Auction Date: ${safe(j.invoiceDateDisplay || "")}</div>
-      </div>
-      <div></div>
+<body><div class="wrap">
+  <div class="hdr">
+    <div class="title">INVOICE</div>
+    <div class="box">
+      <div><span class="label">Date:</span> ${invoiceDate || '—'}</div>
+      <div><span class="label">Jacket #:</span> ${j.jacketId || '—'}</div>
+      <div><span class="label">VIN:</span> ${j.vin || ''}</div>
     </div>
+  </div>
 
-    <table>
-      <tr><th>Seller</th><th>Buyer</th></tr>
-      <tr><td>${left}</td><td>${right}</td></tr>
-    </table>
+  <table style="margin: 0;">
+    <thead><tr><th>Seller</th><th>Buyer</th></tr></thead>
+    <tbody><tr><td>${left}</td><td>${right}</td></tr></tbody>
+  </table>
 
-    <table>
+  <table class="vehicle-table">
+    <thead>
       <tr>
-        <th>Vehicle</th><th>Title</th><th>Sale Location</th><th class="right">Item</th>
+        <th>Vehicle</th><th>Color</th><th>Odometer/Hrs</th><th>Sale Location</th><th>Title Info</th>
       </tr>
+    </thead>
+    <tbody>
       <tr>
-        <td>${[j.year, j.make, j.model].filter(Boolean).join(" ")}<br/>
-            Color: ${safe(j.color || "—")} • Odometer/Hrs: ${safe(String(j.odometer || j.hours || "—"))}</td>
-        <td>${safe(j.titleInfo || "—")}</td>
-        <td>${safe(j.saleLocation || "—")}</td>
-        <td class="right">${fmtUSD(itm)}</td>
+        <td>${[j.year, j.make, j.model].filter(Boolean).join(' ') || '—'}</td>
+        <td>${j.color || '—'}</td>
+        <td>${j.odometer || j.hours || '—'}</td>
+        <td>${j.saleLocation || '—'}</td>
+        <td>${j.titleInfo || '—'}</td>
       </tr>
-    </table>
+    </tbody>
+  </table>
 
+  <div style="width: 400px; margin-left: auto; margin-top: 16px;">
     <table class="totals">
-      <tr><th>Buyer Fee</th><td class="right">${fmtUSD(buy)}</td></tr>
-      <tr><th>Online Fee</th><td class="right">${fmtUSD(onl)}</td></tr>
-      <tr><th>Management Fee</th><td class="right">${fmtUSD(mgt)}</td></tr>
-      <tr><th>Total</th><td class="right"><strong>${fmtUSD(total)}</strong></td></tr>
+      <tbody>
+        <tr><td>Item Price</td><td class="right">${fmtUSD(itm)}</td></tr>
+        <tr><td>Buyer Fee</td><td class="right">${fmtUSD(buy)}</td></tr>
+        <tr><td>Online Fee</td><td class="right">${fmtUSD(onl)}</td></tr>
+        <tr><td>Management Fee</td><td class="right">${fmtUSD(mgt)}</td></tr>
+        <tr style="font-weight:700; font-size: 16px; border-top: 2px solid #333;">
+          <td style="padding-top: 8px;">Total Due</td>
+          <td class="right" style="padding-top: 8px;">${fmtUSD(total)}</td>
+        </tr>
+      </tbody>
     </table>
   </div>
-</body></html>`;
+</div></body></html>`;
 }
