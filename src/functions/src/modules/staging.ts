@@ -1,3 +1,4 @@
+
 // functions/src/modules/staging.ts
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
@@ -127,7 +128,7 @@ export const createJacketFromUnit = onCall(
 
     } catch (err: any) {
       console.error("[createJacketFromUnit] ERROR", err?.stack || err);
-      if (err?.code && typeof err.code === "string") throw err;
+      if (err instanceof HttpsError) throw err;
       throw new HttpsError("internal", err?.message || "An internal error occurred while creating the jacket.");
     }
   }
@@ -165,7 +166,7 @@ export const createJacketsForInvoice = onCall(
 
     } catch (err: any) {
       console.error("[createJacketsForInvoice] ERROR", err?.stack || err);
-      if (err?.code && typeof err.code === "string") throw err;
+      if (err instanceof HttpsError) throw err;
       throw new HttpsError("internal", err?.message || "An internal error occurred during batch creation.");
     }
   }
