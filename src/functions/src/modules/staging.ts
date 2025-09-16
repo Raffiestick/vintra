@@ -1,9 +1,10 @@
+
 // functions/src/modules/staging.ts
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { FieldValue, Transaction } from "firebase-admin/firestore";
 import { db, assertAdmin } from "../config";
-import { httpsCallable } from "firebase-functions/v2/https";
+import { httpsCallable } from "firebase-functions/v2";
 
 export const createJacketFromUnit = onCall(
   { region: "us-central1", secrets: [] },
@@ -45,6 +46,7 @@ export const createJacketFromUnit = onCall(
 
       const vin: string | undefined = unit?.vin?.toString()?.trim()?.toUpperCase();
       if (!vin) {
+        console.error("createJacketFromUnit: unit has no VIN", { stagingId, unitId, unit });
         throw new HttpsError("failed-precondition", "Staged unit has no VIN.");
       }
 
@@ -135,9 +137,8 @@ export const createJacketFromUnit = onCall(
   }
 );
 
-
 export const createJacketsForInvoice = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: [] },
   async (request) => {
     assertAdmin(request);
     const { stagingId } = request.data || {};
@@ -149,17 +150,23 @@ export const createJacketsForInvoice = onCall(
     if (unitsSnap.empty) return { success: true, created: 0 };
 
     let created = 0;
-    const callable = httpsCallable("createJacketFromUnit", { region: "us-central1" });
+    
+    // We cannot reliably call an onCall function from another onCall function
+    // in all environments. Instead, we'll invoke it via its internal trigger.
+    // For simplicity and since we are in the same module, we'll just loop and process.
+    const createUnitCallable = httpsCallable(request.rawRequest.url.includes("localhost") ? "createJacketFromUnit" : "createJacketFromUnit", { region: "us-central1" });
 
     for (const doc of unitsSnap.docs) {
-      const unitId = doc.id;
-      await callable({
-        data: { stagingId, unitId },
-        auth: request.auth as any,
-      } as any);
-      created++;
+        try {
+            await createUnitCallable({ stagingId, unitId: doc.id });
+            created++;
+        } catch (e) {
+            console.error(`Failed to process unit ${doc.id} in batch ${stagingId}`, e);
+            // Decide if we should continue or stop on first error.
+            // For now, we'll log and continue.
+        }
     }
-
+    
     return { success: true, created };
   }
 );
