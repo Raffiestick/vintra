@@ -85,13 +85,13 @@ function PageSkeleton() {
         <Table>
           <TableHeader>
             <TableRow>
-              {[...Array(5)].map((_, i) => (<TableHead key={i}><Skeleton className="h-5 w-full" /></TableHead>))}
+              {[...Array(7)].map((_, i) => (<TableHead key={i}><Skeleton className="h-5 w-full" /></TableHead>))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {[...Array(2)].map((_, r) => (
               <TableRow key={r}>
-                {[...Array(5)].map((_, c) => (<TableCell key={c}><Skeleton className="h-6 w-full" /></TableCell>))}
+                {[...Array(7)].map((_, c) => (<TableCell key={c}><Skeleton className="h-6 w-full" /></TableCell>))}
               </TableRow>
             ))}
           </TableBody>
