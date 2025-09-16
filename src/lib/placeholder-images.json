@@ -1,0 +1,21 @@
+
+{
+  "dashboard": {
+    "src": "https://picsum.photos/seed/dashboard/1024/640",
+    "alt": "RizeUp Dealer Connect Dashboard",
+    "width": 1024,
+    "height": 640
+  },
+  "aiFlow": {
+    "src": "https://picsum.photos/seed/aiFlow/600/400",
+    "alt": "AI-powered data processing flow",
+    "width": 600,
+    "height": 400
+  },
+  "dealerPortal": {
+    "src": "https://picsum.photos/seed/dealerPortal/600/400",
+    "alt": "Dealer portal view",
+    "width": 600,
+    "height": 400
+  }
+}

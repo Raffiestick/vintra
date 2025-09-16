@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -8,7 +7,7 @@ import { AlertTriangle } from 'lucide-react';
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950 p-4 text-white">
+    <div className="flex min-h-screen items-center justify-center bg-[#0B0F1A] p-4 text-white">
       <Card className="w-full max-w-md border-zinc-800 bg-zinc-900 text-center">
         <CardHeader>
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">

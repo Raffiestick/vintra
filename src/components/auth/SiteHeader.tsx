@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -26,11 +25,7 @@ export default function SiteHeader() {
       <header className="sticky top-0 z-50 border-b border-white/10 bg-black/30 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <Link href="/landing" className="group flex items-center gap-3">
-            <img
-              src="/vintra/wordmark.svg"
-              alt="Vintra"
-              className="h-6 opacity-90 transition group-hover:opacity-100"
-            />
+            <h1 className="font-manrope text-2xl font-bold">RizeUp</h1>
           </Link>
           <nav className="hidden items-center gap-6 text-sm md:flex">
             <Link

@@ -1,9 +1,8 @@
-
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 export default function TermsOfServicePage() {
   return (
-    <div className="bg-zinc-950 text-white min-h-screen py-16 px-4">
+    <div className="bg-[#0B0F1A] text-white min-h-screen py-16 px-4">
       <div className="max-w-4xl mx-auto">
         <Card className="bg-zinc-900 border-zinc-800 text-white">
           <CardHeader>
@@ -12,7 +11,7 @@ export default function TermsOfServicePage() {
           </CardHeader>
           <CardContent className="prose prose-invert prose-zinc max-w-none">
             <p>
-              Please read these Terms of Service ("Terms", "Terms of Service") carefully before using the Vintra website (the "Service") operated by RizeUp Ventures, LLC ("us", "we", or "our").
+              Please read these Terms of Service ("Terms", "Terms of Service") carefully before using the RizeUp website (the "Service") operated by RizeUp Dealer Connect ("us", "we", or "our").
             </p>
             <p>
               Your access to and use of the Service is conditioned upon your acceptance of and compliance with these Terms. These Terms apply to all visitors, users, and others who wish to access or use the Service.
@@ -31,7 +30,7 @@ export default function TermsOfServicePage() {
 
             <h2 className="font-manrope">Intellectual Property</h2>
             <p>
-              The Service and its original content, features and functionality are and will remain the exclusive property of RizeUp Ventures, LLC and its licensors. The Service is protected by copyright, trademark, and other laws of both the United States and foreign countries.
+              The Service and its original content, features and functionality are and will remain the exclusive property of RizeUp Dealer Connect and its licensors. The Service is protected by copyright, trademark, and other laws of both the United States and foreign countries.
             </p>
 
             <h2 className="font-manrope">Governing Law</h2>
@@ -50,14 +49,7 @@ export default function TermsOfServicePage() {
             </p>
             <ul>
               <li>By email: admin@rizeupventures.com</li>
-              <li>By mail:</li>
             </ul>
-             <address className="not-italic border-l-2 border-zinc-700 pl-4">
-              RizeUp Ventures, LLC<br />
-              30 N. Gould St.<br />
-              STE R<br />
-              Sheridan, WY 82801
-            </address>
           </CardContent>
         </Card>
       </div>

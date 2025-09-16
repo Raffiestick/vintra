@@ -1,9 +1,12 @@
-'use client';
 
-import dynamic from 'next/dynamic';
+'use client';
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+import dynamicImport from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const DealerManagementClient = dynamic(
+const DealerManagementClient = dynamicImport(
   () => import('./DealerManagementClient'),
   { 
     ssr: false,

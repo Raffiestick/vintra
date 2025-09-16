@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -168,11 +167,11 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'sign-in' }: AuthD
         </DialogHeader>
         <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
         <div className="relative z-50">
-            <div className="pointer-events-none absolute -inset-8 -z-10 rounded-3xl bg-[radial-gradient(closest-side,rgba(99,102,241,0.5),transparent)] blur-3xl animate-[vintra-pulse_4s_infinite]" />
+            <div className="pointer-events-none absolute -inset-8 -z-10 rounded-3xl bg-[radial-gradient(closest-side,rgba(121,87,214,0.5),transparent)] blur-3xl animate-[vintra-pulse_4s_infinite]" />
             <ShimmerCard>
                 <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="w-full">
                     <CardHeader className="text-center pt-6">
-                       <h2 className="font-manrope text-2xl font-bold text-white">Welcome to Vintra</h2>
+                       <h2 className="font-manrope text-2xl font-bold text-white">Welcome to RizeUp</h2>
                     </CardHeader>
                     <TabsList className="grid w-[calc(100%-2rem)] mx-auto grid-cols-2 bg-white/5 border-white/10">
                         <TabsTrigger value="sign-in" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">Sign In</TabsTrigger>
@@ -215,7 +214,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'sign-in' }: AuthD
                                     <div className="space-y-2 w-24"><Label>Zip</Label><Input value={zip} onChange={(e) => setZip(e.target.value)} className="bg-white/5 border-white/15"/></div>
                                     </div>
                                     <div className="space-y-2"><Label>Email Address</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/15"/></div>
-                                    <div className="space-y-2"><Label>Password</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/1_5"/></div>
+                                    <div className="space-y-2"><Label>Password</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/15"/></div>
                                     <div className="space-y-2"><Label>Confirm Password</Label><Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="bg-white/5 border-white/15"/></div>
                                 </div>
                             </ScrollArea>

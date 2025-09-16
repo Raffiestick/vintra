@@ -1,9 +1,8 @@
-
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 export default function PrivacyPolicyPage() {
   return (
-    <div className="bg-zinc-950 text-white min-h-screen py-16 px-4">
+    <div className="bg-[#0B0F1A] text-white min-h-screen py-16 px-4">
       <div className="max-w-4xl mx-auto">
         <Card className="bg-zinc-900 border-zinc-800 text-white">
           <CardHeader>
@@ -12,7 +11,7 @@ export default function PrivacyPolicyPage() {
           </CardHeader>
           <CardContent className="prose prose-invert prose-zinc max-w-none">
             <p>
-              RizeUp Ventures, LLC ("us", "we", or "our") operates the Vintra website (the "Service"). This page informs you of our policies regarding the collection, use, and disclosure of personal data when you use our Service and the choices you have associated with that data.
+              RizeUp Dealer Connect ("us", "we", or "our") operates the RizeUp website (the "Service"). This page informs you of our policies regarding the collection, use, and disclosure of personal data when you use our Service and the choices you have associated with that data.
             </p>
 
             <h2 className="font-manrope">Information Collection and Use</h2>
@@ -35,7 +34,7 @@ export default function PrivacyPolicyPage() {
 
             <h2 className="font-manrope">Use of Data</h2>
             <p>
-              RizeUp Ventures, LLC uses the collected data for various purposes:
+              RizeUp Dealer Connect uses the collected data for various purposes:
             </p>
             <ul>
               <li>To provide and maintain our Service</li>
@@ -53,14 +52,7 @@ export default function PrivacyPolicyPage() {
             </p>
             <ul>
               <li>By email: admin@rizeupventures.com</li>
-              <li>By mail:</li>
             </ul>
-            <address className="not-italic border-l-2 border-zinc-700 pl-4">
-              RizeUp Ventures, LLC<br />
-              30 N. Gould St.<br />
-              STE R<br />
-              Sheridan, WY 82801
-            </address>
           </CardContent>
         </Card>
       </div>

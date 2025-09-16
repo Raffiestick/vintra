@@ -1,19 +1,14 @@
-
 import SiteHeader from "@/components/auth/SiteHeader";
 import Link from "next/link";
 
 function Footer() {
   return (
-    <footer className="bg-black/50 py-16">
+    <footer className="border-t border-white/10 py-16">
         <div className="mx-auto max-w-7xl px-4 text-sm text-white/80">
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4 lg:grid-cols-5">
             <div className="col-span-2 md:col-span-4 lg:col-span-1">
               <Link href="/landing" className="group mb-4 flex items-center gap-3">
-                <img
-                  src="/vintra/wordmark.svg"
-                  alt="Vintra"
-                  className="h-7 opacity-90 transition group-hover:opacity-100"
-                />
+                <h3 className="font-manrope text-xl font-bold">RizeUp</h3>
               </Link>
               <p className="text-white/60">Automated dealer back-office.</p>
             </div>
@@ -60,7 +55,7 @@ function Footer() {
             </div>
           </div>
           <div className="mt-16 flex items-center justify-between border-t border-white/10 pt-8 text-white/60">
-            <p>© 2025 Vintra. All rights reserved.</p>
+            <p>© 2024 RizeUp Dealer Connect. All rights reserved.</p>
           </div>
         </div>
       </footer>
@@ -69,7 +64,7 @@ function Footer() {
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh bg-zinc-950 text-foreground">
+    <div className="min-h-dvh bg-[#0B0F1A]">
         <SiteHeader />
         <main>{children}</main>
         <Footer />
