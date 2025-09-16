@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -86,19 +87,22 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'sign-in' }: AuthD
       const isAdmin = tokenResult.claims.admin === true;
 
       onOpenChange(false);
-      if (isAdmin) {
-        router.push('/admin/dealer-management');
-      } else {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        const userData = userDoc.data();
-        if (userData?.documentsUploaded === false) {
-          router.push('/upload-documents');
-        } else if (userData?.status === 'pending') {
-          router.push('/pending-review');
-        } else if (userData?.status === 'approved') {
-          router.push('/dealer');
+      
+      if (typeof window !== 'undefined') {
+        if (isAdmin) {
+          window.location.href = '/admin/dealer-management';
         } else {
-          toast({ title: "Login Issue", description: "Your account status is unrecognized.", variant: "destructive" });
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          const userData = userDoc.data();
+          if (userData?.documentsUploaded === false) {
+            window.location.href = '/upload-documents';
+          } else if (userData?.status === 'pending') {
+            window.location.href = '/pending-review';
+          } else if (userData?.status === 'approved') {
+            window.location.href = '/dealer';
+          } else {
+            toast({ title: "Login Issue", description: "Your account status is unrecognized.", variant: "destructive" });
+          }
         }
       }
     } catch (error: any) {
@@ -126,12 +130,10 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'sign-in' }: AuthD
 
       await setDoc(doc(db, "users", user.uid), userData);
       
-      // We don't need to force a token refresh here for the client
-      // The rules allow creation based on the authenticated user's UID.
-      // await user.getIdToken(true); 
-
       onOpenChange(false);
-      router.push('/upload-documents');
+      if (typeof window !== 'undefined') {
+        window.location.href = '/upload-documents';
+      }
     } catch (error: any) {
       toast({ title: "Account Creation Failed", description: error.message, variant: "destructive" });
     }

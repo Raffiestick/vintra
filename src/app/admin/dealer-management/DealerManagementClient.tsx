@@ -49,11 +49,12 @@ export default function DealerManagementClient() {
     const { toast } = useToast();
 
     useSafeSnapshot(() => {
+        // Prevent snapshot listener setup until authentication status is resolved.
+        if (authLoading) return;
+
         if (!isAdmin) {
-            if(!authLoading) {
-                setLoadingData(false);
-                setError("You don't have permission to view this page.");
-            }
+            setLoadingData(false);
+            setError("You don't have permission to view this page.");
             return;
         };
 
