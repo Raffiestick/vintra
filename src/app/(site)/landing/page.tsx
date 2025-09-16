@@ -4,7 +4,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { AuthDialog } from "@/components/auth/AuthDialog";
-import { TiltCard } from "@/components/ui/tilt-card"; // Import the new component
+import { TiltCard } from "@/components/ui/tilt-card";
 
 /* ---------- small UI bits ---------- */
 
