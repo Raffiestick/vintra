@@ -29,24 +29,20 @@ interface StagingHeader {
   status?: 'new' | 'in-progress' | 'processed';
   invoiceMeta?: { aucNo?: string; saleLocation?: string };
   invoiceDate?: string | null;      // "YYYY-MM-DD" string
+  invoiceDateDisplay?: string; // "M/D/YYYY"
   invoiceDateTs?: Timestamp | null; // server timestamp at midnight UTC
 }
 
-function formatInvoiceDate(h: StagingHeader): string {
-  const iso = h?.invoiceDate?.trim();
-  if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-    const [y, m, d] = iso.split('-');
-    return `${+m}/${+d}/${y}`;
+function formatInvoiceDate(h: any): string {
+  if (h?.invoiceDateDisplay) return h.invoiceDateDisplay;
+  if (h?.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(h.invoiceDate)) {
+    const [y,m,d] = h.invoiceDate.split("-");
+    return `${+m}/${+d}/${y}`; // M/D/YYYY
   }
-  if (h?.invoiceDateTs?.toDate) {
-    try {
-      const dt = h.invoiceDateTs.toDate();
-      // render as M/D/YYYY like the invoice header
-      return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear()}`;
-    } catch {}
-  }
-  return '—';
+  if (h?.invoiceDateTs?.toDate) return h.invoiceDateTs.toDate().toLocaleDateString();
+  return "—";
 }
+
 
 function StagingSkeleton() {
   return (

@@ -31,6 +31,7 @@ interface StagingHeader {
   updatedAt?: Timestamp;
   invoiceMeta?: InvoiceMeta;
   invoiceDate?: string;        // "YYYY-MM-DD"
+  invoiceDateDisplay?: string; // "M/D/YYYY"
   invoiceDateTs?: Timestamp;   // Firestore Timestamp
   fileUrl?: string;
 }
@@ -42,7 +43,10 @@ interface StagingUnit {
   make?: string;
   model?: string;
   color?: string;
+  hours?: number;
+  odometer?: number;
   stockNo?: string;
+  saleLocation?: string;
   titleInfo?: string;
   itemPrice?: number;
   buyerFee?: number;
@@ -56,21 +60,16 @@ function currency(n?: number) {
   return v.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
-function formatInvoiceDate(h?: StagingHeader | null): string {
-  const iso = h?.invoiceDate?.trim();
-  if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-    const [y, m, d] = iso.split('-');
-    return `${+m}/${+d}/${y}`;
+function formatInvoiceDate(h: any): string {
+  if (h?.invoiceDateDisplay) return h.invoiceDateDisplay;
+  if (h?.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(h.invoiceDate)) {
+    const [y,m,d] = h.invoiceDate.split("-");
+    return `${+m}/${+d}/${y}`; // M/D/YYYY
   }
-  if (h?.invoiceDateTs?.toDate) {
-    try {
-      const dt = h.invoiceDateTs.toDate();
-      // render as M/D/YYYY like the invoice header
-      return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear()}`;
-    } catch {}
-  }
-  return '—';
+  if (h?.invoiceDateTs?.toDate) return h.invoiceDateTs.toDate().toLocaleDateString();
+  return "—";
 }
+
 
 function PageSkeleton() {
   return (
@@ -234,6 +233,7 @@ export default function StagingInvoiceDetailPage() {
               <TableRow>
                 <TableHead>VIN / Stock #</TableHead>
                 <TableHead>Vehicle</TableHead>
+                <TableHead>Title / Location</TableHead>
                 <TableHead>Fees</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -242,19 +242,23 @@ export default function StagingInvoiceDetailPage() {
             <TableBody>
               {filtered.map((u) => {
                 const desc = [u.year, u.make, u.model].filter(Boolean).join(' ');
+                const subDesc = `Color: ${u.color ?? '—'}${u.hours ? ` • Hours: ${u.hours}` : u.odometer ? ` • Odometer: ${u.odometer}` : ''}`;
+                const feeDesc = `Price: ${currency(u.itemPrice)} • Buyer: ${currency(u.buyerFee)} • Online: ${currency(u.onlineFee)} • Mgmt: $100`;
                 return (
                   <TableRow key={u.id}>
-                    <TableCell className="align-top">
-                      <div className="font-semibold font-mono">{u.vin || '—'}</div>
-                      <div className="text-xs text-muted-foreground">{u.stockNo ? `Stock: ${u.stockNo}` : 'Stock: —'}</div>
-                      <div className="text-xs text-muted-foreground">{u.titleInfo ? `Title: ${u.titleInfo}` : 'Title: —'}</div>
+                    <TableCell className="align-top font-mono">
+                      <div className="font-semibold">{u.vin || '—'}</div>
+                      <div className="text-xs text-muted-foreground">{u.stockNo ? `Stock: ${u.stockNo}` : ''}</div>
                     </TableCell>
-                    <TableCell className="align-top">{desc || '—'}</TableCell>
                     <TableCell className="align-top">
-                      <div>Price: {currency(u.itemPrice)}</div>
-                      <div>Buyer Fee: {currency(u.buyerFee)}</div>
-                      <div>Online Fee: {currency(u.onlineFee)}</div>
+                      <div className="font-medium">{desc || '—'}</div>
+                      <div className="text-xs text-muted-foreground">{subDesc}</div>
                     </TableCell>
+                     <TableCell className="align-top">
+                      <div>{u.titleInfo || '—'}</div>
+                      <div className="text-xs text-muted-foreground">{u.saleLocation || '—'}</div>
+                    </TableCell>
+                    <TableCell className="align-top text-xs">{feeDesc}</TableCell>
                     <TableCell className="align-top">
                       <Badge variant={u.processed ? 'default' : 'outline'}>
                         {u.processed ? 'Processed' : 'Pending'}
@@ -270,7 +274,7 @@ export default function StagingInvoiceDetailPage() {
               })}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
                     {hideProcessed ? 'No unprocessed units in this batch.' : 'No units found in this batch.'}
                   </TableCell>
                 </TableRow>
