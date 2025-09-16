@@ -49,6 +49,22 @@ export const safe = (s: any): string =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 
+/** Return YYYY-MM-DD from "DATE: 5/2/2025" etc., if present. */
+export function pickInvoiceDateFromHeader(text: string): string | null {
+  const m = text.match(/DATE:\s*([0-9]{1,2})[\/\-]([0-9]{1,2})[\/\-]([0-9]{2,4})/i);
+  if (!m) return null;
+  const mm = String(+m[1]).padStart(2, '0');
+  const dd = String(+m[2]).padStart(2, '0');
+  const yyyy = String(m[3].length === 2 ? 2000 + +m[3] : +m[3]);
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export function toUsDate(iso?: string | null): string | null {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const [y, m, d] = iso.split('-');
+  return `${+m}/${+d}/${y}`;
+}
+
 /** Normalize a date-like string to YYYY-MM-DD or null. */
 export function normalizeIsoFromDateLike(s?: string | null): string | null {
   if (!s) return null;
@@ -68,12 +84,6 @@ export function normalizeIsoFromDateLike(s?: string | null): string | null {
   }
 
   return null;
-}
-
-export function toUsDate(iso?: string | null): string | null {
-  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-  const [y, m, d] = iso.split('-');
-  return `${+m}/${+d}/${+y % 100}`;
 }
 
 export function assertAdmin(request: CallableRequest) {
