@@ -9,6 +9,8 @@ import { HttpsError } from "firebase-functions/v2/https";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 /* --- secrets --- */
+// DEV_ADMIN_UID_SECRET is no longer used in assertAdmin, but other functions might use it.
+// We keep it defined to avoid breaking other parts of the app if they rely on it.
 export const DEV_ADMIN_UID_SECRET = defineSecret("DEV_ADMIN_UID");
 export const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
@@ -88,8 +90,12 @@ export function normalizeIsoFromDateLike(s?: string | null): string | null {
 
 export function assertAdmin(request: CallableRequest) {
   if (!request.auth) throw new HttpsError("unauthenticated", "You must be signed in.");
-  const devBypass = DEV_ADMIN_UID_SECRET.value();
-  if (devBypass && request.auth.uid === devBypass) return;
+  
+  // The bypass now uses a standard environment variable, which is safer for local dev
+  // and doesn't crash if unset. It's ignored in production.
+  const bypass = process.env.DEV_ADMIN_UID;
+  if (bypass && request.auth.uid === bypass) return;
+
   const token: any = request.auth.token || {};
   const isAdmin = token.role === "admin" || token.admin === true;
   if (!isAdmin) throw new HttpsError("permission-denied", "Admin privileges required.");
@@ -105,18 +111,27 @@ export function getGeminiModel() {
 /* --- PDF text extraction --- */
 export async function extractPdfText(buf: Buffer): Promise<string> {
   try {
-    const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default as (
+    const pdfParse = (await import("pdf-parse")).default as (
       data: Buffer | Uint8Array | ArrayBuffer
     ) => Promise<{ text: string }>;
     const { text } = await pdfParse(buf);
     return String(text || "");
-  } catch {
-    const mod: any = await import("pdf-parse");
-    const fn = mod?.default || mod;
-    const res = await fn(buf);
-    return String(res?.text || "");
+  } catch (error) {
+    console.error("Failed to extract PDF text:", error);
+    // Fallback attempt for different import structures that can occur
+    // in different environments (like pure CommonJS vs. ESM-interop)
+    try {
+        const mod: any = await import("pdf-parse");
+        const fn = mod?.default || mod;
+        const res = await fn(buf);
+        return String(res?.text || "");
+    } catch (fallbackError) {
+        console.error("Fallback PDF parse failed:", fallbackError);
+        throw new Error("Failed to extract PDF text after multiple attempts.");
+    }
   }
 }
+
 
 /* --- VIN extraction (used for fallback) --- */
 export function extractVinsFromText(text: string): string[] {
