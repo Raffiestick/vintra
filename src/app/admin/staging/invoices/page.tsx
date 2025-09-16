@@ -34,7 +34,6 @@ interface StagingHeader {
 }
 
 function formatInvoiceDate(h: any): string {
-  if (h?.invoiceDateDisplay) return h.invoiceDateDisplay;
   if (h?.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(h.invoiceDate)) {
     const [y,m,d] = h.invoiceDate.split("-");
     return `${+m}/${+d}/${y}`; // M/D/YYYY
