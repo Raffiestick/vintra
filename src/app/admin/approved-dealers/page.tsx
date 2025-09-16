@@ -3,10 +3,10 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-import dynamic from 'next/dynamic';
+import NextDynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const ApprovedDealersClient = dynamic(() => import('./ApprovedDealersClient'), { 
+const ApprovedDealersClient = NextDynamic(() => import('./ApprovedDealersClient'), { 
   ssr: false,
   loading: () => <ApprovedDealersSkeleton />
 });
