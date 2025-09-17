@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 
 interface SiteHeaderProps {
   setAuthModalOpen: (isOpen: boolean) => void;
@@ -18,7 +19,8 @@ export default function SiteHeader({ setAuthModalOpen, setAuthModalDefaultTab }:
     <header className="sticky top-0 z-50 border-b border-white/10 bg-black/30 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
         <Link href="/landing" className="group flex items-center gap-3">
-          <h1 className="font-manrope text-2xl font-bold">RizeUp</h1>
+          <Image src="/vintra/logomark-white.svg" alt="Vintra Logo" width={24} height={24} />
+          <h1 className="font-manrope text-2xl font-bold">Vintra</h1>
         </Link>
         <nav className="hidden items-center gap-6 text-sm md:flex">
           <Link

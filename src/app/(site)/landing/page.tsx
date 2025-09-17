@@ -84,7 +84,7 @@ export default function LandingPage({ setAuthModalOpen, setAuthModalDefaultTab }
             The All‑in‑One Platform for <span className="text-white/80">Powersports Dealers</span>
           </h1>
           <p className="mt-6 mx-auto max-w-2xl text-lg text-white/80">
-            RizeUp is your unfair advantage. We eliminate paperwork headaches, give you exclusive access to wholesale
+            Vintra is your unfair advantage. We eliminate paperwork headaches, give you exclusive access to wholesale
             powersports inventory, and provide the marketing tools you need to sell faster. Spend less time on admin and more time moving units.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
@@ -227,7 +227,7 @@ export default function LandingPage({ setAuthModalOpen, setAuthModalDefaultTab }
         />
         <div className="relative mx-auto max-w-4xl px-4 text-center">
           <h2 className="font-manrope text-4xl font-bold tracking-tight md:text-5xl">Ready to Supercharge Your Dealership?</h2>
-          <p className="mt-4 text-lg text-white/80">Join the dealers who use RizeUp to save time, source inventory, and sell more units. No credit card required.</p>
+          <p className="mt-4 text-lg text-white/80">Join the dealers who use Vintra to save time, source inventory, and sell more units. No credit card required.</p>
           <div className="mt-8 flex justify-center gap-4">
             <button
               onClick={() => openModal("create-account")}

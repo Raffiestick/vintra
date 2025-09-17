@@ -9,9 +9,9 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalDefaultTab, setAuthModalDefaultTab] = useState<"sign-in" | "create-account">("sign-in");
 
+  // This function clones the children (the page component) and injects the modal control props into it.
   const childrenWithProps = React.Children.map(children, child => {
     if (React.isValidElement(child)) {
-      // Clone the child element and pass down the modal control functions as props
       return React.cloneElement(child as React.ReactElement<any>, { 
         setAuthModalOpen: setIsAuthModalOpen,
         setAuthModalDefaultTab: setAuthModalDefaultTab

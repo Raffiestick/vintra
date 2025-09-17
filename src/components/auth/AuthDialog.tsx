@@ -171,7 +171,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'sign-in' }: AuthD
             <ShimmerCard>
                 <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="w-full">
                     <CardHeader className="text-center pt-6">
-                       <h2 className="font-manrope text-2xl font-bold text-white">Welcome to RizeUp</h2>
+                       <h2 className="font-manrope text-2xl font-bold text-white">Welcome to Vintra</h2>
                     </CardHeader>
                     <TabsList className="grid w-[calc(100%-2rem)] mx-auto grid-cols-2 bg-white/5 border-white/10">
                         <TabsTrigger value="sign-in" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">Sign In</TabsTrigger>

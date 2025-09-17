@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Power, UserCheck, UserCog, FilePlus, FileText, UploadCloud } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import Image from "next/image";
 
 export default function AdminSidebar() {
   const pathname = usePathname();
@@ -34,12 +35,11 @@ export default function AdminSidebar() {
 
   return (
       <aside className="w-64 flex-shrink-0 bg-sidebar text-sidebar-foreground p-4 flex flex-col border-r border-sidebar-border">
-        <div className="p-4 mb-4">
+        <div className="p-4 mb-4 flex items-center gap-3">
           <Link href="/admin/dealer-management">
-            <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">
-              RizeUp Admin
-            </h2>
+              <Image src="/vintra/logomark-white.svg" alt="Vintra Logo" width={28} height={28} />
           </Link>
+           <h2 className="text-2xl font-bold">Vintra Admin</h2>
         </div>
         <nav className="flex-grow">
           <ul>

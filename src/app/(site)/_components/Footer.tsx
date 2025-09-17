@@ -7,7 +7,7 @@ export default function Footer() {
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4 lg:grid-cols-5">
           <div className="col-span-2 md:col-span-4 lg:col-span-1">
             <Link href="/landing" className="group mb-4 flex items-center gap-3">
-              <h3 className="text-xl font-bold">RizeUp</h3>
+              <h3 className="text-xl font-bold">Vintra</h3>
             </Link>
             <p className="text-white/60">Automated dealer back-office.</p>
           </div>
@@ -48,7 +48,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="mt-16 flex items-center justify-between border-t border-white/10 pt-8 text-white/60">
-          <p>© 2024 RizeUp Dealer Connect. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Vintra. All rights reserved.</p>
         </div>
       </div>
     </footer>
