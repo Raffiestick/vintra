@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { AuthDialog } from "@/components/auth/AuthDialog";
 import { TiltCard } from "@/components/ui/tilt-card";
 import Image from "next/image";
 import placeholderImages from '@/lib/placeholder-images.json';
@@ -45,9 +44,12 @@ function AuroraBG() {
   );
 }
 
-export default function LandingPage() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [defaultTab, setDefaultTab] = useState<"sign-in" | "create-account">("sign-in");
+interface LandingPageProps {
+  setAuthModalOpen?: (isOpen: boolean) => void;
+  setAuthModalDefaultTab?: (tab: "sign-in" | "create-account") => void;
+}
+
+export default function LandingPage({ setAuthModalOpen, setAuthModalDefaultTab }: LandingPageProps) {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
@@ -57,8 +59,8 @@ export default function LandingPage() {
   }, []);
 
   const openModal = (tab: "sign-in" | "create-account") => {
-    setDefaultTab(tab);
-    setIsModalOpen(true);
+    if(setAuthModalDefaultTab) setAuthModalDefaultTab(tab);
+    if(setAuthModalOpen) setAuthModalOpen(true);
   };
 
   return (
@@ -66,8 +68,6 @@ export default function LandingPage() {
       className="relative overflow-x-hidden font-sans"
       style={{ ["--mouse-x" as any]: `${mousePosition.x}px`, ["--mouse-y" as any]: `${mousePosition.y}px` }}
     >
-      <AuthDialog open={isModalOpen} onOpenChange={setIsModalOpen} defaultTab={defaultTab} />
-
       <div
         className="pointer-events-none fixed inset-0 z-30 transition duration-300"
         style={{ background: `radial-gradient(600px at var(--mouse-x) var(--mouse-y), rgba(190, 29, 229, 0.1), transparent 80%)` }}
