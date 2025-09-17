@@ -14,7 +14,6 @@
   "exclude": [
     "node_modules",
     ".next",
-    "src/functions/**",
     "functions/**",
     "**/*.test.ts",
     "**/*.spec.ts"
