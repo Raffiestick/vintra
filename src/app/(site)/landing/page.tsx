@@ -45,8 +45,8 @@ function AuroraBG() {
 }
 
 interface LandingPageProps {
-  setAuthModalOpen?: (isOpen: boolean) => void;
-  setAuthModalDefaultTab?: (tab: "sign-in" | "create-account") => void;
+  setAuthModalOpen: (isOpen: boolean) => void;
+  setAuthModalDefaultTab: (tab: "sign-in" | "create-account") => void;
 }
 
 export default function LandingPage({ setAuthModalOpen, setAuthModalDefaultTab }: LandingPageProps) {

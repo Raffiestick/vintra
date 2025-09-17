@@ -11,6 +11,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
 
   const childrenWithProps = React.Children.map(children, child => {
     if (React.isValidElement(child)) {
+      // Clone the child element and pass down the modal control functions as props
       return React.cloneElement(child as React.ReactElement<any>, { 
         setAuthModalOpen: setIsAuthModalOpen,
         setAuthModalDefaultTab: setAuthModalDefaultTab

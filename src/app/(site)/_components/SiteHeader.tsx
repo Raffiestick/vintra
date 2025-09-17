@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { AuthDialog } from "@/components/auth/AuthDialog";
 
-export default function SiteHeader({ setAuthModalOpen, setAuthModalDefaultTab }: { 
-  setAuthModalOpen: (isOpen: boolean) => void,
-  setAuthModalDefaultTab: (tab: "sign-in" | "create-account") => void
-}) {
+interface SiteHeaderProps {
+  setAuthModalOpen: (isOpen: boolean) => void;
+  setAuthModalDefaultTab: (tab: "sign-in" | "create-account") => void;
+}
+
+export default function SiteHeader({ setAuthModalOpen, setAuthModalDefaultTab }: SiteHeaderProps) {
 
   const openModal = (tab: "sign-in" | "create-account") => {
     setAuthModalDefaultTab(tab);
