@@ -14,6 +14,10 @@ const config: Config = {
       screens: { "2xl": "1400px" },
     },
     extend: {
+      fontFamily: {
+        sans: ["var(--font-sans)"],
+        manrope: ["var(--font-manrope)"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -63,10 +67,30 @@ const config: Config = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "vintra-shimmer": {
+            "0%, 100%": { transform: "translateX(-150%)" },
+            "50%": { transform: "translateX(150%)" },
+        },
+        "vintra-grid": {
+            "0%": { transform: "translateY(0)" },
+            "100%": { transform: "translateY(-3rem)" },
+        },
+        "vintra-pulse": {
+            "0%, 100%": { opacity: "1" },
+            "50%": { opacity: "0.7" },
+        },
+        "vintra-border-shimmer": {
+            "0%": { backgroundPosition: "150% 0" },
+            "100%": { backgroundPosition: "-50% 0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "vintra-shimmer": "vintra-shimmer 5s infinite linear",
+        "vintra-grid": "vintra-grid 20s linear infinite",
+        "vintra-pulse": "vintra-pulse 6s ease-in-out infinite",
+        "vintra-border-shimmer": "vintra-border-shimmer 3s linear infinite",
       },
     },
   },
