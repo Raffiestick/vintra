@@ -1,5 +1,3 @@
-'use client';
-
 import NextDynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 
