@@ -1,7 +1,5 @@
 
 'use client';
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 import { useState, useMemo } from 'react';
 import { collection, getDocs, query, orderBy, Timestamp, onSnapshot, doc } from 'firebase/firestore';
