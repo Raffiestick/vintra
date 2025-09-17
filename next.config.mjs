@@ -1,12 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // SSR build for Firebase App Hosting; DO NOT export statically.
+  // SSR build for App Hosting; do NOT static export.
   output: 'standalone',
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'picsum.photos' },
-      { protocol: 'https', hostname: 'images.unsplash.com' }
-      // If other remote hosts are used in the app, add them here.
+      { protocol: 'https', hostname: 'images.unsplash.com' },
+      // add any others you actually use
     ],
   },
 };
