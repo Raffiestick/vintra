@@ -66,5 +66,3 @@ export function TiltCard({ children, className }: { children: React.ReactNode; c
     </div>
   );
 }
-
-    

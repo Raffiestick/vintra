@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -44,12 +45,7 @@ function AuroraBG() {
   );
 }
 
-interface LandingPageProps {
-  setAuthModalOpen: (isOpen: boolean) => void;
-  setAuthModalDefaultTab: (tab: "sign-in" | "create-account") => void;
-}
-
-export default function LandingPage({ setAuthModalOpen, setAuthModalDefaultTab }: LandingPageProps) {
+export default function LandingPage() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
@@ -57,10 +53,12 @@ export default function LandingPage({ setAuthModalOpen, setAuthModalDefaultTab }
     window.addEventListener("mousemove", onMove);
     return () => window.removeEventListener("mousemove", onMove);
   }, []);
-
-  const openModal = (tab: "sign-in" | "create-account") => {
-    if(setAuthModalDefaultTab) setAuthModalDefaultTab(tab);
-    if(setAuthModalOpen) setAuthModalOpen(true);
+  
+  // This page now dispatches a global event instead of calling a function from props.
+  const handleAuthClick = (mode: 'sign-in' | 'create-account') => {
+    window.dispatchEvent(
+      new CustomEvent("vintra:auth", { detail: { mode } })
+    );
   };
 
   return (
@@ -89,7 +87,7 @@ export default function LandingPage({ setAuthModalOpen, setAuthModalDefaultTab }
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <button
-              onClick={() => openModal("create-account")}
+              onClick={() => handleAuthClick("create-account")}
               className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105"
             >
               Become An Authorized Dealer
@@ -230,7 +228,7 @@ export default function LandingPage({ setAuthModalOpen, setAuthModalDefaultTab }
           <p className="mt-4 text-lg text-white/80">Join the dealers who use Vintra to save time, source inventory, and sell more units. No credit card required.</p>
           <div className="mt-8 flex justify-center gap-4">
             <button
-              onClick={() => openModal("create-account")}
+              onClick={() => handleAuthClick("create-account")}
               className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105"
             >
               Become An Authorized Dealer
