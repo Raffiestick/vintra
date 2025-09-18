@@ -1,7 +1,11 @@
-"use client";
+// This layout file is now much simpler.
+// The main AppShell in the parent (app) layout handles the sidebar and header.
+// This file just ensures the children are rendered.
 
-import AdminShell from "@/components/admin/AdminShell";
-
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return <AdminShell>{children}</AdminShell>;
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return <>{children}</>;
 }
