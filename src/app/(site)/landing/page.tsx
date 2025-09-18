@@ -6,6 +6,10 @@ import { TiltCard } from "@/components/ui/tilt-card";
 import Image from "next/image";
 import placeholderImages from '@/lib/placeholder-images.json';
 
+interface LandingPageProps {
+  onAuthClick?: (mode: 'sign-in' | 'create-account') => void;
+}
+
 function Tag({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] uppercase tracking-wider text-white/80">
@@ -45,7 +49,7 @@ function AuroraBG() {
   );
 }
 
-export default function LandingPage() {
+export default function LandingPage({ onAuthClick = () => {} }: LandingPageProps) {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
@@ -53,13 +57,6 @@ export default function LandingPage() {
     window.addEventListener("mousemove", onMove);
     return () => window.removeEventListener("mousemove", onMove);
   }, []);
-  
-  // This page now dispatches a global event instead of calling a function from props.
-  const handleAuthClick = (mode: 'sign-in' | 'create-account') => {
-    window.dispatchEvent(
-      new CustomEvent("vintra:auth", { detail: { mode } })
-    );
-  };
 
   return (
     <div
@@ -87,7 +84,7 @@ export default function LandingPage() {
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <button
-              onClick={() => handleAuthClick("create-account")}
+              onClick={() => onAuthClick("create-account")}
               className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105"
             >
               Become An Authorized Dealer
@@ -228,7 +225,7 @@ export default function LandingPage() {
           <p className="mt-4 text-lg text-white/80">Join the dealers who use Vintra to save time, source inventory, and sell more units. No credit card required.</p>
           <div className="mt-8 flex justify-center gap-4">
             <button
-              onClick={() => handleAuthClick("create-account")}
+              onClick={() => onAuthClick("create-account")}
               className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105"
             >
               Become An Authorized Dealer
