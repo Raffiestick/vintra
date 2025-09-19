@@ -1,3 +1,4 @@
+
 // src/app/layout.tsx
 import './globals.css';
 import type { Metadata } from 'next';
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark">
-      <body className={cn("min-h-screen bg-background font-sans antialiased", inter.variable, manrope.variable)}>
+      <body className={cn("min-h-screen font-sans antialiased", inter.variable, manrope.variable)}>
         {children}
         <Toaster />
       </body>
