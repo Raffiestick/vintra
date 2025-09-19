@@ -1,3 +1,4 @@
+
 "use client";
 
 
@@ -133,6 +134,10 @@ interface Jacket {
   mgmtPaidAt?: Timestamp;
   mgmtPaymentRef?: string;
 }
+
+const num = (x: any) => Number(x ?? 0);
+const isMgmtPaidNormalized = (j: Jacket | null | undefined) =>
+  Boolean(j && ((j.isMgmtFeePaid ?? j.isMgmtPaid) === true));
 
 interface ApprovedDealer {
   uid: string;
@@ -937,28 +942,21 @@ export default function JacketDetailPage() {
     });
   };
 
-  const isMgmtFeeActuallyPaid = useMemo(() => {
-    if (!jacket) return false;
-    return jacket.isMgmtFeePaid ?? jacket.isMgmtPaid ?? false;
-  }, [jacket]);
-
   const financials = useMemo(() => {
     if (!jacket) return null;
-    const auctionDue =
-      (jacket.itemPrice || 0) +
-      (jacket.buyerFee || 0) +
-      (jacket.onlineFee || 0);
-    const mgmtDue = jacket.managementFee || 0;
-
-    const paidMisc = (jacket.miscFees || []).filter(f => f.paid).reduce((acc, fee) => acc + (fee.amount || 0), 0);
-    const unpaidMisc = (jacket.miscFees || []).filter(f => !f.paid).reduce((acc, fee) => acc + (fee.amount || 0), 0);
     
-    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtFeeActuallyPaid ? mgmtDue : 0) + paidMisc;
-    const outstanding = (jacket.isAuctionPaid ? 0 : auctionDue) + (isMgmtFeeActuallyPaid ? 0 : mgmtDue) + unpaidMisc;
-    const subtotal = auctionDue + mgmtDue + paidMisc + unpaidMisc;
+    const auctionDue = num(jacket.itemPrice) + num(jacket.buyerFee) + num(jacket.onlineFee);
+    const mgmtDue = num(jacket.managementFee);
 
-    return { auctionDue, mgmtDue, subtotal, outstanding, amountPaid, paidMisc, unpaidMisc };
-  }, [jacket, isMgmtFeeActuallyPaid]);
+    const paidMisc = (jacket.miscFees || []).filter(f => f.paid).reduce((acc, fee) => acc + num(fee.amount), 0);
+    const unpaidMisc = (jacket.miscFees || []).filter(f => !f.paid).reduce((acc, fee) => acc + num(fee.amount), 0);
+    
+    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtPaidNormalized(jacket) ? mgmtDue : 0) + paidMisc;
+    const totalCost = auctionDue + mgmtDue + paidMisc + unpaidMisc;
+    const balanceDue = Math.max(0, totalCost - amountPaid);
+
+    return { auctionDue, mgmtDue, subtotal: totalCost, outstanding: balanceDue, amountPaid, paidMisc, unpaidMisc };
+  }, [jacket]);
 
   if (loading || authLoading) {
     return (
@@ -1149,7 +1147,7 @@ export default function JacketDetailPage() {
                                 <PaymentSwitch
                                     id="mgmt"
                                     label="Management Fee Paid"
-                                    checked={isMgmtFeeActuallyPaid}
+                                    checked={isMgmtPaidNormalized(jacket)}
                                     paidAt={jacket.mgmtPaidAt}
                                     paymentRef={jacket.mgmtPaymentRef}
                                 />
