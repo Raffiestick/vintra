@@ -1,9 +1,10 @@
-"use client";
 
-'use client';
+"use client";
 
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
+
+const ALLOWED_URL_PREFIX = "https://storage.googleapis.com/";
 
 function PrintView() {
     const searchParams = useSearchParams();
@@ -17,11 +18,10 @@ function PrintView() {
         );
     }
     
-    // Basic validation to ensure it's a plausible URL
-    if (!url.startsWith('http')) {
+    if (!url.startsWith(ALLOWED_URL_PREFIX)) {
         return (
              <div className="flex items-center justify-center h-screen">
-                <p className="text-red-500">Error: Invalid document URL.</p>
+                <p className="text-red-500">Error: Invalid or disallowed document URL.</p>
             </div>
         )
     }
@@ -36,7 +36,11 @@ function PrintView() {
                 if (iframe.contentWindow) {
                     // Wait a moment for PDF to render then trigger print
                     setTimeout(() => {
-                        iframe.contentWindow?.print();
+                        try {
+                            iframe.contentWindow?.print();
+                        } catch (err) {
+                            console.error("Print failed:", err);
+                        }
                     }, 500); 
                 }
             }}
