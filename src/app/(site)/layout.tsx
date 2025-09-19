@@ -1,39 +1,48 @@
 "use client";
 
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import SiteHeader from "./_components/SiteHeader";
 import Footer from "./_components/Footer";
 import { AuthDialog } from "@/components/auth/AuthDialog";
 import { AuthProvider } from "@/hooks/use-auth-provider";
 
+type AuthTab = "sign-in" | "create-account";
+
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalDefaultTab, setAuthModalDefaultTab] = useState<"sign-in" | "create-account">("sign-in");
+  const [authModalDefaultTab, setAuthModalDefaultTab] = useState<AuthTab>("sign-in");
+  
+  useEffect(() => {
+    const handleAuthEvent = (event: Event) => {
+        const customEvent = event as CustomEvent;
+        const { action, tab } = customEvent.detail || {};
 
-  const handleAuthClick = (mode: "sign-in" | "create-account") => {
-    setAuthModalDefaultTab(mode);
-    setIsAuthModalOpen(true);
-  };
+        if (action === 'open' && (tab === 'sign-in' || tab === 'create-account')) {
+            setAuthModalDefaultTab(tab);
+            setIsAuthModalOpen(true);
+        }
+    };
+    
+    window.addEventListener('vintra:auth', handleAuthEvent);
 
-  const childrenWithProps = React.Children.map(children, (child) => {
-    if (React.isValidElement(child)) {
-      // @ts-ignore - It's safe to ignore here as we know we're adding a prop.
-      return React.cloneElement(child, { onAuthClick: handleAuthClick });
-    }
-    return child;
-  });
+    return () => {
+        window.removeEventListener('vintra:auth', handleAuthEvent);
+    };
+  }, []);
 
   return (
     <AuthProvider>
       <div className="min-h-dvh bg-[#0B0F1A] text-white">
-        <AuthDialog
-          open={isAuthModalOpen}
-          onOpenChange={setIsAuthModalOpen}
-          defaultTab={authModalDefaultTab}
-        />
-        <SiteHeader onAuthClick={handleAuthClick} />
-        <main>{childrenWithProps}</main>
+        <div id="auth-dialog-root-global" data-auth-global-root="true">
+            <AuthDialog
+              open={isAuthModalOpen}
+              onOpenChange={setIsAuthModalOpen}
+              defaultTab={authModalDefaultTab}
+            />
+        </div>
+        <SiteHeader />
+        <main>{children}</main>
         <Footer />
       </div>
     </AuthProvider>
