@@ -1,12 +1,8 @@
 
-// This layout file is now much simpler.
-// The main AppShell in the parent (app) layout handles the sidebar and header.
-// This file just ensures the children are rendered.
+import React from "react";
 
-export default function DealerLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+// This layout is a simple pass-through.
+// The main authenticated layout at src/app/(app)/layout.tsx handles the AppShell.
+export default function DealerLayout({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
