@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from "react";
@@ -14,7 +15,6 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
     setIsAuthModalOpen(true);
   };
 
-  // React.cloneElement is used to pass the onAuthClick prop to child components like the landing page.
   const childrenWithProps = React.Children.map(children, (child) => {
     if (React.isValidElement(child)) {
       // @ts-ignore - It's safe to ignore here as we know we're adding a prop.
