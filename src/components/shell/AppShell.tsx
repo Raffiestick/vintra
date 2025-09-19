@@ -1,225 +1,158 @@
 
 "use client";
 
-import React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { ReactNode, useMemo, useState } from "react";
 import {
-  FileText,
   LayoutDashboard,
-  LogOut,
-  PanelLeft,
-  Search,
-  UserCheck,
-  UserCog,
-  UploadCloud,
-  FilePlus2,
+  Users2,
+  CheckCircle2,
+  FolderOpen,
+  Stamp,
+  FileText,
+  Settings,
+  Menu,
 } from "lucide-react";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useAuth } from "@/hooks/use-auth";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase/client";
-import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
-import Image from "next/image";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
-const AdminNav = () => (
-  <>
-    <NavItem href="/admin/dealer-management" icon={UserCog}>
-      Dealer Management
-    </NavItem>
-    <NavItem href="/admin/approved-dealers" icon={UserCheck}>
-      Approved Dealers
-    </NavItem>
-    <NavItem href="/admin/jackets" icon={FileText}>
-      All Jackets
-    </NavItem>
-    <NavItem href="/admin/jackets/new" icon={FilePlus2}>
-      New Jacket
-    </NavItem>
-    <NavItem href="/admin/staging/invoices" icon={UploadCloud}>
-      Staging
-    </NavItem>
-  </>
-);
-
-const DealerNav = () => (
-  <>
-    <NavItem href="/dealer/jackets" icon={LayoutDashboard}>
-      My Jackets
-    </NavItem>
-  </>
-);
-
-const NavItem = ({ href, icon: Icon, children }: { href: string; icon: React.ElementType; children: React.ReactNode }) => {
-  const pathname = usePathname();
-  const isActive = pathname.startsWith(href);
-  return (
-      <Link
-        href={href}
-        className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-            isActive && "bg-muted text-primary"
-        )}
-      >
-        <Icon className="h-4 w-4" />
-        {children}
-      </Link>
-  );
-};
-
-function AppShellSkeleton() {
-    return (
-        <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
-            <div className="hidden border-r bg-muted/40 md:block">
-                <div className="flex h-full max-h-screen flex-col gap-2">
-                    <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
-                        <Skeleton className="h-6 w-32" />
-                    </div>
-                    <div className="flex-1">
-                        <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-                            <Skeleton className="h-8 my-1" />
-                            <Skeleton className="h-8 my-1" />
-                            <Skeleton className="h-8 my-1" />
-                        </nav>
-                    </div>
-                </div>
-            </div>
-            <div className="flex flex-col">
-                <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
-                    <Skeleton className="h-8 w-8 rounded-md md:hidden" />
-                    <div className="w-full flex-1">
-                         <Skeleton className="h-8 w-full max-w-sm" />
-                    </div>
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                </header>
-                <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
-                     <Skeleton className="h-32 w-full" />
-                     <Skeleton className="h-64 w-full" />
-                </main>
-            </div>
-        </div>
-    );
+/** tiny classnames helper */
+function cn(...xs: (string | undefined | null | false)[]) {
+  return xs.filter(Boolean).join(" ");
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const { isAdmin, user, loading } = useAuth();
-  const router = useRouter();
-  const { toast } = useToast();
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      toast({ title: "Signed Out", description: "You have been successfully signed out." });
-      router.replace("/");
-    } catch (error: any) {
-      toast({ title: "Sign Out Error", description: error.message, variant: "destructive" });
-    }
-  };
-
-  if (loading) {
-      return <AppShellSkeleton />;
-  }
+/** Reusable nav link with active state + icon */
+function NavItem({ href, label, icon: Icon }: { href: string; label: string; icon: any }) {
+  const pathname = usePathname();
+  const active =
+    pathname === href ||
+    (href !== "/" && pathname.startsWith(href + "/")) ||
+    (href !== "/" && pathname === href);
 
   return (
-    <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
-      <div className="hidden border-r bg-muted/40 md:block">
-        <div className="flex h-full max-h-screen flex-col gap-2">
-          <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
-            <Link href="/" className="flex items-center gap-2 font-semibold">
-              <Image src="/vintra/logomark-white.svg" alt="Vintra Logo" width={24} height={24} />
-              <span className="">Vintra</span>
-            </Link>
-          </div>
-          <div className="flex-1">
-            <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-              {isAdmin ? <AdminNav /> : <DealerNav />}
-            </nav>
-          </div>
-        </div>
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+        active
+          ? "bg-white/10 text-foreground"
+          : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+      )}
+    >
+      <Icon size={16} className="opacity-80" />
+      <span>{label}</span>
+    </Link>
+  );
+}
+
+/** Sidebar for admin */
+function AdminNav() {
+  return (
+    <nav className="flex flex-col gap-1">
+      <div className="px-3 pb-1 pt-2 text-[11px] uppercase tracking-wider text-muted-foreground/80">Overview</div>
+      <NavItem href="/admin" label="Dashboard" icon={LayoutDashboard} />
+
+      <div className="px-3 pb-1 pt-3 text-[11px] uppercase tracking-wider text-muted-foreground/80">Dealers</div>
+      <NavItem href="/admin/dealer-management" label="Dealer Management" icon={Users2} />
+      <NavItem href="/admin/approved-dealers" label="Approved Dealers" icon={CheckCircle2} />
+
+      <div className="px-3 pb-1 pt-3 text-[11px] uppercase tracking-wider text-muted-foreground/80">Jackets</div>
+      <NavItem href="/admin/jackets" label="All Jackets" icon={FolderOpen} />
+      <NavItem href="/admin/jackets/new" label="New Jacket" icon={Stamp} />
+      <NavItem href="/admin/staging/invoices" label="Staging · Invoices" icon={FileText} />
+
+      <div className="px-3 pb-1 pt-3 text-[11px] uppercase tracking-wider text-muted-foreground/80">Admin</div>
+      <NavItem href="/reports" label="Reports" icon={FileText} />
+      <NavItem href="/admin/settings" label="Settings" icon={Settings} />
+    </nav>
+  );
+}
+
+/** Sidebar for dealer */
+function DealerNav() {
+  return (
+    <nav className="flex flex-col gap-1">
+      <div className="px-3 pb-1 pt-2 text-[11px] uppercase tracking-wider text-muted-foreground/80">Overview</div>
+      <NavItem href="/dealer" label="Overview" icon={LayoutDashboard} />
+
+      <div className="px-3 pb-1 pt-3 text-[11px] uppercase tracking-wider text-muted-foreground/80">Jackets</div>
+      <NavItem href="/dealer/jackets" label="My Jackets" icon={FolderOpen} />
+      <NavItem href="/dealer/print" label="Print Jacket" icon={FileText} />
+
+      <div className="px-3 pb-1 pt-3 text-[11px] uppercase tracking-wider text-muted-foreground/80">Account</div>
+      <NavItem href="/upload-documents" label="Upload Documents" icon={FileText} />
+      <NavItem href="/pending-review" label="Pending Review" icon={CheckCircle2} />
+    </nav>
+  );
+}
+
+/** Topbar with section title & mobile menu */
+function Topbar() {
+  const pathname = usePathname();
+  const section = pathname.startsWith("/admin")
+    ? "Admin"
+    : pathname.startsWith("/dealer")
+    ? "Dealer"
+    : "App";
+
+  const [open, setOpen] = useState(false);
+  const MobileNav = pathname.startsWith("/admin") ? AdminNav : pathname.startsWith("/dealer") ? DealerNav : AdminNav;
+
+  return (
+    <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border/60 bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex items-center gap-3">
+        {/* Mobile menu */}
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetTrigger asChild>
+            <button className="md:hidden rounded-md border border-border/60 p-1.5 hover:bg-white/5" aria-label="Open navigation">
+              <Menu size={18} />
+            </button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-72 bg-background/95 backdrop-blur">
+            <SheetHeader>
+              <SheetTitle className="bg-gradient-to-r from-indigo-400 via-fuchsia-400 to-amber-300 bg-clip-text text-transparent">
+                Vintra
+              </SheetTitle>
+            </SheetHeader>
+            <div className="mt-4">
+              <MobileNav />
+            </div>
+          </SheetContent>
+        </Sheet>
+        <div className="font-medium">{section} Dashboard</div>
       </div>
-      <div className="flex flex-col">
-        <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="shrink-0 md:hidden"
-              >
-                <PanelLeft className="h-5 w-5" />
-                <span className="sr-only">Toggle navigation menu</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="flex flex-col">
-              <nav className="grid gap-2 text-lg font-medium">
-                <Link
-                  href="/"
-                  className="flex items-center gap-2 text-lg font-semibold mb-4"
-                >
-                  <Image src="/vintra/logomark-white.svg" alt="Vintra" width={24} height={24} />
-                  <span className="sr-only">Vintra</span>
-                </Link>
-                {isAdmin ? <AdminNav /> : <DealerNav />}
-              </nav>
-            </SheetContent>
-          </Sheet>
-          <div className="w-full flex-1">
-            <form>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Search..."
-                  className="w-full appearance-none bg-background pl-8 shadow-none md:w-2/3 lg:w-1/3"
-                />
-              </div>
-            </form>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="icon" className="rounded-full">
-                 { user?.photoURL ? <Image src={user.photoURL} alt="User Avatar" width={36} height={36} className="rounded-full" /> : <UserCog className="h-5 w-5" /> }
-                <span className="sr-only">Toggle user menu</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{user?.email || 'My Account'}</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem disabled>Settings</DropdownMenuItem>
-              <DropdownMenuItem disabled>Support</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
-            {children}
+      {/* right side: placeholder for user menu/logout if needed */}
+      <div className="text-sm text-muted-foreground"></div>
+    </header>
+  );
+}
+
+/** Main shell that picks admin or dealer nav from pathname */
+export default function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  const SidebarNav = useMemo(() => {
+    if (pathname.startsWith("/admin")) return AdminNav;
+    if (pathname.startsWith("/dealer")) return DealerNav;
+    return AdminNav;
+  }, [pathname]);
+
+  return (
+    <div className="min-h-dvh bg-background text-foreground">
+      {/* Desktop sidebar */}
+      <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-border/60 bg-background/80 px-3 py-4 backdrop-blur md:flex">
+        <div className="mb-4 px-2 text-lg font-semibold tracking-wide bg-gradient-to-r from-indigo-400 via-fuchsia-400 to-amber-300 bg-clip-text text-transparent">
+          Vintra
+        </div>
+        <SidebarNav />
+        <div className="mt-auto px-2 text-xs text-muted-foreground">Navigation</div>
+      </aside>
+
+      {/* Main content area */}
+      <div className="md:pl-64">
+        <Topbar />
+        <main className="px-4 py-6">
+          <div className="mx-auto max-w-7xl">{children}</div>
         </main>
       </div>
     </div>
