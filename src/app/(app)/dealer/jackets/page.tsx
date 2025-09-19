@@ -1,5 +1,5 @@
-"use client";
 
+"use client";
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -117,6 +117,13 @@ export default function DealerJacketsPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [filter, setFilter] = useState("all");
     const [currentPage, setCurrentPage] = useState(1);
+    
+    useEffect(() => {
+      if (!authLoading && !user) {
+        window.dispatchEvent(new CustomEvent("vintra:auth", { detail: { action: "open", tab: "sign-in" }}));
+      }
+    }, [authLoading, user]);
+
 
     useEffect(() => {
         if (!user) return;
@@ -343,7 +350,7 @@ export default function DealerJacketsPage() {
                                     return (
                                         <TableRow key={jacket.id}>
                                             <TableCell>{jacket.auctionSaleDate ? jacket.auctionSaleDate.toDate().toLocaleDateString() : 'N/A'}</TableCell>
-                                            <TableCell>
+                                            <TableCell className="min-w-[160px]">
                                                 <div className="font-medium">{vehicleDesc || "Details Missing"}</div>
                                                 <div className="text-sm text-muted-foreground font-mono">{jacket.vin}</div>
                                             </TableCell>
