@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from "react";
@@ -9,11 +10,10 @@ import {
   LogOut,
   PanelLeft,
   Search,
-  Settings,
-  UploadCloud,
-  UserCheck,
-  UserCog,
   Users,
+  UserCog,
+  UserCheck,
+  UploadCloud,
 } from "lucide-react";
 import {
   Breadcrumb,
@@ -57,16 +57,18 @@ const AdminNav = () => (
     <NavItem href="/admin/jackets" icon={FileText}>
       All Jackets
     </NavItem>
-    <NavItem href="/admin/staging/invoices" icon={UploadCloud}>
+     <NavItem href="/admin/staging/invoices" icon={UploadCloud}>
       Staging
     </NavItem>
   </>
 );
 
 const DealerNav = () => (
-  <NavItem href="/dealer" icon={LayoutDashboard}>
-    My Jackets
-  </NavItem>
+  <>
+    <NavItem href="/dealer/jackets" icon={LayoutDashboard}>
+      My Jackets
+    </NavItem>
+  </>
 );
 
 const NavItem = ({ href, icon: Icon, children }: { href: string; icon: React.ElementType; children: React.ReactNode }) => {
@@ -106,7 +108,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   };
   
-  // A basic breadcrumb generator
   const pathname = usePathname();
   const breadcrumbItems = React.useMemo(() => {
     const segments = pathname.split('/').filter(Boolean);
@@ -124,7 +125,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside className="fixed inset-y-0 left-0 z-10 hidden w-14 flex-col border-r bg-background sm:flex">
           <nav className="flex flex-col items-center gap-4 px-2 sm:py-5">
             <Link
-              href={isAdmin ? "/admin/dealer-management" : "/dealer"}
+              href={isAdmin ? "/admin" : "/dealer"}
               className="group flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-full bg-primary text-lg font-semibold text-primary-foreground md:h-8 md:w-8 md:text-base"
             >
               <img src="/vintra/logomark-white.svg" alt="Vintra" className="h-4 w-4 transition-all group-hover:scale-110" />
@@ -157,7 +158,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <SheetContent side="left" className="sm:max-w-xs">
                 <nav className="grid gap-6 text-lg font-medium">
                    <Link
-                      href="#"
+                      href={isAdmin ? "/admin" : "/dealer"}
                       className="group flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-full bg-primary text-lg font-semibold text-primary-foreground md:text-base"
                     >
                       <img src="/vintra/logomark-white.svg" alt="Vintra" className="h-5 w-5 transition-all group-hover:scale-110" />
@@ -171,7 +172,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         <Link href="/admin/staging/invoices" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"><UploadCloud className="h-5 w-5" />Staging</Link>
                       </>
                   ) : (
-                        <Link href="/dealer" className="flex items-center gap-4 px-2.5 text-foreground"><LayoutDashboard className="h-5 w-5" />My Jackets</Link>
+                        <Link href="/dealer/jackets" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"><LayoutDashboard className="h-5 w-5" />My Jackets</Link>
                   )}
                 </nav>
               </SheetContent>
@@ -179,6 +180,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             <Breadcrumb className="hidden md:flex">
               <BreadcrumbList>
+                <BreadcrumbItem>
+                    <BreadcrumbLink asChild>
+                        <Link href={isAdmin ? '/admin' : '/dealer'}>Dashboard</Link>
+                    </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
                 {breadcrumbItems.map((item, index) => (
                   <React.Fragment key={item.href}>
                     <BreadcrumbItem>
@@ -216,8 +223,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>{user?.email || 'My Account'}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>Settings</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
               </DropdownMenuContent>
