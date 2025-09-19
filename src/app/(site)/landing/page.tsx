@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import placeholderImages from "@/lib/placeholder-images.json";
+import { ErrorBoundary } from "@/components/util/ErrorBoundary";
 
 /** Client-only tilt */
 const TiltCard = dynamic(
@@ -91,6 +92,9 @@ export default function LandingPage(): JSX.Element {
   const [hasGlobalDialog, setHasGlobalDialog] = useState(false);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<AuthTab>("sign-in");
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => { setHydrated(true); }, []);
 
   // re-entrancy guard to avoid loops if events bounce
   const isReDispatching = useRef(false);
@@ -162,6 +166,11 @@ export default function LandingPage(): JSX.Element {
     }
   };
 
+  if (!hydrated) {
+    // Render a minimal shell to avoid SSR -> client mismatch
+    return <div className="min-h-dvh bg-zinc-950" />;
+  }
+
   return (
     <div
       className="relative min-h-dvh overflow-x-hidden bg-zinc-950 font-sans text-white"
@@ -169,12 +178,13 @@ export default function LandingPage(): JSX.Element {
     >
       {/* NO header here (prevents double-header). Global header stays in layout. */}
 
-      {/* Local AuthDialog only if there’s no global one */}
-      {!hasGlobalDialog && (
-        <div id="auth-dialog-root-local" data-auth-global-root={false}>
-          <AuthDialogDynamic open={open} onOpenChange={setOpen} defaultTab={tab} />
-        </div>
-      )}
+      <ErrorBoundary>
+        {!hasGlobalDialog && (
+          <div id="auth-dialog-root-local" data-auth-global-root={false}>
+            <AuthDialogDynamic open={open} onOpenChange={setOpen} defaultTab={tab} />
+          </div>
+        )}
+      </ErrorBoundary>
 
       {/* spotlight follows cursor */}
       <div
@@ -188,65 +198,67 @@ export default function LandingPage(): JSX.Element {
       <GridLines />
 
       <main>
-        {/* HERO */}
-        <section className="relative mx-auto max-w-7xl px-4 pt-32 md:pt-40">
-          <div className="pointer-events-none absolute -top-40 left-1/2 h-[40rem] w-[70rem] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(99,102,241,0.6),transparent)] blur-3xl" />
-          <div className="relative text-center">
-            <Tag>For Independent, Specialty, & Wholesale Dealers</Tag>
+        <ErrorBoundary>
+          {/* HERO */}
+          <section className="relative mx-auto max-w-7xl px-4 pt-32 md:pt-40">
+            <div className="pointer-events-none absolute -top-40 left-1/2 h-[40rem] w-[70rem] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(99,102,241,0.6),transparent)] blur-3xl" />
+            <div className="relative text-center">
+              <Tag>For Independent, Specialty, & Wholesale Dealers</Tag>
 
-            <h1 className="mt-4 font-manrope text-4xl font-bold tracking-tight md:text-6xl">
-              The All-in-One Platform for <span className="text-white/80">Powersports Dealers</span>
-            </h1>
+              <h1 className="mt-4 font-manrope text-4xl font-bold tracking-tight md:text-6xl">
+                The All-in-One Platform for <span className="text-white/80">Powersports Dealers</span>
+              </h1>
 
-            <p className="mt-6 mx-auto max-w-2xl text-lg text-white/80">
-              Vintra is your unfair advantage. We eliminate paperwork headaches, give you exclusive access to wholesale
-              powersports inventory, and provide the marketing tools you need to sell faster. Spend less time on admin and more time moving units.
-            </p>
-
-            <div className="mt-8 flex flex-wrap justify-center gap-4">
-              <button
-                onClick={() => triggerAuth("create-account")}
-                className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105"
-              >
-                Become An Authorized Dealer
-              </button>
-              <a
-                href="#features"
-                className="rounded-md border border-white/15 px-5 py-3 text-base font-medium hover:bg-white/10 transition-all duration-300"
-              >
-                See features
-              </a>
-            </div>
-
-            <div className="mt-8 text-xs text-white/60">
-              Streamline Operations · Source Inventory · Sell Faster
-            </div>
-
-            {/* Tilted dashboard shot */}
-            <div className="relative mt-16">
-              <div className="absolute -inset-12 top-1/2 -translate-y-1/2 z-0">
-                <div className="h-full w-full rounded-full bg-[radial-gradient(closest-side,rgba(99,102,241,0.25),transparent)] blur-3xl animate-[vintra-pulse_6s_ease-in-out_infinite]" />
-              </div>
-              <div className="relative mx-auto max-w-4xl">
-                <div className="pointer-events-none absolute -inset-2.5 rounded-xl bg-indigo-500/15 blur-xl z-0" />
-                <TiltCard className="relative z-10">
-                  <Image
-                    src={placeholderImages.dashboard.src}
-                    alt={placeholderImages.dashboard.alt}
-                    width={placeholderImages.dashboard.width}
-                    height={placeholderImages.dashboard.height}
-                    className="w-full h-auto rounded-lg"
-                    data-ai-hint="dashboard analytics"
-                    priority
-                  />
-                </TiltCard>
-              </div>
-              <p className="mt-4 text-center text-xs text-white/60">
-                A clean, intuitive dashboard to manage all your jackets.
+              <p className="mt-6 mx-auto max-w-2xl text-lg text-white/80">
+                Vintra is your unfair advantage. We eliminate paperwork headaches, give you exclusive access to wholesale
+                powersports inventory, and provide the marketing tools you need to sell faster. Spend less time on admin and more time moving units.
               </p>
+
+              <div className="mt-8 flex flex-wrap justify-center gap-4">
+                <button
+                  onClick={() => triggerAuth("create-account")}
+                  className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105"
+                >
+                  Become An Authorized Dealer
+                </button>
+                <a
+                  href="#features"
+                  className="rounded-md border border-white/15 px-5 py-3 text-base font-medium hover:bg-white/10 transition-all duration-300"
+                >
+                  See features
+                </a>
+              </div>
+
+              <div className="mt-8 text-xs text-white/60">
+                Streamline Operations · Source Inventory · Sell Faster
+              </div>
+
+              {/* Tilted dashboard shot */}
+              <div className="relative mt-16">
+                <div className="absolute -inset-12 top-1/2 -translate-y-1/2 z-0">
+                  <div className="h-full w-full rounded-full bg-[radial-gradient(closest-side,rgba(99,102,241,0.25),transparent)] blur-3xl animate-[vintra-pulse_6s_ease-in-out_infinite]" />
+                </div>
+                <div className="relative mx-auto max-w-4xl">
+                  <div className="pointer-events-none absolute -inset-2.5 rounded-xl bg-indigo-500/15 blur-xl z-0" />
+                  <TiltCard className="relative z-10">
+                    <Image
+                      src={placeholderImages.dashboard.src}
+                      alt={placeholderImages.dashboard.alt}
+                      width={placeholderImages.dashboard.width}
+                      height={placeholderImages.dashboard.height}
+                      className="w-full h-auto rounded-lg"
+                      data-ai-hint="dashboard analytics"
+                      priority
+                    />
+                  </TiltCard>
+                </div>
+                <p className="mt-4 text-center text-xs text-white/60">
+                  A clean, intuitive dashboard to manage all your jackets.
+                </p>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </ErrorBoundary>
 
         {/* FEATURES */}
         <section id="features" className="relative mx-auto mt-24 max-w-7xl px-4">
