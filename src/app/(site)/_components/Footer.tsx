@@ -1,54 +1,67 @@
-import Link from "next/link";
+// Server component (no hooks)
+export default function SiteFooter() {
+  const year = new Date().getFullYear();
 
-export default function Footer() {
   return (
-    <footer className="border-t border-white/10 py-16">
-      <div className="mx-auto max-w-7xl px-4 text-sm text-white/80">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-4 lg:grid-cols-5">
-          <div className="col-span-2 md:col-span-4 lg:col-span-1">
-            <Link href="/landing" className="group mb-4 flex items-center gap-3">
-              <h3 className="text-xl font-bold">Vintra</h3>
-            </Link>
-            <p className="text-white/60">Automated dealer back-office.</p>
-          </div>
+    <footer className="mt-28 border-t border-white/10 bg-[hsl(var(--background))]">
+      <div className="mx-auto max-w-7xl px-4 py-12">
+        {/* Top: brand + links */}
+        <div className="grid gap-10 md:grid-cols-[1.6fr_1fr]">
+          {/* Brand + blurb */}
           <div>
-            <h4 className="mb-3 font-semibold text-white">Product</h4>
-            <ul className="space-y-2 text-white/70">
+            <div className="relative select-none">
+              <span className="text-[18px] font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 via-indigo-400 to-violet-500">
+                VINTRA
+              </span>
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -inset-2 -z-10 blur-md opacity-30"
+                style={{
+                  background:
+                    "radial-gradient(closest-side, rgba(99,102,241,0.28), transparent 70%)",
+                }}
+              />
+            </div>
+
+            <p className="mt-3 max-w-md text-sm leading-relaxed text-white/75">
+              Vintra is the all-in-one platform for powersports dealers—streamlining jackets,
+              documents, inventory access, and data-driven marketing so you spend less time on
+              admin and more time moving units.
+            </p>
+          </div>
+
+          {/* Links (shifted left) */}
+          <nav aria-label="Footer" className="md:justify-self-start md:pl-8">
+            <ul className="mt-1 space-y-2 text-sm text-white/80">
               <li>
-                <Link href="/landing#features" className="hover:text-white">
-                  Features
-                </Link>
+                <a className="hover:text-white underline-offset-4 hover:underline" href="/landing">
+                  Home
+                </a>
+              </li>
+              <li>
+                <a className="hover:text-white underline-offset-4 hover:underline" href="/about">
+                  Why Vintra (About Page)
+                </a>
+              </li>
+              <li>
+                <a className="hover:text-white underline-offset-4 hover:underline" href="/dealer-faq">
+                  Dealer FAQ’s (Placeholder)
+                </a>
+              </li>
+              <li>
+                <a className="hover:text-white underline-offset-4 hover:underline" href="/contact">
+                  Contact Us (Placeholder)
+                </a>
               </li>
             </ul>
-          </div>
-          <div>
-            <h4 className="mb-3 font-semibold text-white">Company</h4>
-            <ul className="space-y-2 text-white/70">
-              <li>
-                <Link href="/about" className="hover:text-white">
-                  About
-                </Link>
-              </li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="mb-3 font-semibold text-white">Legal</h4>
-            <ul className="space-y-2 text-white/70">
-              <li>
-                <Link href="/privacy" className="hover:text-white">
-                  Privacy Policy
-                </Link>
-              </li>
-              <li>
-                <Link href="/terms" className="hover:text-white">
-                  Terms of Service
-                </Link>
-              </li>
-            </ul>
-          </div>
+          </nav>
         </div>
-        <div className="mt-16 flex items-center justify-between border-t border-white/10 pt-8 text-white/60">
-          <p>© {new Date().getFullYear()} Vintra. All rights reserved.</p>
+
+        {/* Bottom bar */}
+        <div className="mt-10 border-t border-white/10 pt-6 text-sm text-white/70">
+          <div className="flex flex-col items-center justify-between gap-3 md:flex-row">
+            <div>© {year} Vintra. All rights reserved.</div>
+          </div>
         </div>
       </div>
     </footer>

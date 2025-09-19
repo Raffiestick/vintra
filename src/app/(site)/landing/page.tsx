@@ -380,17 +380,6 @@ export default function LandingPage(): JSX.Element {
           </div>
         </section>
       </main>
-
-      {/* Centered footer */}
-      <footer className="mx-auto max-w-7xl px-4 pb-8">
-        <div className="border-t border-white/10 pt-6 text-center text-sm text-white/70">
-          © {new Date().getFullYear()} Vintra ·{" "}
-          <a className="underline underline-offset-4 hover:text-white" href="/privacy">Privacy</a> ·{" "}
-          <a className="underline underline-offset-4 hover:text-white" href="/terms">Terms</a> ·{" "}
-          <a className="underline underline-offset-4 hover:text-white" href="/about">About</a>
-        </div>
-      </footer>
-
       {/* Page keyframes only */}
       <style
         dangerouslySetInnerHTML={{
