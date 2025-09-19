@@ -1,5 +1,5 @@
-"use client";
 
+"use client";
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
@@ -29,25 +29,32 @@ interface Jacket extends DocumentData {
   onlineFee?: number;
   managementFee?: number;
   isAuctionPaid?: boolean;
+  isMgmtPaid?: boolean; // Legacy
   isMgmtFeePaid?: boolean;
-  miscFees?: { amount?: number }[];
+  miscFees?: { amount?: number; paid?: boolean }[];
   invoiceUrl?: string;
   dealerId?: string;
 }
 
-function calculateOutstanding(jacket: Jacket): number {
-    const num = (x: any): number => (typeof x === 'number' ? x : 0);
-    const auctionDue = num(jacket.itemPrice) + num(jacket.buyerFee) + num(jacket.onlineFee);
-    const mgmtDue = num(jacket.managementFee);
-    const miscTotal = jacket.miscFees?.reduce((sum, fee) => sum + num(fee.amount), 0) || 0;
+const num = (x: any) => Number(x ?? 0);
+const safeDate = (ts: any) =>
+  ts?.toDate?.() instanceof Date ? ts.toDate().toLocaleDateString() : "N/A";
 
-    const outstanding =
-        (jacket.isAuctionPaid ? 0 : auctionDue) +
-        (jacket.isMgmtFeePaid ? 0 : mgmtDue) +
-        miscTotal;
-        
-    return outstanding;
-}
+const StatusBadges = ({ jacket }: { jacket: any }) => {
+  const isAuctionPaid = jacket.isAuctionPaid === true;
+  const isMgmtPaid = (jacket.isMgmtFeePaid ?? jacket.isMgmtPaid) === true;
+  return (
+    <div className="flex flex-col gap-1">
+      <Badge variant={isAuctionPaid ? "default" : "destructive"}>
+        Auction {isAuctionPaid ? "Paid" : "Unpaid"}
+      </Badge>
+      <Badge variant={isMgmtPaid ? "default" : "destructive"}>
+        Mgmt {isMgmtPaid ? "Paid" : "Unpaid"}
+      </Badge>
+    </div>
+  );
+};
+
 
 function AdminJacketsSkeleton() {
     return (
@@ -103,6 +110,7 @@ export default function AdminAllJacketsPage() {
     return onSnapshot(q, (querySnapshot) => {
       const jacketsData = querySnapshot.docs.map(doc => ({
         id: doc.id,
+        vin: doc.id, // Ensure VIN is consistent
         ...doc.data(),
       } as Jacket));
       setAllJackets(jacketsData);
@@ -117,19 +125,22 @@ export default function AdminAllJacketsPage() {
 
   const filteredJackets = useMemo(() => {
     return allJackets.filter(jacket => {
+      const auctionDue = num(jacket.itemPrice) + num(jacket.buyerFee) + num(jacket.onlineFee);
+      const mgmtDue = num(jacket.managementFee);
+      const miscUnpaid = (jacket.miscFees ?? [])
+        .filter((f: any) => !f?.paid)
+        .reduce((s: number, f: any) => s + num(f?.amount), 0);
+  
+      const isMgmtPaid = (jacket.isMgmtFeePaid ?? jacket.isMgmtPaid) === true;
+      const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtPaid ? mgmtDue : 0);
+      const outstanding = Math.max(0, auctionDue + mgmtDue + miscUnpaid - amountPaid);
+      
       const vinMatch = jacket.vin.toLowerCase().includes(searchTerm.toLowerCase());
-      const unpaidMatch = !showUnpaidOnly || calculateOutstanding(jacket) > 0;
+      const unpaidMatch = !showUnpaidOnly || outstanding > 0;
       return vinMatch && unpaidMatch;
     });
   }, [allJackets, searchTerm, showUnpaidOnly]);
   
-  const fmtCurrency = (n?: number): string => {
-    if (n === null || typeof n === "undefined") {
-      return "$0.00";
-    }
-    return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
-  };
-
   if (authLoading || loadingJackets) {
     return <AdminJacketsSkeleton />;
   }
@@ -192,53 +203,61 @@ export default function AdminAllJacketsPage() {
                     </TableHeader>
                     <TableBody>
                     {filteredJackets.map((jacket) => {
-                        const outstanding = calculateOutstanding(jacket);
-                        const vehicleDesc = [jacket.year, jacket.make, jacket.model].filter(Boolean).join(' ');
-                        return (
-                            <TableRow key={jacket.id}>
-                                <TableCell>
-                                    <div className="font-medium">{vehicleDesc || "Vehicle Details Missing"}</div>
-                                    <div className="text-sm text-muted-foreground font-mono">{jacket.vin}</div>
-                                </TableCell>
-                                <TableCell>
-                                    <div className="text-xs truncate max-w-[150px] font-mono" title={jacket.dealerId || 'N/A'}>
-                                        {jacket.dealerId || "Not Assigned"}
-                                    </div>
-                                </TableCell>
-                                <TableCell>
-                                    <div className="flex flex-col gap-1">
-                                        <Badge variant={jacket.isAuctionPaid ? 'default' : 'destructive'}>
-                                            Auction {jacket.isAuctionPaid ? 'Paid' : 'Unpaid'}
-                                        </Badge>
-                                        <Badge variant={jacket.isMgmtFeePaid ? 'default' : 'destructive'}>
-                                            Mgmt {jacket.isMgmtFeePaid ? 'Paid' : 'Unpaid'}
-                                        </Badge>
-                                    </div>
-                                </TableCell>
-                                <TableCell>
-                                    {jacket.auctionSaleDate ? jacket.auctionSaleDate.toDate().toLocaleDateString() : 'N/A'}
-                                </TableCell>
-                                <TableCell className="text-right font-medium">
-                                    {fmtCurrency(outstanding)}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                    <div className="flex justify-end gap-2">
-                                        <Button asChild variant="outline" size="sm">
-                                            <Link href={`/admin/jackets/${jacket.id}`}>
-                                                Open
-                                            </Link>
-                                        </Button>
-                                        {jacket.invoiceUrl && (
-                                            <Button asChild variant="secondary" size="sm">
-                                                <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer">
-                                                    Invoice <ExternalLink className="ml-2 h-3 w-3" />
-                                                </a>
-                                            </Button>
-                                        )}
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        );
+                      const auctionDue = num(jacket.itemPrice) + num(jacket.buyerFee) + num(jacket.onlineFee);
+                      const mgmtDue = num(jacket.managementFee);
+                      const miscUnpaid = (jacket.miscFees ?? [])
+                        .filter((f: any) => !f?.paid)
+                        .reduce((s: number, f: any) => s + num(f?.amount), 0);
+
+                      const isMgmtPaid = (jacket.isMgmtFeePaid ?? jacket.isMgmtPaid) === true;
+                      const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtPaid ? mgmtDue : 0);
+                      const outstanding = Math.max(0, auctionDue + mgmtDue + miscUnpaid - amountPaid);
+
+                      const vehicleDesc = [jacket.year, jacket.make, jacket.model].filter(Boolean).join(" ");
+
+                      return (
+                        <TableRow key={jacket.vin ?? jacket.id}>
+                          <TableCell>
+                            <div className="font-medium">{vehicleDesc || "Vehicle Details Missing"}</div>
+                            <div className="text-sm text-muted-foreground font-mono">
+                              {jacket.vin ?? "No VIN"}
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <div className="text-xs truncate max-w-[180px] font-mono" title={jacket.dealerId || "N/A"}>
+                              {jacket.dealerId || "Not Assigned"}
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <StatusBadges jacket={jacket} />
+                          </TableCell>
+
+                          <TableCell>{safeDate(jacket.auctionSaleDate)}</TableCell>
+
+                          <TableCell className="text-right font-medium">
+                            {(outstanding ?? 0).toLocaleString("en-US", { style: "currency", currency: "USD" })}
+                          </TableCell>
+
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={`/admin/jackets/${encodeURIComponent(jacket.vin ?? jacket.id)}`}>
+                                  Open
+                                </Link>
+                              </Button>
+                              {!!jacket.invoiceUrl && (
+                                <Button asChild variant="secondary" size="sm">
+                                  <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer">
+                                    Invoice <ExternalLink className="ml-2 h-3 w-3" />
+                                  </a>
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
                     })}
                     </TableBody>
                 </Table>
@@ -252,3 +271,4 @@ export default function AdminAllJacketsPage() {
     </div>
   );
 }
+
