@@ -1,13 +1,23 @@
-// src/app/(site)/landing/page.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { AuthDialog } from "@/components/auth/AuthDialog";
-import { TiltCard } from "@/components/ui/tilt-card";
+import React, { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import placeholderImages from "@/lib/placeholder-images.json";
 
-/* ---------- small UI bits ---------- */
+/** Tilt is purely client-side */
+const TiltCard = dynamic(
+  () => import("@/components/ui/tilt-card").then((m: any) => m.TiltCard ?? m.default),
+  { ssr: false }
+) as any;
+
+/** AuthDialog may already exist globally; we’ll mount a local one only if needed */
+const AuthDialogDynamic = dynamic(
+  () => import("@/components/auth/AuthDialog").then((m: any) => m.AuthDialog ?? m.default),
+  { ssr: false }
+) as any;
+
+/* ------------------------------ Small UI bits ------------------------------ */
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -17,14 +27,7 @@ function Tag({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* visual card with glow/shimmer */
-function GlowCard({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function GlowCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div
       className={`relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] shadow-lg ${className || ""}`}
@@ -42,13 +45,7 @@ function GlowCard({
   );
 }
 
-function AnimatedBorderCard({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function AnimatedBorderCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`relative rounded-xl p-[0.2px] bg-transparent ${className || ""}`}>
       <div className="absolute inset-[-0.2px] rounded-xl -z-10 bg-[linear-gradient(90deg,transparent_45%,#e2e8f0_50%,transparent_55%)] bg-[length:300%_100%] animate-[vintra-border-shimmer_3s_linear_infinite]" />
@@ -79,12 +76,15 @@ function AuroraBG() {
   );
 }
 
-/* ---------- Page ---------- */
+/* --------------------------------- Page ----------------------------------- */
 
 export default function LandingPage(): JSX.Element {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [defaultTab, setDefaultTab] = useState<"sign-in" | "create-account">("sign-in");
+  type AuthTab = "sign-in" | "create-account";
+
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [hasGlobalDialog, setHasGlobalDialog] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<AuthTab>("sign-in");
 
   // cursor spotlight
   useEffect(() => {
@@ -93,21 +93,52 @@ export default function LandingPage(): JSX.Element {
     return () => window.removeEventListener("mousemove", onMove);
   }, []);
 
-  // listen for header buttons ("vintra:auth") and open the modal here
+  // detect if a global AuthDialog already exists (layout/header)
+  useEffect(() => {
+    // convention: if your global dialog has id="auth-dialog-root", we won't mount a local one
+    const globalEl = document.getElementById("auth-dialog-root");
+    setHasGlobalDialog(Boolean(globalEl));
+  }, []);
+
+  // unified auth event bridge (normalize legacy payloads)
   useEffect(() => {
     const onAuth = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { mode?: "sign-in" | "create-account" } | undefined;
-      setDefaultTab(detail?.mode === "create-account" ? "create-account" : "sign-in");
-      setIsModalOpen(true);
+      const detail: any = (e as CustomEvent).detail ?? {};
+      if (detail.action === "close") {
+        setOpen(false);
+        return;
+      }
+      const raw =
+        detail.tab ??
+        detail.mode ??
+        (detail.action === "open-register" ? "create-account"
+          : detail.action === "open-login" ? "sign-in"
+          : undefined);
+
+      if (detail.action === "open" || raw) {
+        const normalized: AuthTab =
+          raw === "create-account" || raw === "register" ? "create-account" : "sign-in";
+        setTab(normalized);
+        // If there's a global dialog, just dispatch again (it should open itself)
+        if (hasGlobalDialog) {
+          window.dispatchEvent(new CustomEvent("vintra:auth", { detail: { action: "open", tab: normalized } }));
+        } else {
+          setOpen(true);
+        }
+      }
     };
     window.addEventListener("vintra:auth", onAuth as EventListener);
     return () => window.removeEventListener("vintra:auth", onAuth as EventListener);
-  }, []);
+  }, [hasGlobalDialog]);
 
-  // local CTA handler
-  const openModal = (tab: "sign-in" | "create-account") => {
-    setDefaultTab(tab);
-    setIsModalOpen(true);
+  // CTA helper: dispatch event so global header/modal (if present) handles it
+  const triggerAuth = (which: AuthTab) => {
+    if (hasGlobalDialog) {
+      window.dispatchEvent(new CustomEvent("vintra:auth", { detail: { action: "open", tab: which } }));
+    } else {
+      setTab(which);
+      setOpen(true);
+    }
   };
 
   return (
@@ -115,8 +146,15 @@ export default function LandingPage(): JSX.Element {
       className="relative min-h-dvh overflow-x-hidden bg-zinc-950 font-sans text-white"
       style={{ ["--mouse-x" as any]: `${mousePosition.x}px`, ["--mouse-y" as any]: `${mousePosition.y}px` }}
     >
-      {/* real auth dialog */}
-      <AuthDialog open={isModalOpen} onOpenChange={setIsModalOpen} defaultTab={defaultTab} />
+      {/* NOTE: we purposely do NOT render a header here to avoid double headers.
+               Your global header remains in layout. */}
+
+      {/* Local AuthDialog only mounts if there is no global one */}
+      {!hasGlobalDialog && (
+        <div id="auth-dialog-root">
+          <AuthDialogDynamic open={open} onOpenChange={setOpen} defaultTab={tab} />
+        </div>
+      )}
 
       {/* spotlight follows cursor */}
       <div
@@ -135,16 +173,19 @@ export default function LandingPage(): JSX.Element {
           <div className="pointer-events-none absolute -top-40 left-1/2 h-[40rem] w-[70rem] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(99,102,241,0.6),transparent)] blur-3xl" />
           <div className="relative text-center">
             <Tag>For Independent, Specialty, & Wholesale Dealers</Tag>
+
             <h1 className="mt-4 font-manrope text-4xl font-bold tracking-tight md:text-6xl">
               The All-in-One Platform for <span className="text-white/80">Powersports Dealers</span>
             </h1>
+
             <p className="mt-6 mx-auto max-w-2xl text-lg text-white/80">
               Vintra is your unfair advantage. We eliminate paperwork headaches, give you exclusive access to wholesale
               powersports inventory, and provide the marketing tools you need to sell faster. Spend less time on admin and more time moving units.
             </p>
+
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <button
-                onClick={() => openModal("create-account")}
+                onClick={() => triggerAuth("create-account")}
                 className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105"
               >
                 Become An Authorized Dealer
@@ -156,8 +197,12 @@ export default function LandingPage(): JSX.Element {
                 See features
               </a>
             </div>
-            <div className="mt-8 text-xs text-white/60">Streamline Operations · Source Inventory · Sell Faster</div>
 
+            <div className="mt-8 text-xs text-white/60">
+              Streamline Operations · Source Inventory · Sell Faster
+            </div>
+
+            {/* Tilted dashboard shot */}
             <div className="relative mt-16">
               <div className="absolute -inset-12 top-1/2 -translate-y-1/2 z-0">
                 <div className="h-full w-full rounded-full bg-[radial-gradient(closest-side,rgba(99,102,241,0.25),transparent)] blur-3xl animate-[vintra-pulse_6s_ease-in-out_infinite]" />
@@ -172,10 +217,13 @@ export default function LandingPage(): JSX.Element {
                     height={placeholderImages.dashboard.height}
                     className="w-full h-auto rounded-lg"
                     data-ai-hint="dashboard analytics"
+                    priority
                   />
                 </TiltCard>
               </div>
-              <p className="mt-4 text-center text-xs text-white/60">A clean, intuitive dashboard to manage all your jackets.</p>
+              <p className="mt-4 text-center text-xs text-white/60">
+                A clean, intuitive dashboard to manage all your jackets.
+              </p>
             </div>
           </div>
         </section>
@@ -206,7 +254,7 @@ export default function LandingPage(): JSX.Element {
                 <div className="text-sm opacity-80">Pro Marketing Tools</div>
                 <h3 className="mt-1 font-manrope text-lg font-semibold">Sell Faster, Smarter</h3>
                 <p className="mt-2 text-sm text-white/80">
-                  Leverage our world-class marketing tools and services with percision data to reach more buyers. We help you market your inventory effectively and close deals quicker.
+                  Leverage our world-class marketing tools and services with precision data to reach more buyers. We help you market your inventory effectively and close deals quicker.
                 </p>
               </div>
             </TiltCard>
@@ -291,7 +339,7 @@ export default function LandingPage(): JSX.Element {
             </p>
             <div className="mt-8 flex justify-center gap-4">
               <button
-                onClick={() => openModal("create-account")}
+                onClick={() => triggerAuth("create-account")}
                 className="rounded-md bg-white px-5 py-3 text-base font-semibold text-black hover:bg-zinc-200 transition-all duration-300 transform hover:scale-105"
               >
                 Become An Authorized Dealer
@@ -301,13 +349,17 @@ export default function LandingPage(): JSX.Element {
         </section>
       </main>
 
-      {/* inline keyframes for this page (safe to keep here) */}
+      {/* Centered footer */}
+      <footer className="mx-auto max-w-7xl px-4 pb-8">
+        <div className="border-t border-white/10 pt-6 text-center text-sm text-white/70">
+          © {new Date().getFullYear()} Vintra · <a className="underline underline-offset-4 hover:text-white" href="/privacy">Privacy</a> · <a className="underline underline-offset-4 hover:text-white" href="/terms">Terms</a> · <a className="underline underline-offset-4 hover:text-white" href="/about">About</a>
+        </div>
+      </footer>
+
+      {/* Page keyframes only */}
       <style
         dangerouslySetInnerHTML={{
           __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .font-manrope { font-family: 'Manrope', sans-serif; }
         @keyframes vintra-shimmer {
           0% { transform: translateX(-100%) skewX(-15deg); }
           100% { transform: translateX(200%) skewX(-15deg); }

@@ -34,7 +34,10 @@ function cn(...xs: (string | undefined | null | false)[]) {
 function NavItem({ href, label, icon: Icon }: { href: string; label:string; icon: any }) {
   const pathname = usePathname();
   const active =
-    (href === "/admin" || href === "/dealer" ? pathname === href : pathname.startsWith(href));
+    (href === "/admin" && pathname === href) ||
+    (href === "/dealer" && pathname === href) ||
+    (href !== "/admin" && href !== "/dealer" && pathname.startsWith(href));
+
 
   return (
     <Link
