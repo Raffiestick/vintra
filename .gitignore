@@ -64,3 +64,4 @@ rizeup-dealer-connect-service-account.json
 firebase-debug.log
 npm-debug.log*
 .yarn/cache
+.next

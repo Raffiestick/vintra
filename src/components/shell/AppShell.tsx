@@ -15,6 +15,15 @@ import {
   Menu,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase/client";
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
+
 
 /** tiny classnames helper */
 function cn(...xs: (string | undefined | null | false)[]) {
@@ -22,12 +31,10 @@ function cn(...xs: (string | undefined | null | false)[]) {
 }
 
 /** Reusable nav link with active state + icon */
-function NavItem({ href, label, icon: Icon }: { href: string; label: string; icon: any }) {
+function NavItem({ href, label, icon: Icon }: { href: string; label:string; icon: any }) {
   const pathname = usePathname();
   const active =
-    pathname === href ||
-    (href !== "/" && pathname.startsWith(href + "/")) ||
-    (href !== "/" && pathname === href);
+    (href === "/admin" || href === "/dealer" ? pathname === href : pathname.startsWith(href));
 
   return (
     <Link
@@ -77,7 +84,9 @@ function DealerNav() {
 
       <div className="px-3 pb-1 pt-3 text-[11px] uppercase tracking-wider text-muted-foreground/80">Jackets</div>
       <NavItem href="/dealer/jackets" label="My Jackets" icon={FolderOpen} />
-      <NavItem href="/dealer/print" label="Print Jacket" icon={FileText} />
+
+      <div className="px-3 pb-1 pt-3 text-[11px] uppercase tracking-wider text-muted-foreground/80">Content</div>
+      <NavItem href="/dealer/content-generator" label="AI Content Generator" icon={FileText} />
 
       <div className="px-3 pb-1 pt-3 text-[11px] uppercase tracking-wider text-muted-foreground/80">Account</div>
       <NavItem href="/upload-documents" label="Upload Documents" icon={FileText} />
@@ -89,6 +98,20 @@ function DealerNav() {
 /** Topbar with section title & mobile menu */
 function Topbar() {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      toast({ title: "Signed Out", description: "You have been successfully signed out." });
+      router.replace("/landing");
+    } catch (error: any) {
+      toast({ title: "Sign Out Error", description: error.message, variant: "destructive" });
+    }
+  };
+
   const section = pathname.startsWith("/admin")
     ? "Admin"
     : pathname.startsWith("/dealer")
@@ -121,8 +144,24 @@ function Topbar() {
         </Sheet>
         <div className="font-medium">{section} Dashboard</div>
       </div>
-      {/* right side: placeholder for user menu/logout if needed */}
-      <div className="text-sm text-muted-foreground"></div>
+      
+      {/* right side: user menu/logout */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon"
+            className="overflow-hidden rounded-full border-border/60"
+          >
+              { user?.photoURL ? <Image src={user.photoURL} alt="User Avatar" width={36} height={36} /> : <Users2 size={18} /> }
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>{user?.email || 'My Account'}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </header>
   );
 }
@@ -145,7 +184,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           Vintra
         </div>
         <SidebarNav />
-        <div className="mt-auto px-2 text-xs text-muted-foreground">Navigation</div>
+        <div className="mt-auto px-2 text-xs text-muted-foreground">Vintra © 2024</div>
       </aside>
 
       {/* Main content area */}
