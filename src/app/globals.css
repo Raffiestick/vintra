@@ -1,39 +1,29 @@
-/* src/app/globals.css */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* === THEME TOKENS (shadcn) === */
 @layer base {
   :root {
     --background: 10 10% 6%;
     --foreground: 0 0% 98%;
-
     --card: 0 0% 9%;
     --card-foreground: 0 0% 98%;
-
     --popover: 0 0% 6%;
     --popover-foreground: 0 0% 98%;
-
     --primary: 240 5.9% 10%;
     --primary-foreground: 0 0% 98%;
-
     --secondary: 240 4.8% 16%;
     --secondary-foreground: 0 0% 98%;
-
     --muted: 240 4.8% 16%;
     --muted-foreground: 240 5% 64%;
-
     --accent: 240 4.8% 16%;
     --accent-foreground: 0 0% 98%;
-
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-
     --border: 240 3.7% 15%;
     --input: 240 3.7% 15%;
     --ring: 240 4.9% 83.9%;
-
     --radius: 0.75rem;
   }
 
@@ -46,7 +36,7 @@
   * { @apply border-[hsl(var(--border))]; }
 }
 
-/* === Utilities we use on the landing === */
+/* animations used on landing */
 @layer utilities {
   @keyframes vintra-shimmer { 0% { transform: translateX(-100%) skewX(-15deg);} 100% { transform: translateX(200%) skewX(-15deg);} }
   @keyframes vintra-pulse   { 0%,100% {opacity:1;transform:scale(1);} 50% {opacity:.7;transform:scale(1.05);} }

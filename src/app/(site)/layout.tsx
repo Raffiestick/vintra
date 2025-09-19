@@ -1,6 +1,6 @@
+
 "use client";
-
-
+import "../globals.css";
 import React, { useState, useEffect } from "react";
 import SiteHeader from "./_components/SiteHeader";
 import Footer from "./_components/Footer";

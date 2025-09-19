@@ -1,7 +1,7 @@
 
 // src/app/layout.tsx
-import './globals.css';
-import type { Metadata } from 'next';
+import "./globals.css";
+import type { Metadata } from "next";
 import { Toaster } from "@/components/ui/toaster";
 import { Inter, Manrope } from "next/font/google";
 import { cn } from "@/lib/utils";

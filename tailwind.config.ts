@@ -1,14 +1,22 @@
-/** @type {import('tailwindcss').Config} */
-const { fontFamily } = require('tailwindcss/defaultTheme');
 
+const { fontFamily } = require("tailwindcss/defaultTheme");
+
+/** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: ['class'],
-  content: ['./src/**/*.{ts,tsx,js,jsx,mdx}'],
+  darkMode: ["class"],
+  content: ["./src/**/*.{ts,tsx,js,jsx,mdx}"],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ['Inter', ...fontFamily.sans],
+      borderRadius: {
+        lg: "var(--radius)",
+        xl: "calc(var(--radius) + 0.25rem)",
+        "2xl": "calc(var(--radius) + 0.5rem)",
       },
+      colors: {
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+      },
+      fontFamily: { sans: ["Inter", ...fontFamily.sans] },
     },
   },
   plugins: [require("tailwindcss-animate")],
