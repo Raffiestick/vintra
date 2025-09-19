@@ -1,49 +1,46 @@
-
 "use client";
+
+// IMPORTANT: pull in globals here too so group routes always get Tailwind
 import "../globals.css";
-import React, { useState, useEffect } from "react";
+
+import React, { useEffect, useState } from "react";
 import SiteHeader from "./_components/SiteHeader";
-import Footer from "./_components/Footer";
-import { AuthDialog } from "@/components/auth/AuthDialog";
+import SiteFooter from "./_components/Footer";
+import dynamic from "next/dynamic";
 import { AuthProvider } from "@/hooks/use-auth-provider";
+
+const AuthDialog = dynamic(
+  () => import("@/components/auth/AuthDialog").then((m: any) => m.AuthDialog ?? m.default),
+  { ssr: false }
+) as any;
 
 type AuthTab = "sign-in" | "create-account";
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalDefaultTab, setAuthModalDefaultTab] = useState<AuthTab>("sign-in");
-  
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<AuthTab>("sign-in");
+
   useEffect(() => {
-    const handleAuthEvent = (event: Event) => {
-        const customEvent = event as CustomEvent;
-        const { action, tab } = customEvent.detail || {};
-
-        if (action === 'open' && (tab === 'sign-in' || tab === 'create-account')) {
-            setAuthModalDefaultTab(tab);
-            setIsAuthModalOpen(true);
-        }
+    const onAuth = (e: Event) => {
+      const detail: any = (e as CustomEvent).detail ?? {};
+      if (detail.action === "close") { setOpen(false); return; }
+      const raw = detail.tab ?? detail.mode;
+      setTab(raw === "create-account" || raw === "register" ? "create-account" : "sign-in");
+      setOpen(true);
     };
-    
-    window.addEventListener('vintra:auth', handleAuthEvent);
-
-    return () => {
-        window.removeEventListener('vintra:auth', handleAuthEvent);
-    };
+    window.addEventListener("vintra:auth", onAuth as EventListener);
+    return () => window.removeEventListener("vintra:auth", onAuth as EventListener);
   }, []);
 
   return (
     <AuthProvider>
-      <div className="min-h-dvh bg-[#0B0F1A] text-white">
-        <div id="auth-dialog-root-global" data-auth-global-root="true">
-            <AuthDialog
-              open={isAuthModalOpen}
-              onOpenChange={setIsAuthModalOpen}
-              defaultTab={authModalDefaultTab}
-            />
-        </div>
+      <div className="min-h-dvh bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
         <SiteHeader />
         <main>{children}</main>
-        <Footer />
+        <SiteFooter />
+        <div id="auth-dialog-root-global" data-auth-global-root>
+          <AuthDialog open={open} onOpenChange={setOpen} defaultTab={tab} />
+        </div>
       </div>
     </AuthProvider>
   );
