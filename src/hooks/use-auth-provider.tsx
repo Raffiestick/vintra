@@ -1,29 +1,66 @@
-
 "use client";
 
-import { createContext, useState, useEffect, ReactNode } from 'react';
-import { onAuthStateChanged, type User } from 'firebase/auth';
-import { auth } from '@/lib/firebase/client';
-import { useAuth as useAuthHook } from '@/hooks/use-auth';
+import React, { createContext, useEffect, useMemo, useState } from "react";
+import type { User } from "firebase/auth";
+import { onAuthStateChanged, getIdTokenResult } from "firebase/auth";
+import { auth } from "@/lib/firebase/client";
 
 export type AuthState = {
   user: User | null;
-  loading: boolean;
+  claims: Record<string, any> | null;
   isAdmin: boolean;
+  /**
+   * Current recommended flag to gate UI while auth is resolving
+   */
+  loading: boolean;
+  /**
+   * Backwards-compatible alias (some files might still read this)
+   */
+  initializing: boolean;
 };
 
-export const AuthContext = createContext<AuthState>({
+const defaultState: AuthState = {
   user: null,
-  loading: true,
+  claims: null,
   isAdmin: false,
-});
-
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const authState = useAuthHook();
-
-  return (
-    <AuthContext.Provider value={authState}>
-      {children}
-    </AuthContext.Provider>
-  );
+  loading: true,
+  initializing: true,
 };
+
+export const AuthContext = createContext<AuthState>(defaultState);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [claims, setClaims] = useState<Record<string, any> | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        setUser(u);
+        if (u) {
+          const tok = await getIdTokenResult(u, true);
+          setClaims(tok.claims ?? null);
+        } else {
+          setClaims(null);
+        }
+      } finally {
+        setLoading(false);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const value: AuthState = useMemo(
+    () => ({
+      user,
+      claims,
+      isAdmin: Boolean(claims?.admin === true),
+      loading,
+      initializing: loading, // alias maintained
+    }),
+    [user, claims, loading]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
