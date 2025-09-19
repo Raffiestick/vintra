@@ -1,14 +1,6 @@
 
-import React from "react";
-import AppShell from "@/components/shell/AppShell";
-import { AuthProvider } from "@/hooks/use-auth-provider";
-
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <AuthProvider>
-      <AppShell>
-        {children}
-      </AppShell>
-    </AuthProvider>
-  );
+"use client";
+import { RequireRole } from "@/lib/auth/requireRole";
+export default function AdminSection({ children }:{ children: React.ReactNode }) {
+  return <RequireRole role="admin">{children}</RequireRole>;
 }

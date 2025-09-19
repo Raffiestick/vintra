@@ -1,14 +1,6 @@
 
-import React from "react";
-import AppShell from "@/components/shell/AppShell";
-import { AuthProvider } from "@/hooks/use-auth-provider";
-
-export default function DealerLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <AuthProvider>
-      <AppShell>
-        {children}
-      </AppShell>
-    </AuthProvider>
-  );
+"use client";
+import { RequireRole } from "@/lib/auth/requireRole";
+export default function DealerSection({ children }:{ children: React.ReactNode }) {
+  return <RequireRole role="dealer">{children}</RequireRole>;
 }

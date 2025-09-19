@@ -2,43 +2,45 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged, type User } from 'firebase/auth';
+import { onAuthStateChanged, type User, type IdTokenResult } from 'firebase/auth';
 import { auth } from '@/lib/firebase/client';
 
 interface AuthState {
   user: User | null;
-  loading: boolean;
+  initializing: boolean; // Renamed from 'loading' for clarity
   isAdmin: boolean;
+  claims: IdTokenResult['claims'] | null;
 }
 
 export function useAuth(): AuthState {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [initializing, setInitializing] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [claims, setClaims] = useState<IdTokenResult['claims'] | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         try {
-          // Changed to `false` to prevent a forced token refresh on initial load, which can cause server errors.
-          // The SDK will handle background refresh automatically.
           const tokenResult = await currentUser.getIdTokenResult(false);
           const hasAdminClaim = tokenResult.claims.admin === true;
           setIsAdmin(hasAdminClaim);
+          setClaims(tokenResult.claims);
         } catch (error) {
           console.error("Error getting user token claims:", error);
-          setIsAdmin(false); // Default to not admin on error
+          setIsAdmin(false);
+          setClaims(null);
         }
       } else {
-        // No user, not an admin.
         setIsAdmin(false);
+        setClaims(null);
       }
-      setLoading(false);
+      setInitializing(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  return { user, loading, isAdmin };
+  return { user, initializing, isAdmin, claims };
 }
