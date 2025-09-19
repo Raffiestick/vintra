@@ -1,17 +1,17 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import placeholderImages from "@/lib/placeholder-images.json";
 
-/** Tilt is purely client-side */
+/** Client-only tilt */
 const TiltCard = dynamic(
   () => import("@/components/ui/tilt-card").then((m: any) => m.TiltCard ?? m.default),
   { ssr: false }
 ) as any;
 
-/** AuthDialog may already exist globally; we’ll mount a local one only if needed */
+/** Client-only dialog; we’ll only mount locally if there’s no global one */
 const AuthDialogDynamic = dynamic(
   () => import("@/components/auth/AuthDialog").then((m: any) => m.AuthDialog ?? m.default),
   { ssr: false }
@@ -78,13 +78,22 @@ function AuroraBG() {
 
 /* --------------------------------- Page ----------------------------------- */
 
-export default function LandingPage(): JSX.Element {
-  type AuthTab = "sign-in" | "create-account";
+type AuthTab = "sign-in" | "create-account";
+type AuthEventDetail = {
+  action?: "open" | "close" | "open-login" | "open-register";
+  tab?: AuthTab;
+  mode?: "sign-in" | "create-account" | "login" | "register";
+  __origin?: "landing" | "global";
+};
 
+export default function LandingPage(): JSX.Element {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [hasGlobalDialog, setHasGlobalDialog] = useState(false);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<AuthTab>("sign-in");
+
+  // re-entrancy guard to avoid loops if events bounce
+  const isReDispatching = useRef(false);
 
   // cursor spotlight
   useEffect(() => {
@@ -93,48 +102,60 @@ export default function LandingPage(): JSX.Element {
     return () => window.removeEventListener("mousemove", onMove);
   }, []);
 
-  // detect if a global AuthDialog already exists (layout/header)
+  // Detect if a global AuthDialog exists; convention: any element with [data-auth-global-root]
   useEffect(() => {
-    // convention: if your global dialog has id="auth-dialog-root", we won't mount a local one
-    const globalEl = document.getElementById("auth-dialog-root");
-    setHasGlobalDialog(Boolean(globalEl));
+    const check = () =>
+      Boolean(document.querySelector("[data-auth-global-root], #auth-dialog-root-global"));
+    setHasGlobalDialog(check());
   }, []);
 
-  // unified auth event bridge (normalize legacy payloads)
+  // Only attach a listener if we are the owner of the dialog.
   useEffect(() => {
+    if (hasGlobalDialog) return; // global header/layout owns the dialog; we don't listen
+
     const onAuth = (e: Event) => {
-      const detail: any = (e as CustomEvent).detail ?? {};
+      const detail = ((e as CustomEvent).detail ?? {}) as AuthEventDetail;
+
+      if (detail.__origin === "landing") return; // ignore our own redispatches (paranoia)
       if (detail.action === "close") {
         setOpen(false);
         return;
       }
+
       const raw =
         detail.tab ??
-        detail.mode ??
+        (detail.mode === "register" ? "create-account"
+          : detail.mode === "login" ? "sign-in"
+          : (detail.mode as AuthTab | undefined)) ??
         (detail.action === "open-register" ? "create-account"
           : detail.action === "open-login" ? "sign-in"
           : undefined);
 
       if (detail.action === "open" || raw) {
-        const normalized: AuthTab =
-          raw === "create-account" || raw === "register" ? "create-account" : "sign-in";
+        const normalized: AuthTab = raw === "create-account" ? "create-account" : "sign-in";
         setTab(normalized);
-        // If there's a global dialog, just dispatch again (it should open itself)
-        if (hasGlobalDialog) {
-          window.dispatchEvent(new CustomEvent("vintra:auth", { detail: { action: "open", tab: normalized } }));
-        } else {
-          setOpen(true);
-        }
+        setOpen(true);
       }
     };
+
     window.addEventListener("vintra:auth", onAuth as EventListener);
     return () => window.removeEventListener("vintra:auth", onAuth as EventListener);
   }, [hasGlobalDialog]);
 
-  // CTA helper: dispatch event so global header/modal (if present) handles it
+  // CTA helper: if there’s a global dialog, dispatch for it; else open our own
   const triggerAuth = (which: AuthTab) => {
     if (hasGlobalDialog) {
-      window.dispatchEvent(new CustomEvent("vintra:auth", { detail: { action: "open", tab: which } }));
+      if (isReDispatching.current) return;
+      isReDispatching.current = true;
+      window.dispatchEvent(
+        new CustomEvent("vintra:auth", {
+          detail: { action: "open", tab: which, __origin: "landing" } satisfies AuthEventDetail,
+        })
+      );
+      // release the guard on next tick
+      queueMicrotask(() => {
+        isReDispatching.current = false;
+      });
     } else {
       setTab(which);
       setOpen(true);
@@ -146,12 +167,11 @@ export default function LandingPage(): JSX.Element {
       className="relative min-h-dvh overflow-x-hidden bg-zinc-950 font-sans text-white"
       style={{ ["--mouse-x" as any]: `${mousePosition.x}px`, ["--mouse-y" as any]: `${mousePosition.y}px` }}
     >
-      {/* NOTE: we purposely do NOT render a header here to avoid double headers.
-               Your global header remains in layout. */}
+      {/* NO header here (prevents double-header). Global header stays in layout. */}
 
-      {/* Local AuthDialog only mounts if there is no global one */}
+      {/* Local AuthDialog only if there’s no global one */}
       {!hasGlobalDialog && (
-        <div id="auth-dialog-root">
+        <div id="auth-dialog-root-local" data-auth-global-root={false}>
           <AuthDialogDynamic open={open} onOpenChange={setOpen} defaultTab={tab} />
         </div>
       )}
@@ -352,7 +372,10 @@ export default function LandingPage(): JSX.Element {
       {/* Centered footer */}
       <footer className="mx-auto max-w-7xl px-4 pb-8">
         <div className="border-t border-white/10 pt-6 text-center text-sm text-white/70">
-          © {new Date().getFullYear()} Vintra · <a className="underline underline-offset-4 hover:text-white" href="/privacy">Privacy</a> · <a className="underline underline-offset-4 hover:text-white" href="/terms">Terms</a> · <a className="underline underline-offset-4 hover:text-white" href="/about">About</a>
+          © {new Date().getFullYear()} Vintra ·{" "}
+          <a className="underline underline-offset-4 hover:text-white" href="/privacy">Privacy</a> ·{" "}
+          <a className="underline underline-offset-4 hover:text-white" href="/terms">Terms</a> ·{" "}
+          <a className="underline underline-offset-4 hover:text-white" href="/about">About</a>
         </div>
       </footer>
 
