@@ -1,14 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // SSR build for App Hosting; do NOT static export.
-  output: 'standalone',
-  images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: 'picsum.photos' },
-      { protocol: 'https', hostname: 'images.unsplash.com' },
-      // add any others you actually use
-    ],
-  },
+    devIndicators: {
+        allowedDevOrigins: [
+            "4000-firebase-studio-1756843660830.cluster-pgviq6mvsncnqxx6kr7pbz65v6.cloudworkstations.dev",
+        ],
+    },
 };
 
 export default nextConfig;

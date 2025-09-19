@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from "react";
@@ -15,18 +14,17 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
     setIsAuthModalOpen(true);
   };
 
-  // We need to pass the handler down to the children so the landing page can use it.
-  // React.cloneElement is a good way to do this without prop-drilling through many layers.
+  // React.cloneElement is used to pass the onAuthClick prop to child components like the landing page.
   const childrenWithProps = React.Children.map(children, (child) => {
     if (React.isValidElement(child)) {
-      // @ts-ignore
+      // @ts-ignore - It's safe to ignore here as we know we're adding a prop.
       return React.cloneElement(child, { onAuthClick: handleAuthClick });
     }
     return child;
   });
 
   return (
-    <div className="min-h-dvh bg-[#0B0F1A] text-white" data-site-layout>
+    <div className="min-h-dvh bg-[#0B0F1A] text-white">
       <AuthDialog
         open={isAuthModalOpen}
         onOpenChange={setIsAuthModalOpen}
