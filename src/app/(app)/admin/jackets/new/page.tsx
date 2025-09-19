@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -109,7 +109,7 @@ export default function NewJacketPage() {
     },
   });
 
-  useState(() => {
+  useEffect(() => {
     async function fetchDealers() {
       try {
         const q = query(
@@ -135,7 +135,7 @@ export default function NewJacketPage() {
       }
     }
     fetchDealers();
-  });
+  }, [toast]);
 
   const onSubmit = async (data: JacketFormValues) => {
     setSubmitError("");

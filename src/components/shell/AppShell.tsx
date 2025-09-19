@@ -13,6 +13,7 @@ import {
   UserCheck,
   UserCog,
   UploadCloud,
+  FilePlus2,
 } from "lucide-react";
 import {
   Breadcrumb,
@@ -58,7 +59,10 @@ const AdminNav = () => (
     <NavItem href="/admin/jackets" icon={FileText}>
       All Jackets
     </NavItem>
-     <NavItem href="/admin/staging/invoices" icon={UploadCloud}>
+    <NavItem href="/admin/jackets/new" icon={FilePlus2}>
+      New Jacket
+    </NavItem>
+    <NavItem href="/admin/staging/invoices" icon={UploadCloud}>
       Staging
     </NavItem>
   </>
@@ -76,45 +80,47 @@ const NavItem = ({ href, icon: Icon, children }: { href: string; icon: React.Ele
   const pathname = usePathname();
   const isActive = pathname.startsWith(href);
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Link
-          href={href}
-          className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground md:h-8 md:w-8",
-              isActive && "bg-accent text-accent-foreground"
-          )}
-        >
-          <Icon className="h-5 w-5" />
-          <span className="sr-only">{children}</span>
-        </Link>
-      </TooltipTrigger>
-      <TooltipContent side="right">{children}</TooltipContent>
-    </Tooltip>
+      <Link
+        href={href}
+        className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
+            isActive && "bg-muted text-primary"
+        )}
+      >
+        <Icon className="h-4 w-4" />
+        {children}
+      </Link>
   );
 };
 
 function AppShellSkeleton() {
     return (
-        <div className="flex min-h-screen w-full flex-col bg-muted/40">
-            <aside className="fixed inset-y-0 left-0 z-10 hidden w-14 flex-col border-r bg-background sm:flex">
-                <nav className="flex flex-col items-center gap-4 px-2 sm:py-5">
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <Skeleton className="h-8 w-8 rounded-lg" />
-                    <Skeleton className="h-8 w-8 rounded-lg" />
-                    <Skeleton className="h-8 w-8 rounded-lg" />
-                </nav>
-            </aside>
-            <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
-                <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-8 w-full md:w-[336px] ml-auto" />
+        <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+            <div className="hidden border-r bg-muted/40 md:block">
+                <div className="flex h-full max-h-screen flex-col gap-2">
+                    <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
+                        <Skeleton className="h-6 w-32" />
+                    </div>
+                    <div className="flex-1">
+                        <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
+                            <Skeleton className="h-8 my-1" />
+                            <Skeleton className="h-8 my-1" />
+                            <Skeleton className="h-8 my-1" />
+                        </nav>
+                    </div>
+                </div>
+            </div>
+            <div className="flex flex-col">
+                <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
+                    <Skeleton className="h-8 w-8 rounded-md md:hidden" />
+                    <div className="w-full flex-1">
+                         <Skeleton className="h-8 w-full max-w-sm" />
+                    </div>
                     <Skeleton className="h-10 w-10 rounded-full" />
                 </header>
-                <main className="grid flex-1 items-start gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">
-                    <div className="w-full h-64">
-                      <Skeleton className="w-full h-full" />
-                    </div>
+                <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+                     <Skeleton className="h-32 w-full" />
+                     <Skeleton className="h-64 w-full" />
                 </main>
             </div>
         </div>
@@ -130,142 +136,92 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     try {
       await signOut(auth);
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
-      router.replace("/landing");
+      router.replace("/");
     } catch (error: any) {
       toast({ title: "Sign Out Error", description: error.message, variant: "destructive" });
     }
   };
-  
-  const pathname = usePathname();
-  const breadcrumbItems = React.useMemo(() => {
-    const segments = pathname.split('/').filter(Boolean);
-    return segments.map((segment, index) => {
-      const href = '/' + segments.slice(0, index + 1).join('/');
-      const isLast = index === segments.length - 1;
-      const name = segment.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      return { href, name, isLast };
-    });
-  }, [pathname]);
 
   if (loading) {
       return <AppShellSkeleton />;
   }
 
   return (
-    <TooltipProvider>
-      <div className="flex min-h-screen w-full flex-col bg-muted/40">
-        <aside className="fixed inset-y-0 left-0 z-10 hidden w-14 flex-col border-r bg-background sm:flex">
-          <nav className="flex flex-col items-center gap-4 px-2 sm:py-5">
-            <Link
-              href={isAdmin ? "/admin" : "/dealer"}
-              className="group flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-full bg-primary text-lg font-semibold text-primary-foreground md:h-8 md:w-8 md:text-base"
-            >
-              <Image src="/vintra/logomark-white.svg" alt="Vintra" width={16} height={16} className="h-4 w-4 transition-all group-hover:scale-110" />
-              <span className="sr-only">Vintra</span>
+    <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+      <div className="hidden border-r bg-muted/40 md:block">
+        <div className="flex h-full max-h-screen flex-col gap-2">
+          <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
+            <Link href="/" className="flex items-center gap-2 font-semibold">
+              <Image src="/vintra/logomark-white.svg" alt="Vintra Logo" width={24} height={24} />
+              <span className="">Vintra</span>
             </Link>
-            {isAdmin ? <AdminNav /> : <DealerNav />}
-          </nav>
-          <nav className="mt-auto flex flex-col items-center gap-4 px-2 sm:py-5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button onClick={handleLogout} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground md:h-8 md:w-8">
-                  <LogOut className="h-5 w-5" />
-                  <span className="sr-only">Logout</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Logout</TooltipContent>
-            </Tooltip>
-          </nav>
-        </aside>
-
-        <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
-             <Sheet>
-              <SheetTrigger asChild>
-                <Button size="icon" variant="outline" className="sm:hidden">
-                  <PanelLeft className="h-5 w-5" />
-                  <span className="sr-only">Toggle Menu</span>
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="sm:max-w-xs">
-                <nav className="grid gap-6 text-lg font-medium">
-                   <Link
-                      href={isAdmin ? "/admin" : "/dealer"}
-                      className="group flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-full bg-primary text-lg font-semibold text-primary-foreground md:text-base"
-                    >
-                      <Image src="/vintra/logomark-white.svg" alt="Vintra" width={20} height={20} className="h-5 w-5 transition-all group-hover:scale-110" />
-                      <span className="sr-only">Vintra</span>
-                  </Link>
-                  {isAdmin ? (
-                      <>
-                        <Link href="/admin/dealer-management" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"><UserCog className="h-5 w-5" />Dealer Management</Link>
-                        <Link href="/admin/approved-dealers" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"><UserCheck className="h-5 w-5" />Approved Dealers</Link>
-                        <Link href="/admin/jackets" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"><FileText className="h-5 w-5" />All Jackets</Link>
-                        <Link href="/admin/staging/invoices" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"><UploadCloud className="h-5 w-5" />Staging</Link>
-                      </>
-                  ) : (
-                        <Link href="/dealer/jackets" className="flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground"><LayoutDashboard className="h-5 w-5" />My Jackets</Link>
-                  )}
-                </nav>
-              </SheetContent>
-            </Sheet>
-
-            <Breadcrumb className="hidden md:flex">
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                    <BreadcrumbLink asChild>
-                        <Link href={isAdmin ? '/admin' : '/dealer'}>Dashboard</Link>
-                    </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                {breadcrumbItems.map((item, index) => (
-                  <React.Fragment key={item.href}>
-                    <BreadcrumbItem>
-                      {item.isLast ? (
-                        <BreadcrumbPage>{item.name}</BreadcrumbPage>
-                      ) : (
-                        <BreadcrumbLink asChild>
-                          <Link href={item.href}>{item.name}</Link>
-                        </BreadcrumbLink>
-                      )}
-                    </BreadcrumbItem>
-                    {!item.isLast && <BreadcrumbSeparator />}
-                  </React.Fragment>
-                ))}
-              </BreadcrumbList>
-            </Breadcrumb>
-            
-            <div className="relative ml-auto flex-1 md:grow-0">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search..."
-                className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[336px]"
-              />
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="overflow-hidden rounded-full"
-                >
-                    { user?.photoURL ? <Image src={user.photoURL} alt="User Avatar" width={36} height={36} /> : <UserCog className="h-5 w-5" /> }
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{user?.email || 'My Account'}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </header>
-          <main className="grid flex-1 items-start gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">
-            {children}
-          </main>
+          </div>
+          <div className="flex-1">
+            <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
+              {isAdmin ? <AdminNav /> : <DealerNav />}
+            </nav>
+          </div>
         </div>
       </div>
-    </TooltipProvider>
+      <div className="flex flex-col">
+        <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="shrink-0 md:hidden"
+              >
+                <PanelLeft className="h-5 w-5" />
+                <span className="sr-only">Toggle navigation menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="flex flex-col">
+              <nav className="grid gap-2 text-lg font-medium">
+                <Link
+                  href="/"
+                  className="flex items-center gap-2 text-lg font-semibold mb-4"
+                >
+                  <Image src="/vintra/logomark-white.svg" alt="Vintra" width={24} height={24} />
+                  <span className="sr-only">Vintra</span>
+                </Link>
+                {isAdmin ? <AdminNav /> : <DealerNav />}
+              </nav>
+            </SheetContent>
+          </Sheet>
+          <div className="w-full flex-1">
+            <form>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search..."
+                  className="w-full appearance-none bg-background pl-8 shadow-none md:w-2/3 lg:w-1/3"
+                />
+              </div>
+            </form>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" size="icon" className="rounded-full">
+                 { user?.photoURL ? <Image src={user.photoURL} alt="User Avatar" width={36} height={36} className="rounded-full" /> : <UserCog className="h-5 w-5" /> }
+                <span className="sr-only">Toggle user menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{user?.email || 'My Account'}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled>Settings</DropdownMenuItem>
+              <DropdownMenuItem disabled>Support</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
+        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+            {children}
+        </main>
+      </div>
+    </div>
   );
 }
-
