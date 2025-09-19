@@ -21,7 +21,9 @@ export function useAuth(): AuthState {
       setUser(currentUser);
       if (currentUser) {
         try {
-          const tokenResult = await currentUser.getIdTokenResult(true);
+          // Changed to `false` to prevent a forced token refresh on initial load, which can cause server errors.
+          // The SDK will handle background refresh automatically.
+          const tokenResult = await currentUser.getIdTokenResult(false);
           const hasAdminClaim = tokenResult.claims.admin === true;
           setIsAdmin(hasAdminClaim);
         } catch (error) {
