@@ -30,18 +30,17 @@ async function getBuyerData(dealerId) {
     catch { }
     return { name: `Dealer ${dealerId || ""}` };
 }
-exports.generateJacketInvoice = (0, https_1.onRequest)({ region: "us-central1", timeoutSeconds: 60, memory: "1GiB", cors: true }, async (req, res) => {
+exports.generateJacketInvoice = (0, https_1.onCall)({ region: "us-central1", timeoutSeconds: 60, memory: "1GiB" }, async (request) => {
+    (0, config_1.assertAdmin)(request);
     try {
-        const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim().toUpperCase();
+        const rawVin = (request.data?.vin ?? "").toString().trim().toUpperCase();
         if (!rawVin) {
-            res.status(400).send("Missing 'vin'");
-            return;
+            throw new https_1.HttpsError("invalid-argument", "Missing 'vin'");
         }
         const ref = config_1.db.collection("jackets").doc(rawVin);
         const snap = await ref.get();
         if (!snap.exists) {
-            res.status(404).send("Jacket not found");
-            return;
+            throw new https_1.HttpsError("not-found", "Jacket not found");
         }
         const j = snap.data() || {};
         const buyer = await getBuyerData(j.dealerId);
@@ -55,25 +54,26 @@ exports.generateJacketInvoice = (0, https_1.onRequest)({ region: "us-central1", 
         await config_1.bucket.file(path).save(pdf, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
         const [url] = await config_1.bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
         await ref.update({ invoiceUrl: url, updatedAt: config_1.FieldValue.serverTimestamp() });
-        res.json({ ok: true, vin: rawVin, url });
+        return { ok: true, vin: rawVin, url };
     }
     catch (e) {
         console.error("generateJacketInvoice error:", e);
-        res.status(500).send(e?.message || "Internal error");
+        if (e instanceof https_1.HttpsError)
+            throw e;
+        throw new https_1.HttpsError("internal", e?.message || "Internal error");
     }
 });
-exports.generateBillOfSale = (0, https_1.onRequest)({ region: "us-central1", timeoutSeconds: 60, memory: "1GiB", cors: true }, async (req, res) => {
+exports.generateBillOfSale = (0, https_1.onCall)({ region: "us-central1", timeoutSeconds: 60, memory: "1GiB" }, async (request) => {
+    (0, config_1.assertAdmin)(request);
     try {
-        const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim().toUpperCase();
+        const rawVin = (request.data?.vin ?? "").toString().trim().toUpperCase();
         if (!rawVin) {
-            res.status(400).send("Missing 'vin'");
-            return;
+            throw new https_1.HttpsError("invalid-argument", "Missing 'vin'");
         }
         const ref = config_1.db.collection("jackets").doc(rawVin);
         const snap = await ref.get();
         if (!snap.exists) {
-            res.status(404).send("Jacket not found");
-            return;
+            throw new https_1.HttpsError("not-found", "Jacket not found");
         }
         const j = snap.data() || {};
         const buyer = await getBuyerData(j.dealerId);
@@ -87,10 +87,12 @@ exports.generateBillOfSale = (0, https_1.onRequest)({ region: "us-central1", tim
         await config_1.bucket.file(path).save(pdf, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0, no-store" } });
         const [url] = await config_1.bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
         await ref.update({ bosUrl: url, updatedAt: config_1.FieldValue.serverTimestamp() });
-        res.json({ ok: true, vin: rawVin, url });
+        return { ok: true, vin: rawVin, url };
     }
     catch (e) {
         console.error("generateBillOfSale error:", e);
-        res.status(500).send(e?.message || "Internal error");
+        if (e instanceof https_1.HttpsError)
+            throw e;
+        throw new https_1.HttpsError("internal", e?.message || "Internal error");
     }
 });

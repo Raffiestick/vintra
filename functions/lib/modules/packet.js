@@ -9,27 +9,24 @@ const chromium_1 = __importDefault(require("@sparticuz/chromium"));
 const puppeteer_core_1 = __importDefault(require("puppeteer-core"));
 const pdf_lib_1 = require("pdf-lib");
 const config_1 = require("../config");
-exports.generateJacketPacket = (0, https_1.onRequest)({ region: "us-central1", timeoutSeconds: 180, memory: "1GiB", cors: true }, async (req, res) => {
+exports.generateJacketPacket = (0, https_1.onCall)({ region: "us-central1", timeoutSeconds: 180, memory: "1GiB" }, async (request) => {
+    (0, config_1.assertAdmin)(request);
     try {
-        const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim().toUpperCase();
+        const rawVin = (request.data?.vin ?? "").toString().trim().toUpperCase();
         if (!rawVin) {
-            res.status(400).send("Missing 'vin'");
-            return;
+            throw new https_1.HttpsError("invalid-argument", "Missing 'vin'");
         }
         const docRef = config_1.db.collection("jackets").doc(rawVin);
         const snap = await docRef.get();
         if (!snap.exists) {
-            res.status(404).send("Jacket not found");
-            return;
+            throw new https_1.HttpsError("not-found", "Jacket not found");
         }
         const j = snap.data() || {};
         if (!j.invoiceUrl) {
-            res.status(400).send("Invoice must be generated before creating a packet.");
-            return;
+            throw new https_1.HttpsError("failed-precondition", "Invoice must be generated before creating a packet.");
         }
         if (!j.bosUrl) {
-            res.status(400).send("Bill of Sale must be generated before creating a packet.");
-            return;
+            throw new https_1.HttpsError("failed-precondition", "Bill of Sale must be generated before creating a packet.");
         }
         // Minimal cover page
         const coverHtml = `<!doctype html><html><body style="font-family:system-ui; padding:48px">
@@ -105,10 +102,12 @@ exports.generateJacketPacket = (0, https_1.onRequest)({ region: "us-central1", t
         const [signedUrl] = await config_1.bucket.file(packetPath).getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
         await docRef.update({ packetUrl: signedUrl, updatedAt: config_1.FieldValue.serverTimestamp() });
         await (0, config_1.logActivity)(rawVin, { type: "packetGenerated", message: "Packet generated (cover + invoice + BOS + attachments)", meta: { url: signedUrl } });
-        res.status(200).json({ ok: true, vin: rawVin, url: signedUrl });
+        return { ok: true, vin: rawVin, url: signedUrl };
     }
     catch (err) {
         console.error("generateJacketPacket error:", err);
-        res.status(500).send(err?.message || "Internal error");
+        if (err instanceof https_1.HttpsError)
+            throw err;
+        throw new https_1.HttpsError("internal", err?.message || "Internal error");
     }
 });
