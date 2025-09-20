@@ -2,7 +2,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, type PDFPage } from "pdf-lib";
 import { bucket, db, logActivity, FieldValue } from "../config";
 
 export const generateJacketPacket = onRequest(
@@ -44,12 +44,12 @@ export const generateJacketPacket = onRequest(
       const [invBuf] = await bucket.file(`jacket-documents/${rawVin}/invoice.pdf`).download();
       const invPdf = await PDFDocument.load(invBuf);
       const invPages = await packet.copyPages(invPdf, invPdf.getPageIndices());
-      invPages.forEach(p => packet.addPage(p));
+      invPages.forEach((p: PDFPage) => packet.addPage(p));
 
       const [bosBuf] = await bucket.file(`jacket-documents/${rawVin}/bill-of-sale.pdf`).download();
       const bosPdf = await PDFDocument.load(bosBuf);
       const bosPages = await packet.copyPages(bosPdf, bosPdf.getPageIndices());
-      bosPages.forEach(p => packet.addPage(p));
+      bosPages.forEach((p: PDFPage) => packet.addPage(p));
 
       // Append any other attachments (PDFs and common images)
       for (const d of Array.isArray(j.documents) ? j.documents : []) {
@@ -74,7 +74,7 @@ export const generateJacketPacket = onRequest(
           if (ct.startsWith("application/pdf")) {
             const extPdf = await PDFDocument.load(buf);
             const pages = await packet.copyPages(extPdf, extPdf.getPageIndices());
-            pages.forEach(p => packet.addPage(p));
+            pages.forEach((p: PDFPage) => packet.addPage(p));
           } else if (ct.startsWith("image/") || /\.(png|jpe?g)$/i.test(d.name)) {
             const isJpg = ct.includes("jpeg") || /\.jpe?g$/i.test(d.name);
             const img = isJpg ? await packet.embedJpg(buf) : await packet.embedPng(buf);
