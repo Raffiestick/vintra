@@ -1,4 +1,4 @@
 
 # Firebase Studio
 
-Regustration and auth is fully completed as well as new jacket manuall form.  
+Complete landing page - Need to handle the content block above footer,  baseline for landing page.   
