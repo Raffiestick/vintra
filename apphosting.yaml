@@ -1,6 +1,16 @@
 # Specifies the version of the App Hosting schema.
 specVersion: v1alpha1
 
+# Specifies the command to run to build your app.
+buildCommand: npm run build
+
+# Specifies the command to run to start your app.
+startCommand: npm start
+
+# Specifies the root of the application code.
+run:
+  appDirectory: vintra
+
 # Defines the environment variables that will be available to your app.
 env:
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
@@ -20,9 +30,3 @@ env:
     # the GEMINI_API_KEY variable from the secret with the same name.
   - variable: GEMINI_API_KEY
     secret: GEMINI_API_KEY
-
-# Specifies the command to run to build your app.
-buildCommand: npm run build
-
-# Specifies the command to run to start your app.
-startCommand: npm start
