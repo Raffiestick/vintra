@@ -14,20 +14,25 @@ export function getFirebaseWebConfig(): WebAppConfig {
   const fromHosting = process.env.FIREBASE_WEBAPP_CONFIG;
   if (fromHosting) {
     try {
-      return JSON.parse(fromHosting) as WebAppConfig;
+      // The injected config can be stale, so we parse and check the App ID.
+      const config = JSON.parse(fromHosting) as WebAppConfig;
+      if (config.appId === "1:1000941113781:web:1fb421a893eafe977409fc") {
+        return config;
+      }
+      // If it's the old App ID, fall through to our new hardcoded values.
     } catch {
       // ignore, will fall back below
     }
   }
 
-  // 2) NEXT_PUBLIC_* fallback (local/dev)
+  // 2) Hardcoded new values as the primary fallback
   return {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    apiKey: "AIzaSyAjhaoaB2BQobm4NWDeJ4ePP-ExVBB77dg",
+    authDomain: "rizeup-dealer-connect-n6k7r.firebaseapp.com",
+    projectId: "rizeup-dealer-connect-n6k7r",
+    storageBucket: "rizeup-dealer-connect-n6k7r.firebasestorage.app",
+    messagingSenderId: "1000941113781",
+    appId: "1:1000941113781:web:1fb421a893eafe977409fc",
     databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
   };
 }
