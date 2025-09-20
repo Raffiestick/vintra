@@ -1,0 +1,19 @@
+{
+  "name": "cloud-functions",
+  "private": true,
+  "engines": { "node": "20" },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf lib",
+    "deploy": "npm run build && firebase deploy --only functions",
+    "dev": "npm run build -- --watch"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.5.0",
+    "firebase-functions": "^5.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
