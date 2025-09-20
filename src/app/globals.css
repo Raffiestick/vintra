@@ -43,3 +43,79 @@
   @keyframes vintra-grid    { 0% {background-position:0% 0%;} 100% {background-position:-48px -48px;} }
   @keyframes vintra-border-shimmer { 0% {background-position:0% 50%;} 100% {background-position:150% 50%;} }
 }
+
+/* === MYLO-style tokens (cool navy) === */
+@layer base {
+  :root {
+    --background: 222 50% 7.5%;         /* deep navy (page) */
+    --foreground: 210 30% 96%;          /* near-white text */
+
+    /* panels / cards */
+    --panel: 220 30% 12%;
+    --panel-2: 220 28% 14%;
+    --muted: 220 18% 20%;
+    --muted-foreground: 220 10% 68%;
+
+    /* accents */
+    --indigo: 232 85% 64%;
+    --violet: 258 85% 66%;
+    --ring: 232 85% 64%;
+    --radius: 0.75rem;
+  }
+
+  /* Sane body defaults */
+  html{ height:100% }
+  body{
+    min-height:100%;
+    @apply bg-[hsl(var(--background))] text-[hsl(var(--foreground))] antialiased;
+  }
+
+  *{ @apply border-[hsl(var(--muted))]/40; }
+}
+
+/* === MYLO components: panels, inputs, nav, buttons === */
+@layer components {
+  /* glassy panel used for cards/sections */
+  .panel {
+    @apply rounded-xl border border-white/10
+           bg-[hsl(var(--panel))]/95
+           shadow-[0_10px_30px_-10px_rgba(0,0,0,0.6)];
+    background-image: radial-gradient(1200px 600px at 20% -10%,
+      rgba(99,102,241,0.12), transparent 60%);
+  }
+
+  .panel-muted {
+    @apply rounded-xl border border-white/10
+           bg-[hsl(var(--panel-2))]/95;
+  }
+
+  /* inputs/selects */
+  .input-like {
+    @apply bg-white/5 border-white/15 text-[hsl(var(--foreground))]
+           placeholder:text-white/40
+           rounded-lg;
+  }
+  .input-like:focus {
+    @apply ring-2 ring-[hsl(var(--ring))]/50 outline-none border-white/20;
+  }
+
+  /* primary button vibe */
+  .btn-primary {
+    @apply rounded-lg font-semibold text-black bg-white
+           hover:bg-zinc-200 transition;
+  }
+
+  /* soft secondary button */
+  .btn-soft {
+    @apply rounded-lg bg-white/10 border border-white/15
+           text-white hover:bg-white/15;
+  }
+
+  /* top nav links */
+  .nav-link {
+    @apply px-3 py-2 text-sm rounded-md text-white/80 hover:text-white hover:bg-white/5 transition;
+  }
+  .nav-link-active {
+    @apply bg-white/10 text-white;
+  }
+}
