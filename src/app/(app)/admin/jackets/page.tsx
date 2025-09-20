@@ -147,7 +147,7 @@ export default function AdminAllJacketsPage() {
 
   if (!isAdmin) {
     return (
-        <Card className="w-full max-w-md mx-auto mt-20">
+        <Card className="w-full max-w-md mx-auto mt-20 panel">
             <CardHeader>
                 <CardTitle>Access Denied</CardTitle>
             </CardHeader>
@@ -164,7 +164,7 @@ export default function AdminAllJacketsPage() {
 
   return (
     <div className="space-y-6">
-        <Card>
+        <Card className="panel">
             <CardHeader>
                 <CardTitle>All Jackets</CardTitle>
                 <CardDescription>
@@ -177,7 +177,7 @@ export default function AdminAllJacketsPage() {
                         placeholder="Search by VIN..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="max-w-sm"
+                        className="max-w-sm input-like"
                     />
                     <div className="flex items-center space-x-2">
                         <Checkbox
@@ -242,13 +242,13 @@ export default function AdminAllJacketsPage() {
 
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button asChild variant="outline" size="sm">
+                              <Button asChild variant="outline" size="sm" className="btn-soft">
                                 <Link href={`/admin/jackets/${encodeURIComponent(jacket.vin ?? jacket.id)}`}>
                                   Open
                                 </Link>
                               </Button>
                               {!!jacket.invoiceUrl && (
-                                <Button asChild variant="secondary" size="sm">
+                                <Button asChild variant="secondary" size="sm" className="btn-soft">
                                   <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer">
                                     Invoice <ExternalLink className="ml-2 h-3 w-3" />
                                   </a>
@@ -271,4 +271,3 @@ export default function AdminAllJacketsPage() {
     </div>
   );
 }
-

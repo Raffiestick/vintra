@@ -970,7 +970,7 @@ export default function JacketDetailPage() {
   if (error) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8">
-        <Card className="w-full max-w-lg text-center">
+        <Card className="w-full max-w-lg text-center panel">
           <CardHeader>
             <CardTitle className="text-2xl font-bold text-destructive">
               Error
@@ -987,7 +987,7 @@ export default function JacketDetailPage() {
   if (!jacket) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8">
-        <Card className="w-full max-w-lg text-center">
+        <Card className="w-full max-w-lg text-center panel">
           <CardHeader>
             <CardTitle className="text-2xl font-bold">
               Jacket Not Found
@@ -1088,7 +1088,7 @@ export default function JacketDetailPage() {
                     {jacket.jacketId && <Badge variant="secondary" className="font-mono">Jacket ID: {jacket.jacketId}</Badge>}
                     {isAdmin && (
                         <>
-                        <Button size="sm" onClick={handleGenerateInvoice} disabled={isGeneratingInvoice || !isAdmin}>
+                        <Button size="sm" onClick={handleGenerateInvoice} disabled={isGeneratingInvoice || !isAdmin} className="btn-soft">
                             <div className="flex items-center gap-2">
                                 {isGeneratingInvoice ? <Loader2 className="animate-spin" /> : <FileText />}
                                 <div className="leading-tight text-left">
@@ -1097,7 +1097,7 @@ export default function JacketDetailPage() {
                                 </div>
                             </div>
                         </Button>
-                        <Button size="sm" onClick={handleGenerateBos} disabled={isGeneratingBos || !isAdmin}>
+                        <Button size="sm" onClick={handleGenerateBos} disabled={isGeneratingBos || !isAdmin} className="btn-soft">
                             <div className="flex items-center gap-2">
                                 {isGeneratingBos ? <Loader2 className="animate-spin" /> : <ScrollText />}
                                 <div className="leading-tight text-left">
@@ -1106,11 +1106,11 @@ export default function JacketDetailPage() {
                                 </div>
                             </div>
                         </Button>
-                        <Button size="sm" onClick={handleGeneratePacket} disabled={isGeneratingPacket || !isAdmin}>
+                        <Button size="sm" onClick={handleGeneratePacket} disabled={isGeneratingPacket || !isAdmin} className="btn-primary">
                             <div className="flex items-center gap-2">
                                 {isGeneratingPacket ? <Loader2 className="animate-spin" /> : <Files />}
                                 <div className="leading-tight text-left">
-                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Generate</div>
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-zinc-800">Generate</div>
                                     <div className="text-sm font-semibold">Jacket</div>
                                 </div>
                             </div>
@@ -1135,7 +1135,7 @@ export default function JacketDetailPage() {
             <TabsContent value="overview" className="mt-4">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                     <div className="md:col-span-7 space-y-4">
-                        <Card>
+                        <Card className="panel">
                             <CardHeader><CardTitle>Payment Status</CardTitle></CardHeader>
                             <CardContent className="space-y-4">
                                 <PaymentSwitch
@@ -1156,7 +1156,7 @@ export default function JacketDetailPage() {
                         </Card>
 
                         {isAdmin && (
-                          <Card>
+                          <Card className="panel">
                             <CardHeader>
                               <CardTitle>Assign Dealer</CardTitle>
                             </CardHeader>
@@ -1169,7 +1169,7 @@ export default function JacketDetailPage() {
                                         variant="outline"
                                         role="combobox"
                                         aria-expanded={comboboxOpen}
-                                        className="w-[300px] justify-between bg-white/5 border-white/15 hover:bg-white/10"
+                                        className="w-[300px] justify-between input-like"
                                       >
                                         {selectedDealer
                                           ? approvedDealers.find((d) => d.uid === selectedDealer)?.companyName
@@ -1177,9 +1177,9 @@ export default function JacketDetailPage() {
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                       </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-[300px] p-0 bg-[hsl(var(--background))] border-white/10">
+                                    <PopoverContent className="w-[300px] p-0 bg-[hsl(var(--panel))] border-white/10">
                                       <Command>
-                                        <CommandInput placeholder="Search dealer..." />
+                                        <CommandInput placeholder="Search dealer..." className="input-like"/>
                                         <CommandEmpty>No dealer found.</CommandEmpty>
                                         <CommandGroup>
                                           {approvedDealers.map((dealer) => (
@@ -1207,7 +1207,7 @@ export default function JacketDetailPage() {
                                       </Command>
                                     </PopoverContent>
                                   </Popover>
-                                  <Button onClick={handleSaveDealer} disabled={isSavingDealer || !selectedDealer}>
+                                  <Button onClick={handleSaveDealer} disabled={isSavingDealer || !selectedDealer} className="btn-primary">
                                     {isSavingDealer ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
                                     Save
                                   </Button>
@@ -1221,7 +1221,7 @@ export default function JacketDetailPage() {
                                     <p className="font-medium">{assignedDealer.companyName}</p>
                                     <p className="text-sm text-muted-foreground">{assignedDealer.email}</p>
                                   </div>
-                                  <Button variant="outline" onClick={() => {setIsEditingDealer(true); setSelectedDealer(assignedDealer.uid)}}>
+                                  <Button variant="outline" onClick={() => {setIsEditingDealer(true); setSelectedDealer(assignedDealer.uid)}} className="btn-soft">
                                     Change
                                   </Button>
                                 </div>
@@ -1237,7 +1237,7 @@ export default function JacketDetailPage() {
                     </div>
                     <div className="md:col-span-5 space-y-4">
                        {financials && (
-                           <Card>
+                           <Card className="panel">
                              <CardHeader>
                                <CardTitle>Financials</CardTitle>
                              </CardHeader>
@@ -1255,7 +1255,7 @@ export default function JacketDetailPage() {
                     </div>
                 </div>
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                        <Card>
+                        <Card className="panel">
                             <CardHeader>
                                 <CardTitle>Jacket Invoice</CardTitle>
                             </CardHeader>
@@ -1270,12 +1270,12 @@ export default function JacketDetailPage() {
                                 </div>
                                 {effectiveInvoiceUrl ? (
                                     <div className="flex items-center gap-2">
-                                        <Button asChild size="sm">
+                                        <Button asChild size="sm" className="btn-soft">
                                             <a href={effectiveInvoiceUrl} target="_blank" rel="noopener noreferrer">
                                                 <Download className="mr-2 h-4 w-4" /> Open Invoice PDF
                                             </a>
                                         </Button>
-                                        <Button variant="secondary" size="sm" onClick={() => window.open(effectiveInvoiceUrl, '_blank')}>
+                                        <Button variant="secondary" size="sm" onClick={() => window.open(effectiveInvoiceUrl, '_blank')} className="btn-soft">
                                             <Printer className="mr-2 h-4 w-4" /> Print
                                         </Button>
                                     </div>
@@ -1284,7 +1284,7 @@ export default function JacketDetailPage() {
                                 )}
                             </CardContent>
                         </Card>
-                         <Card>
+                         <Card className="panel">
                             <CardHeader>
                                 <CardTitle>Bill of Sale</CardTitle>
                             </CardHeader>
@@ -1299,12 +1299,12 @@ export default function JacketDetailPage() {
                                 </div>
                                 {effectiveBosUrl ? (
                                     <div className="flex items-center gap-2">
-                                        <Button asChild size="sm">
+                                        <Button asChild size="sm" className="btn-soft">
                                             <a href={effectiveBosUrl} target="_blank" rel="noopener noreferrer">
                                                 <Download className="mr-2 h-4 w-4" /> Open BOS PDF
                                             </a>
                                         </Button>
-                                        <Button variant="secondary" size="sm" onClick={() => window.open(effectiveBosUrl, '_blank')}>
+                                        <Button variant="secondary" size="sm" onClick={() => window.open(effectiveBosUrl, '_blank')} className="btn-soft">
                                             <Printer className="mr-2 h-4 w-4" /> Print
                                         </Button>
                                     </div>
@@ -1313,7 +1313,7 @@ export default function JacketDetailPage() {
                                 )}
                             </CardContent>
                         </Card>
-                         <Card>
+                         <Card className="panel">
                             <CardHeader>
                                 <CardTitle>Jacket Packet</CardTitle>
                             </CardHeader>
@@ -1328,12 +1328,12 @@ export default function JacketDetailPage() {
                                 </div>
                                 {effectivePacketUrl ? (
                                   <div className="flex items-center gap-2">
-                                    <Button asChild size="sm">
+                                    <Button asChild size="sm" className="btn-primary">
                                         <a href={effectivePacketUrl} target="_blank" rel="noopener noreferrer">
                                             <Download className="mr-2 h-4 w-4" /> Open Packet PDF
                                         </a>
                                     </Button>
-                                    <Button variant="secondary" size="sm" onClick={() => window.open(effectivePacketUrl, '_blank')}>
+                                    <Button variant="secondary" size="sm" onClick={() => window.open(effectivePacketUrl, '_blank')} className="btn-soft">
                                       <Printer className="mr-2 h-4 w-4" />
                                       Print
                                     </Button>
@@ -1347,7 +1347,7 @@ export default function JacketDetailPage() {
             </TabsContent>
             
             <TabsContent value="misc-fees">
-              <Card>
+              <Card className="panel">
                 <CardHeader>
                   <CardTitle>Miscellaneous Fees</CardTitle>
                   <CardDescription>Manage additional fees associated with this jacket.</CardDescription>
@@ -1389,6 +1389,7 @@ export default function JacketDetailPage() {
                                             size="sm"
                                             onClick={() => setFeeToModify({ fee, action: fee.paid ? 'unpay' : 'pay' })}
                                             disabled={isModifyingFee}
+                                            className="btn-soft"
                                         >
                                             <CreditCard className="mr-2 h-4 w-4" /> Mark {fee.paid ? 'Unpaid' : 'Paid'}
                                         </Button>
@@ -1422,6 +1423,7 @@ export default function JacketDetailPage() {
                             onChange={(e) => setFeeDescription(e.target.value)}
                             placeholder="e.g. Lost Key Replacement"
                             disabled={isAddingFee}
+                            className="input-like"
                           />
                         </div>
                         <div className="space-y-1">
@@ -1434,11 +1436,12 @@ export default function JacketDetailPage() {
                             placeholder="50.00"
                             step="0.01"
                             disabled={isAddingFee}
+                            className="input-like"
                           />
                         </div>
                       </div>
                       {feeError && <p className="text-sm text-destructive">{feeError}</p>}
-                      <Button type="submit" disabled={isAddingFee}>
+                      <Button type="submit" disabled={isAddingFee} className="btn-primary">
                         {isAddingFee ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding...</> : 'Add Fee'}
                       </Button>
                     </form>
@@ -1448,7 +1451,7 @@ export default function JacketDetailPage() {
             </TabsContent>
 
             <TabsContent value="documents">
-                <Card>
+                <Card className="panel">
                     <CardHeader>
                         <CardTitle>Documents</CardTitle>
                          <CardDescription>Manage titles, POAs, and other documents for this jacket.</CardDescription>
@@ -1486,7 +1489,7 @@ export default function JacketDetailPage() {
                                                 {isAdmin && (
                                                     <TableCell className="text-right">
                                                         <div className="flex items-center justify-end gap-2">
-                                                          <Button asChild variant="outline" size="icon">
+                                                          <Button asChild variant="outline" size="icon" className="btn-soft">
                                                             <a href={doc.url} target="_blank" rel="noopener noreferrer"><Download className="h-4 w-4" /></a>
                                                           </Button>
                                                           <Button
@@ -1494,6 +1497,7 @@ export default function JacketDetailPage() {
                                                             size="icon"
                                                             onClick={() => document.getElementById(`replace-input-${doc.id}`)?.click()}
                                                             disabled={!!replacingDocId}
+                                                            className="btn-soft"
                                                           >
                                                             <Replace className="h-4 w-4"/>
                                                             <input
@@ -1527,10 +1531,10 @@ export default function JacketDetailPage() {
                                     <div className="space-y-1">
                                         <Label htmlFor="docType">Document Type</Label>
                                         <Select value={docType} onValueChange={(v) => setDocType(v as JacketDocument['type'])} disabled={isUploading}>
-                                            <SelectTrigger>
+                                            <SelectTrigger className="input-like">
                                                 <SelectValue placeholder="Select type..." />
                                             </SelectTrigger>
-                                            <SelectContent>
+                                            <SelectContent className="bg-[hsl(var(--panel))] border-white/10">
                                                 <SelectItem value="title">Title</SelectItem>
                                                 <SelectItem value="poa">POA</SelectItem>
                                                 <SelectItem value="addendum">Addendum</SelectItem>
@@ -1544,9 +1548,10 @@ export default function JacketDetailPage() {
                                             type="file"
                                             onChange={(e) => setDocFile(e.target.files ? e.target.files[0] : null)}
                                             disabled={isUploading}
+                                            className="input-like"
                                         />
                                     </div>
-                                     <Button type="submit" disabled={isUploading || !docFile || !docType}>
+                                     <Button type="submit" disabled={isUploading || !docFile || !docType} className="btn-primary">
                                         {isUploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Uploading...</> : <><UploadCloud className="mr-2 h-4 w-4"/>Upload</>}
                                     </Button>
                                 </div>
@@ -1567,7 +1572,7 @@ export default function JacketDetailPage() {
             
             <TabsContent value="activity">
                  {isAdmin && (
-                  <Card>
+                  <Card className="panel">
                     <CardHeader><CardTitle>Activity Log</CardTitle></CardHeader>
                     <CardContent>
                       {loadingActivity ? (
@@ -1597,7 +1602,7 @@ export default function JacketDetailPage() {
 
       {/* Dialog for marking as Paid */}
       <Dialog open={paymentDialog.open} onOpenChange={(open) => setPaymentDialog({ ...paymentDialog, open })}>
-        <DialogContent>
+        <DialogContent className="panel">
           <DialogHeader>
             <DialogTitle>Confirm Payment for {paymentDialog.type === 'auction' ? 'Auction' : 'Management Fee'}</DialogTitle>
           </DialogHeader>
@@ -1608,13 +1613,13 @@ export default function JacketDetailPage() {
                     <PopoverTrigger asChild>
                     <Button
                         variant={"outline"}
-                        className={cn("w-full justify-start text-left font-normal", !paymentDate && "text-muted-foreground")}
+                        className={cn("w-full justify-start text-left font-normal input-like", !paymentDate && "text-muted-foreground")}
                     >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {paymentDate ? format(paymentDate, "PPP") : <span>Pick a date</span>}
                     </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
+                    <PopoverContent className="w-auto p-0 panel">
                     <Calendar
                         mode="single"
                         selected={paymentDate}
@@ -1626,12 +1631,12 @@ export default function JacketDetailPage() {
             </div>
             <div className="space-y-2">
               <Label>Reference / Note (Optional)</Label>
-              <Input value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} placeholder="e.g. Check #12345"/>
+              <Input value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} placeholder="e.g. Check #12345" className="input-like"/>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPaymentDialog({ open: false, type: null })}>Cancel</Button>
-            <Button onClick={handleConfirmPaid} disabled={isUpdatingPayment || !paymentDate}>
+            <Button variant="outline" onClick={() => setPaymentDialog({ open: false, type: null })} className="btn-soft">Cancel</Button>
+            <Button onClick={handleConfirmPaid} disabled={isUpdatingPayment || !paymentDate} className="btn-primary">
               {isUpdatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Payment
             </Button>
@@ -1640,7 +1645,7 @@ export default function JacketDetailPage() {
       </Dialog>
       
       <AlertDialog open={unpaidConfirmDialog.open} onOpenChange={(open) => setUnpaidConfirmDialog({ ...unpaidConfirmDialog, open })}>
-        <AlertDialogContent>
+        <AlertDialogContent className="panel">
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1648,7 +1653,7 @@ export default function JacketDetailPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setUnpaidConfirmDialog({ open: false, type: null })}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setUnpaidConfirmDialog({ open: false, type: null })} className="btn-soft">Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmUnpaid} disabled={isUpdatingPayment} className="bg-destructive hover:bg-destructive/90">
               {isUpdatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Yes, Mark as Unpaid
@@ -1658,7 +1663,7 @@ export default function JacketDetailPage() {
       </AlertDialog>
 
       <AlertDialog open={!!docToDelete} onOpenChange={(open) => !open && setDocToDelete(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="panel">
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure you want to delete this document?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1666,7 +1671,7 @@ export default function JacketDetailPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDocToDelete(null)} disabled={isDeletingDoc}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setDocToDelete(null)} disabled={isDeletingDoc} className="btn-soft">Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteDocument} disabled={isDeletingDoc} className="bg-destructive hover:bg-destructive/90">
               {isDeletingDoc && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Yes, Delete Document
@@ -1676,7 +1681,7 @@ export default function JacketDetailPage() {
       </AlertDialog>
 
       <AlertDialog open={!!feeToModify} onOpenChange={(open) => !open && setFeeToModify(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="panel">
             <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
@@ -1685,11 +1690,11 @@ export default function JacketDetailPage() {
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setFeeToModify(null)}>Cancel</AlertDialogCancel>
+                <AlertDialogCancel onClick={() => setFeeToModify(null)} className="btn-soft">Cancel</AlertDialogCancel>
                 <AlertDialogAction 
                     onClick={handleModifyFee} 
                     disabled={isModifyingFee}
-                    className={feeToModify?.action === 'delete' ? "bg-destructive hover:bg-destructive/90" : ""}
+                    className={feeToModify?.action === 'delete' ? "bg-destructive hover:bg-destructive/90" : "btn-primary"}
                 >
                     {isModifyingFee && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Yes, proceed

@@ -223,35 +223,35 @@ export default function DealerJacketsPage() {
 
     const ActionButtons = ({ jacket }: { jacket: Jacket }) => (
         <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button size="sm" onClick={() => router.push(`/dealer/jackets/${jacket.vin}`)}>
+            <Button size="sm" onClick={() => router.push(`/dealer/jackets/${jacket.vin}`)} className="btn-primary">
                 <Car className="mr-2" /> Open Jacket
             </Button>
             {jacket.invoiceUrl && (
                 <div className="flex gap-2">
-                    <Button asChild size="sm" variant="outline">
+                    <Button asChild size="sm" variant="outline" className="btn-soft">
                         <a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer"><Download /> Invoice</a>
                     </Button>
-                    <Button asChild size="sm" variant="secondary">
+                    <Button asChild size="sm" variant="secondary" className="btn-soft">
                         <a href={`/dealer/print?url=${encodeURIComponent(jacket.invoiceUrl)}`} target="_blank" rel="noopener noreferrer"><Printer /></a>
                     </Button>
                 </div>
             )}
             {jacket.bosUrl && (
                 <div className="flex gap-2">
-                    <Button asChild size="sm" variant="outline">
+                    <Button asChild size="sm" variant="outline" className="btn-soft">
                         <a href={jacket.bosUrl} target="_blank" rel="noopener noreferrer"><Download /> BOS</a>
                     </Button>
-                     <Button asChild size="sm" variant="secondary">
+                     <Button asChild size="sm" variant="secondary" className="btn-soft">
                         <a href={`/dealer/print?url=${encodeURIComponent(jacket.bosUrl)}`} target="_blank" rel="noopener noreferrer"><Printer /></a>
                     </Button>
                 </div>
             )}
             {jacket.packetUrl && (
                 <div className="flex gap-2">
-                    <Button asChild size="sm" variant="outline">
+                    <Button asChild size="sm" variant="outline" className="btn-soft">
                         <a href={jacket.packetUrl} target="_blank" rel="noopener noreferrer"><Package /> Packet</a>
                     </Button>
-                     <Button asChild size="sm" variant="secondary">
+                     <Button asChild size="sm" variant="secondary" className="btn-soft">
                         <a href={`/dealer/print?url=${encodeURIComponent(jacket.packetUrl)}`} target="_blank" rel="noopener noreferrer"><Printer /></a>
                     </Button>
                 </div>
@@ -264,21 +264,21 @@ export default function DealerJacketsPage() {
             <h1 className="text-3xl font-bold">Welcome, {welcomeName}</h1>
 
             <div className="grid gap-4 md:grid-cols-3">
-                <Card>
+                <Card className="panel">
                     <CardHeader><CardTitle>Units Purchased</CardTitle></CardHeader>
                     <CardContent><p className="text-2xl font-bold">{metrics.unitsPurchased}</p></CardContent>
                 </Card>
-                <Card>
+                <Card className="panel">
                     <CardHeader><CardTitle>Total Amount Paid</CardTitle></CardHeader>
                     <CardContent><p className="text-2xl font-bold">{fmtCurrency(metrics.totalAmountPaid)}</p></CardContent>
                 </Card>
-                <Card>
+                <Card className="panel">
                     <CardHeader><CardTitle>Total Balance Due</CardTitle></CardHeader>
                     <CardContent><p className="text-2xl font-bold text-destructive">{fmtCurrency(metrics.totalAmountOwed)}</p></CardContent>
                 </Card>
             </div>
             
-            <Card>
+            <Card className="panel">
                 <CardHeader>
                     <CardTitle>My Jackets</CardTitle>
                     <CardDescription>A list of all vehicle jackets assigned to you.</CardDescription>
@@ -287,7 +287,7 @@ export default function DealerJacketsPage() {
                             placeholder="Search by VIN, Make, Model, or Year..."
                             value={searchTerm}
                             onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                            className="w-full md:max-w-sm"
+                            className="w-full md:max-w-sm input-like"
                         />
                         <Tabs value={filter} onValueChange={(v) => { setFilter(v); setCurrentPage(1); }} className="w-full md:w-auto">
                             <TabsList className="grid w-full grid-cols-3">
@@ -308,7 +308,7 @@ export default function DealerJacketsPage() {
                             {paginatedJackets.map(jacket => {
                                 const { isFullyPaid, amountPaid, balanceDue } = calculateFinancials(jacket);
                                 return (
-                                <Card key={jacket.id}>
+                                <Card key={jacket.id} className="panel-muted">
                                     <CardHeader>
                                         <div className="flex justify-between items-start">
                                             <div>
@@ -379,6 +379,7 @@ export default function DealerJacketsPage() {
                                 size="sm"
                                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                 disabled={currentPage === 1}
+                                className="btn-soft"
                             >
                                 Previous
                             </Button>
@@ -390,6 +391,7 @@ export default function DealerJacketsPage() {
                                 size="sm"
                                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                 disabled={currentPage === totalPages}
+                                className="btn-soft"
                             >
                                 Next
                             </Button>
