@@ -1,24 +1,33 @@
 
-import { onRequest } from "firebase-functions/v2/https";
+import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { PDFDocument, type PDFPage } from "pdf-lib";
-import { bucket, db, logActivity, FieldValue } from "../config";
+import { bucket, db, logActivity, FieldValue, assertAdmin } from "../config";
 
-export const generateJacketPacket = onRequest(
-  { region: "us-central1", timeoutSeconds: 180, memory: "1GiB", cors: true },
-  async (req, res) => {
+export const generateJacketPacket = onCall(
+  { region: "us-central1", timeoutSeconds: 180, memory: "1GiB" },
+  async (request) => {
+    assertAdmin(request);
     try {
-      const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim().toUpperCase();
-      if (!rawVin) { res.status(400).send("Missing 'vin'"); return; }
+      const rawVin = (request.data?.vin ?? "").toString().trim().toUpperCase();
+      if (!rawVin) { 
+        throw new HttpsError("invalid-argument", "Missing 'vin'");
+      }
 
       const docRef = db.collection("jackets").doc(rawVin);
       const snap = await docRef.get();
-      if (!snap.exists) { res.status(404).send("Jacket not found"); return; }
+      if (!snap.exists) { 
+        throw new HttpsError("not-found", "Jacket not found");
+      }
       const j = snap.data() || {};
 
-      if (!j.invoiceUrl) { res.status(400).send("Invoice must be generated before creating a packet."); return; }
-      if (!j.bosUrl) { res.status(400).send("Bill of Sale must be generated before creating a packet."); return; }
+      if (!j.invoiceUrl) { 
+        throw new HttpsError("failed-precondition", "Invoice must be generated before creating a packet.");
+      }
+      if (!j.bosUrl) {
+        throw new HttpsError("failed-precondition", "Bill of Sale must be generated before creating a packet.");
+      }
 
       // Minimal cover page
       const coverHtml = `<!doctype html><html><body style="font-family:system-ui; padding:48px">
@@ -99,10 +108,11 @@ export const generateJacketPacket = onRequest(
       await docRef.update({ packetUrl: signedUrl, updatedAt: FieldValue.serverTimestamp() });
       await logActivity(rawVin, { type: "packetGenerated", message: "Packet generated (cover + invoice + BOS + attachments)", meta: { url: signedUrl } });
 
-      res.status(200).json({ ok: true, vin: rawVin, url: signedUrl });
+      return { ok: true, vin: rawVin, url: signedUrl };
     } catch (err: any) {
       console.error("generateJacketPacket error:", err);
-      res.status(500).send(err?.message || "Internal error");
+      if (err instanceof HttpsError) throw err;
+      throw new HttpsError("internal", err?.message || "Internal error");
     }
   }
 );

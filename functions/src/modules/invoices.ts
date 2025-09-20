@@ -1,8 +1,8 @@
 
-import { onRequest } from "firebase-functions/v2/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
-import { bucket, db, FieldValue, seller } from "../config";
+import { bucket, db, FieldValue, seller, assertAdmin } from "../config";
 import { renderInvoiceHTML } from "../templates/invoice";
 import { renderBoSHTML } from "../templates/bos";
 
@@ -25,16 +25,21 @@ async function getBuyerData(dealerId?: string): Promise<any> {
   return { name: `Dealer ${dealerId || ""}` };
 }
 
-export const generateJacketInvoice = onRequest(
-  { region: "us-central1", timeoutSeconds: 60, memory: "1GiB", cors: true },
-  async (req, res) => {
+export const generateJacketInvoice = onCall(
+  { region: "us-central1", timeoutSeconds: 60, memory: "1GiB" },
+  async (request) => {
+    assertAdmin(request);
     try {
-      const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim().toUpperCase();
-      if (!rawVin) { res.status(400).send("Missing 'vin'"); return; }
+      const rawVin = (request.data?.vin ?? "").toString().trim().toUpperCase();
+      if (!rawVin) { 
+        throw new HttpsError("invalid-argument", "Missing 'vin'");
+      }
 
       const ref = db.collection("jackets").doc(rawVin);
       const snap = await ref.get();
-      if (!snap.exists) { res.status(404).send("Jacket not found"); return; }
+      if (!snap.exists) { 
+        throw new HttpsError("not-found", "Jacket not found");
+      }
       const j = snap.data() || {};
       const buyer = await getBuyerData(j.dealerId);
 
@@ -50,24 +55,30 @@ export const generateJacketInvoice = onRequest(
       const [url] = await bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7*24*60*60*1000 });
 
       await ref.update({ invoiceUrl: url, updatedAt: FieldValue.serverTimestamp() });
-      res.json({ ok: true, vin: rawVin, url });
+      return { ok: true, vin: rawVin, url };
     } catch (e: any) {
       console.error("generateJacketInvoice error:", e);
-      res.status(500).send(e?.message || "Internal error");
+      if (e instanceof HttpsError) throw e;
+      throw new HttpsError("internal", e?.message || "Internal error");
     }
   }
 );
 
-export const generateBillOfSale = onRequest(
-  { region: "us-central1", timeoutSeconds: 60, memory: "1GiB", cors: true },
-  async (req, res) => {
+export const generateBillOfSale = onCall(
+  { region: "us-central1", timeoutSeconds: 60, memory: "1GiB" },
+  async (request) => {
+    assertAdmin(request);
     try {
-      const rawVin = (req.body?.vin ?? req.query?.vin ?? "").toString().trim().toUpperCase();
-      if (!rawVin) { res.status(400).send("Missing 'vin'"); return; }
+      const rawVin = (request.data?.vin ?? "").toString().trim().toUpperCase();
+      if (!rawVin) {
+        throw new HttpsError("invalid-argument", "Missing 'vin'");
+      }
 
       const ref = db.collection("jackets").doc(rawVin);
       const snap = await ref.get();
-      if (!snap.exists) { res.status(404).send("Jacket not found"); return; }
+      if (!snap.exists) {
+        throw new HttpsError("not-found", "Jacket not found");
+      }
       const j = snap.data() || {};
       const buyer = await getBuyerData(j.dealerId);
 
@@ -83,10 +94,11 @@ export const generateBillOfSale = onRequest(
       const [url] = await bucket.file(path).getSignedUrl({ action: "read", expires: Date.now() + 7*24*60*60*1000 });
 
       await ref.update({ bosUrl: url, updatedAt: FieldValue.serverTimestamp() });
-      res.json({ ok: true, vin: rawVin, url });
+      return { ok: true, vin: rawVin, url };
     } catch (e: any) {
       console.error("generateBillOfSale error:", e);
-      res.status(500).send(e?.message || "Internal error");
+      if (e instanceof HttpsError) throw e;
+      throw new HttpsError("internal", e?.message || "Internal error");
     }
   }
 );

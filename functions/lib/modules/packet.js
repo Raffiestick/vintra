@@ -52,11 +52,11 @@ exports.generateJacketPacket = (0, https_1.onRequest)({ region: "us-central1", t
         const [invBuf] = await config_1.bucket.file(`jacket-documents/${rawVin}/invoice.pdf`).download();
         const invPdf = await pdf_lib_1.PDFDocument.load(invBuf);
         const invPages = await packet.copyPages(invPdf, invPdf.getPageIndices());
-        invPages.forEach(p => packet.addPage(p));
+        invPages.forEach((p) => packet.addPage(p));
         const [bosBuf] = await config_1.bucket.file(`jacket-documents/${rawVin}/bill-of-sale.pdf`).download();
         const bosPdf = await pdf_lib_1.PDFDocument.load(bosBuf);
         const bosPages = await packet.copyPages(bosPdf, bosPdf.getPageIndices());
-        bosPages.forEach(p => packet.addPage(p));
+        bosPages.forEach((p) => packet.addPage(p));
         // Append any other attachments (PDFs and common images)
         for (const d of Array.isArray(j.documents) ? j.documents : []) {
             try {
@@ -81,7 +81,7 @@ exports.generateJacketPacket = (0, https_1.onRequest)({ region: "us-central1", t
                 if (ct.startsWith("application/pdf")) {
                     const extPdf = await pdf_lib_1.PDFDocument.load(buf);
                     const pages = await packet.copyPages(extPdf, extPdf.getPageIndices());
-                    pages.forEach(p => packet.addPage(p));
+                    pages.forEach((p) => packet.addPage(p));
                 }
                 else if (ct.startsWith("image/") || /\.(png|jpe?g)$/i.test(d.name)) {
                     const isJpg = ct.includes("jpeg") || /\.jpe?g$/i.test(d.name);
