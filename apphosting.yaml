@@ -1,32 +1,10 @@
-# Specifies the version of the App Hosting schema.
-specVersion: v1alpha1
+runtime: nodejs20
 
-# Specifies the command to run to build your app.
-buildCommand: npm run build
+build:
+  command: npm ci && npm run build
+  env:
+    - variable: NEXT_TELEMETRY_DISABLED
+      value: "1"
 
-# Specifies the command to run to start your app.
-startCommand: npm start
-
-# Specifies the root of the application code.
 run:
-  appDirectory: vintra
-
-# Defines the environment variables that will be available to your app.
-env:
-  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: "AIzaSyAjhaoaB2BQobm4NWDeJ4ePP-ExVBB77dg"
-  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-    value: "rizeup-dealer-connect-n6k7r.firebaseapp.com"
-  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-    value: "rizeup-dealer-connect-n6k7r"
-  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-    value: "rizeup-dealer-connect-n6k7r.appspot.com"
-  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-    value: "1000941113781"
-  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
-    value: "1:1000941113781:web:1fb421a893eafe977409fc"
-    # --- Private Gemini API Key ---
-    # This tells the build process to securely load the value for
-    # the GEMINI_API_KEY variable from the secret with the same name.
-  - variable: GEMINI_API_KEY
-    secret: GEMINI_API_KEY
+  command: npm run start
