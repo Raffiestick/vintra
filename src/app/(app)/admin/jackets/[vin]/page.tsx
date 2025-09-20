@@ -1,4 +1,5 @@
 
+
 "use client";
 
 
@@ -1168,7 +1169,7 @@ export default function JacketDetailPage() {
                                         variant="outline"
                                         role="combobox"
                                         aria-expanded={comboboxOpen}
-                                        className="w-[300px] justify-between"
+                                        className="w-[300px] justify-between bg-white/5 border-white/15 hover:bg-white/10"
                                       >
                                         {selectedDealer
                                           ? approvedDealers.find((d) => d.uid === selectedDealer)?.companyName
@@ -1176,7 +1177,7 @@ export default function JacketDetailPage() {
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                       </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-[300px] p-0">
+                                    <PopoverContent className="w-[300px] p-0 bg-[hsl(var(--background))] border-white/10">
                                       <Command>
                                         <CommandInput placeholder="Search dealer..." />
                                         <CommandEmpty>No dealer found.</CommandEmpty>
