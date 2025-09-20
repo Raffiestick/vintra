@@ -8,3 +8,6 @@ build:
 
 run:
   command: npm run start
+  env:
+    - variable: FIREBASE_WEBAPP_CONFIG
+      value: ${FIREBASE_WEBAPP_CONFIG}
