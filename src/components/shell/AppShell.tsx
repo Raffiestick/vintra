@@ -25,12 +25,7 @@ function NavLink({
   return (
     <Link
       href={href}
-      className={cn(
-        "px-3 py-2 text-sm rounded-md transition",
-        active
-          ? "bg-white/10 text-white"
-          : "text-white/80 hover:text-white hover:bg-white/5"
-      )}
+      className={cn(active ? "nav-link-active" : "nav-link")}
     >
       {children}
     </Link>
@@ -134,7 +129,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Main */}
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-6 grid gap-4">
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          {children}
+        </div>
+      </main>
 
       {/* Footer */}
       <footer className="mt-10 border-t border-white/10">
