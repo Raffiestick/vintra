@@ -4,7 +4,12 @@ const { fontFamily } = require('tailwindcss/defaultTheme');
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ['class'],
-  content: ['./src/**/*.{ts,tsx,js,jsx,mdx}'],
+  content: [
+    './src/**/*.{ts,tsx,js,jsx,mdx}',
+    './src/app/(site)/**/*.{ts,tsx,js,jsx,mdx}',
+    './src/app/(app)/**/*.{ts,tsx,js,jsx,mdx}',
+    './src/components/**/*.{ts,tsx,js,jsx,mdx}',
+  ],
   theme: {
     extend: {
       borderRadius: {

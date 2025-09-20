@@ -9,7 +9,9 @@
     "dev": "next dev -p 4000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "dev:9000": "next dev -p 9000",
+    "start:9000": "next start -p 9000"
   },
   "dependencies": {
     "@google-cloud/vertexai": "^1.8.0",

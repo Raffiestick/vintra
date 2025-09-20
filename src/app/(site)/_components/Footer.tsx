@@ -40,17 +40,17 @@ export default function SiteFooter() {
               </li>
               <li>
                 <a className="hover:text-white underline-offset-4 hover:underline" href="/about">
-                  Why Vintra (About Page)
+                  Why Vintra
                 </a>
               </li>
               <li>
                 <a className="hover:text-white underline-offset-4 hover:underline" href="/dealer-faq">
-                  Dealer FAQ’s (Placeholder)
+                  Dealer FAQ’s
                 </a>
               </li>
               <li>
                 <a className="hover:text-white underline-offset-4 hover:underline" href="/contact">
-                  Contact Us (Placeholder)
+                  Contact Us
                 </a>
               </li>
             </ul>
