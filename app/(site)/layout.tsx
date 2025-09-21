@@ -1,3 +1,5 @@
+"use client";
+
 // IMPORTANT: pull in globals here too so group routes always get Tailwind
 import "../globals.css";
 
