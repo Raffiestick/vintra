@@ -3,7 +3,9 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { FieldValue, Transaction, DocumentReference } from "firebase-admin/firestore";
-import { db, assertAdmin } from "../config";
+import { db, assertAdmin, extractPdfText, getGeminiModel } from "../config";
+import { parseNpaInvoiceText } from '../parsers/npa';
+
 
 /**
  * Internal helper function to create a single jacket from a staging unit.
@@ -136,33 +138,105 @@ export const createJacketFromUnit = onCall(
 
 
 export const createJacketsForInvoice = onCall(
-  { region: "us-central1", secrets: [] },
+  { region: "us-central1", secrets: ["GEMINI_API_KEY"], memory: '1GiB', timeoutSeconds: 300 },
   async (request) => {
+    assertAdmin(request);
+    const actorUid = request.auth?.uid;
+    if (!actorUid) throw new HttpsError("unauthenticated", "Authentication required.");
+
+    let sid = (request.data?.sid as string) || "";
+    let sourceUrl = (request.data?.sourceUrl as string) || "";
+
+    // Case A: called with sid
+    if (sid) {
+      const docRef = db.collection("stagingInvoices").doc(sid);
+      const snap = await docRef.get();
+      if (!snap.exists) {
+        throw new HttpsError("not-found", `stagingInvoices/${sid} not found`);
+      }
+      const stg = snap.data() || {};
+      if (!stg.sourceUrl && sourceUrl) {
+        await docRef.set({ sourceUrl, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      }
+      sourceUrl = stg.sourceUrl || sourceUrl;
+      if (!sourceUrl) {
+        throw new HttpsError("failed-precondition", "sourceUrl missing on staging invoice");
+      }
+    }
+
+    // Case B: called without sid but with sourceUrl (server will create a staging doc)
+    if (!sid && sourceUrl) {
+      const ref = await db.collection("stagingInvoices").add({
+        sourceUrl,
+        parseStatus: "uploaded",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      sid = ref.id;
+    }
+
+    if (!sid || !sourceUrl) {
+      throw new HttpsError("invalid-argument", "Provide either { sid } or { sourceUrl }");
+    }
+    
+    // --- Main Parsing & Jacket Creation Logic ---
     try {
-      assertAdmin(request);
-      const { stagingId } = request.data || {};
-      if (!stagingId) throw new HttpsError("invalid-argument", "stagingId required");
-      if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Authentication required.");
+        const stagingRef = db.collection("stagingInvoices").doc(sid);
 
-      const stagingRef = db.collection("stagingInvoices").doc(String(stagingId));
-      const unitsSnap = await stagingRef.collection("units").where("processed", "in", [false, null]).get();
-      if (unitsSnap.empty) {
-        console.log(`No unprocessed units found for stagingId: ${stagingId}`);
-        return { success: true, created: 0 };
-      }
+        const isPdf = (sourceUrl || "").toLowerCase().includes(".pdf");
+        const isImage = /\.(jpe?g|png|gif|webp)$/i.test(sourceUrl);
 
-      let created = 0;
-      
-      for (const unitDoc of unitsSnap.docs) {
-        try {
-          await _createJacketFromUnit(stagingId, unitDoc.id, request.auth.uid);
-          created++;
-        } catch (e: any) {
-          console.error(`Failed to process unit ${unitDoc.id} in batch ${stagingId}:`, e?.message);
+        let text = "";
+        if (isPdf) {
+            const resp = await fetch(sourceUrl);
+            const buf = Buffer.from(await resp.arrayBuffer());
+            text = await extractPdfText(buf);
+        } else if (isImage) {
+            const model = getGeminiModel();
+            const resp = await fetch(sourceUrl);
+            const imageBuf = Buffer.from(await resp.arrayBuffer());
+            const result = await model.generateContent(["Extract text from this document image.", {
+                inlineData: { data: imageBuf.toString("base64"), mimeType: "image/jpeg" }
+            }]);
+            text = result.response.text();
+        } else {
+            throw new HttpsError('invalid-argument', 'sourceUrl must be a PDF or image file.');
         }
-      }
-      
-      return { success: true, created };
+
+        const parsed = parseNpaInvoiceText(text);
+
+        await stagingRef.set({
+            invoiceDate: parsed.invoiceDate || null,
+            invoiceMeta: parsed.invoiceMeta || {},
+            parseStatus: 'parsed',
+            updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        const batch = db.batch();
+        for (const unit of parsed.units) {
+            const unitRef = stagingRef.collection("units").doc();
+            batch.set(unitRef, { ...unit, createdAt: FieldValue.serverTimestamp(), processed: false });
+        }
+        await batch.commit();
+
+        const unitsSnap = await stagingRef.collection("units").where("processed", "in", [false, null]).get();
+        if (unitsSnap.empty) {
+            return { success: true, created: 0, sid };
+        }
+
+        let created = 0;
+        const vins: string[] = [];
+        for (const unitDoc of unitsSnap.docs) {
+            try {
+                const result = await _createJacketFromUnit(sid, unitDoc.id, actorUid);
+                if (result.vin) vins.push(result.vin);
+                created++;
+            } catch (e: any) {
+                console.error(`Failed to process unit ${unitDoc.id} in batch ${sid}:`, e?.message);
+            }
+        }
+        
+        return { success: true, created, sid, vins, vin: vins[0] };
 
     } catch (err: any) {
       console.error("[createJacketsForInvoice] ERROR", err?.stack || err);

@@ -108,13 +108,13 @@ export default function UploadAuctionInvoiceInline() {
   };
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-      <div className="text-sm text-white/80 mb-2">
+    <div className="panel p-4 space-y-3">
+      <div className="text-sm text-white/80">
         Upload an Auction Invoice (PDF or image). We’ll parse it and create a Jacket.
       </div>
-      <Input type="file" accept="application/pdf,image/*" onChange={onChoose} />
-      <div className="flex gap-2 mt-3">
-        <Button onClick={onUpload} disabled={!file || pending}>
+      <Input type="file" accept="application/pdf,image/*" onChange={onChoose} className="input-like" />
+      <div className="flex gap-2">
+        <Button onClick={onUpload} disabled={!file || pending} className="btn-primary">
           {pending ? "Uploading…" : "Upload & Parse"}
         </Button>
       </div>
