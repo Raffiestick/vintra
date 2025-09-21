@@ -1,4 +1,3 @@
-
 // src/lib/firebase/webappConfig.ts
 export type WebAppConfig = {
   apiKey: string;
@@ -11,7 +10,19 @@ export type WebAppConfig = {
 };
 
 export function getFirebaseWebConfig(): WebAppConfig {
-  // Prioritize NEXT_PUBLIC_ variables for local and containerized dev environments
+  // This is the primary and most reliable way to get the config
+  // in the App Hosting managed environment.
+  const fromHosting = process.env.FIREBASE_WEBAPP_CONFIG;
+  if (fromHosting) {
+    try {
+      return JSON.parse(fromHosting) as WebAppConfig;
+    } catch (e) {
+      console.error("Critical: Failed to parse FIREBASE_WEBAPP_CONFIG", e);
+      // Fall through to other methods, but log the critical failure.
+    }
+  }
+
+  // Fallback for local development using NEXT_PUBLIC_ variables
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   if (apiKey) {
     return {
@@ -25,19 +36,7 @@ export function getFirebaseWebConfig(): WebAppConfig {
     };
   }
 
-  // Fallback for production hosting environment
-  const fromHosting = process.env.FIREBASE_WEBAPP_CONFIG;
-  if (fromHosting) {
-    try {
-      return JSON.parse(fromHosting) as WebAppConfig;
-    } catch (e) {
-      console.error("Failed to parse FIREBASE_WEBAPP_CONFIG", e);
-    }
-  }
-
-  // Return empty config as a last resort to avoid crashing
-  return {
-    apiKey: "",
-    appId: "",
-  };
+  // If neither is available, throw an error to fail fast.
+  // This makes it clear that configuration is missing.
+  throw new Error("Firebase webapp configuration is not set. Please check environment variables.");
 }
