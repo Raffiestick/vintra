@@ -1,14 +1,13 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-
     function isSignedIn() { return request.auth != null; }
 
-    // TEMP: allow any signed-in user to upload staging invoices during testing
+    // TEMP: allow any signed-in user to upload invoices for testing
     match /stagingInvoices/{sid}/{file} {
       allow read, write: if isSignedIn();
     }
 
-    // ...keep your other matches the same (user-documents, jacket-documents, etc.)
+    // NOTE: Your other rules for user-documents, etc., can be added back here later.
   }
 }
