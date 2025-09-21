@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.startDocParse = exports.generateJacketPacket = exports.generateBillOfSale = exports.generateJacketInvoice = exports.attachStagedDocToJacket = exports.createJacketsForInvoice = exports.createJacketFromUnit = exports.generateJacketId = exports.manageDealerApplication = exports.signInWithCustomToken = void 0;
+exports.generateJacketPacket = exports.generateBillOfSale = exports.generateJacketInvoice = exports.attachStagedDocToJacket = exports.createJacketsForInvoice = exports.createJacketFromUnit = exports.generateJacketId = exports.manageDealerApplication = exports.signInWithCustomToken = void 0;
 // Re-export all your functions from small modules
 var auth_1 = require("./modules/auth");
 Object.defineProperty(exports, "signInWithCustomToken", { enumerable: true, get: function () { return auth_1.signInWithCustomToken; } });
@@ -17,5 +17,4 @@ Object.defineProperty(exports, "generateBillOfSale", { enumerable: true, get: fu
 var packet_1 = require("./modules/packet");
 Object.defineProperty(exports, "generateJacketPacket", { enumerable: true, get: function () { return packet_1.generateJacketPacket; } });
 // Keep placeholder so CLI won't try to delete if you had this name deployed.
-var placeholder_1 = require("./placeholder");
-Object.defineProperty(exports, "startDocParse", { enumerable: true, get: function () { return placeholder_1.startDocParse; } });
+// export { startDocParse } from "./placeholder";

@@ -5,6 +5,7 @@ exports.createJacketsForInvoice = exports.createJacketFromUnit = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-admin/firestore");
 const config_1 = require("../config");
+const npa_1 = require("../parsers/npa");
 /**
  * Internal helper function to create a single jacket from a staging unit.
  * This contains the core logic and can be safely called from other functions.
@@ -115,31 +116,96 @@ exports.createJacketFromUnit = (0, https_1.onCall)({ region: "us-central1", secr
         throw new https_1.HttpsError("internal", err?.message || "An internal error occurred while creating the jacket.");
     }
 });
-exports.createJacketsForInvoice = (0, https_1.onCall)({ region: "us-central1", secrets: [] }, async (request) => {
+exports.createJacketsForInvoice = (0, https_1.onCall)({ region: "us-central1", secrets: ["GEMINI_API_KEY"], memory: '1GiB', timeoutSeconds: 300 }, async (request) => {
+    (0, config_1.assertAdmin)(request);
+    const actorUid = request.auth?.uid;
+    if (!actorUid)
+        throw new https_1.HttpsError("unauthenticated", "Authentication required.");
+    let sid = request.data?.sid || "";
+    let sourceUrl = request.data?.sourceUrl || "";
+    // Case A: called with sid
+    if (sid) {
+        const docRef = config_1.db.collection("stagingInvoices").doc(sid);
+        const snap = await docRef.get();
+        if (!snap.exists) {
+            throw new https_1.HttpsError("not-found", `stagingInvoices/${sid} not found`);
+        }
+        const stg = snap.data() || {};
+        if (!stg.sourceUrl && sourceUrl) {
+            await docRef.set({ sourceUrl, updatedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
+        }
+        sourceUrl = stg.sourceUrl || sourceUrl;
+        if (!sourceUrl) {
+            throw new https_1.HttpsError("failed-precondition", "sourceUrl missing on staging invoice");
+        }
+    }
+    // Case B: called without sid but with sourceUrl (server will create a staging doc)
+    if (!sid && sourceUrl) {
+        const ref = await config_1.db.collection("stagingInvoices").add({
+            sourceUrl,
+            parseStatus: "uploaded",
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
+            updatedAt: firestore_1.FieldValue.serverTimestamp(),
+        });
+        sid = ref.id;
+    }
+    if (!sid || !sourceUrl) {
+        throw new https_1.HttpsError("invalid-argument", "Provide either { sid } or { sourceUrl }");
+    }
+    // --- Main Parsing & Jacket Creation Logic ---
     try {
-        (0, config_1.assertAdmin)(request);
-        const { stagingId } = request.data || {};
-        if (!stagingId)
-            throw new https_1.HttpsError("invalid-argument", "stagingId required");
-        if (!request.auth?.uid)
-            throw new https_1.HttpsError("unauthenticated", "Authentication required.");
-        const stagingRef = config_1.db.collection("stagingInvoices").doc(String(stagingId));
+        const stagingRef = config_1.db.collection("stagingInvoices").doc(sid);
+        const isPdf = (sourceUrl || "").toLowerCase().includes(".pdf");
+        const isImage = /\.(jpe?g|png|gif|webp)$/i.test(sourceUrl);
+        let text = "";
+        if (isPdf) {
+            const resp = await fetch(sourceUrl);
+            const buf = Buffer.from(await resp.arrayBuffer());
+            text = await (0, config_1.extractPdfText)(buf);
+        }
+        else if (isImage) {
+            const model = (0, config_1.getGeminiModel)();
+            const resp = await fetch(sourceUrl);
+            const imageBuf = Buffer.from(await resp.arrayBuffer());
+            const result = await model.generateContent(["Extract text from this document image.", {
+                    inlineData: { data: imageBuf.toString("base64"), mimeType: "image/jpeg" }
+                }]);
+            text = result.response.text();
+        }
+        else {
+            throw new https_1.HttpsError('invalid-argument', 'sourceUrl must be a PDF or image file.');
+        }
+        const parsed = (0, npa_1.parseNpaInvoiceText)(text);
+        await stagingRef.set({
+            invoiceDate: parsed.invoiceDate || null,
+            invoiceMeta: parsed.invoiceMeta || {},
+            parseStatus: 'parsed',
+            updatedAt: firestore_1.FieldValue.serverTimestamp()
+        }, { merge: true });
+        const batch = config_1.db.batch();
+        for (const unit of parsed.units) {
+            const unitRef = stagingRef.collection("units").doc();
+            batch.set(unitRef, { ...unit, createdAt: firestore_1.FieldValue.serverTimestamp(), processed: false });
+        }
+        await batch.commit();
         const unitsSnap = await stagingRef.collection("units").where("processed", "in", [false, null]).get();
         if (unitsSnap.empty) {
-            console.log(`No unprocessed units found for stagingId: ${stagingId}`);
-            return { success: true, created: 0 };
+            return { success: true, created: 0, sid };
         }
         let created = 0;
+        const vins = [];
         for (const unitDoc of unitsSnap.docs) {
             try {
-                await _createJacketFromUnit(stagingId, unitDoc.id, request.auth.uid);
+                const result = await _createJacketFromUnit(sid, unitDoc.id, actorUid);
+                if (result.vin)
+                    vins.push(result.vin);
                 created++;
             }
             catch (e) {
-                console.error(`Failed to process unit ${unitDoc.id} in batch ${stagingId}:`, e?.message);
+                console.error(`Failed to process unit ${unitDoc.id} in batch ${sid}:`, e?.message);
             }
         }
-        return { success: true, created };
+        return { success: true, created, sid, vins, vin: vins[0] };
     }
     catch (err) {
         console.error("[createJacketsForInvoice] ERROR", err?.stack || err);

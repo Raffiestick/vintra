@@ -7,4 +7,4 @@ export { generateJacketInvoice, generateBillOfSale } from "./modules/invoices";
 export { generateJacketPacket } from "./modules/packet";
 
 // Keep placeholder so CLI won't try to delete if you had this name deployed.
-export { startDocParse } from "./placeholder";
+// export { startDocParse } from "./placeholder";
