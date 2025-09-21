@@ -7,6 +7,7 @@ const nextConfig = {
       "*.cloudworkstations.dev",
     ],
   },
+  output: 'standalone',
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   images: {
