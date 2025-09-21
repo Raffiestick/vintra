@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev -p 9000",
     "build": "next build",
-    "start": "next start -p 9099",
+    "start": "next start -p 9000",
     "lint": "next lint"
   },
   "dependencies": {
