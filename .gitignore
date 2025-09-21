@@ -1,67 +1,10 @@
-cd ~/studio
-
-# Save a .gitignore matched to Next.js + Firebase Functions + local env files
-cat > .gitignore <<'EOF'
-# Node / Next.js
 node_modules/
 .next/
-.turbo/
 out/
-coverage/
+dist/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Editor/OS
-.DS_Store
-.vscode/
-.idea/
-
-# Env & local configs (never commit secrets)
-.env
-.env.*
+functions/lib/
+backups/
+.env*
 !.env.example
-
-# Firebase local/state
-.firebase/
-firebase-debug.log
-
-# Functions build artifacts (TS -> JS output + deps)
-src/functions/lib/
-src/functions/dist/
-src/functions/node_modules/
-
-# Puppeteer cache (if any)
-.cache/
-
-cat >> .gitignore <<'EOF'
-
-# Upload junk
-*.local
-*.tmp
-EOF
-
-# --- secrets (never commit) ---
-rizeup-dealer-connect-service-account.json
-*service-account*.json
-.env
-.env.*
-rizeup-dealer-connect-service-account.json
-*service-account*.json
-.env
-.env.*
-rizeup-dealer-connect-service-account.json
-*service-account*.json
-.env
-.env.*
-
-# --- never commit secrets ---
-rizeup-dealer-connect-service-account.json
-*service-account*.json
-.env
-.env.*
-firebase-debug.log
-npm-debug.log*
-.yarn/cache
-.next
+.vscode/

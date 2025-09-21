@@ -1,3 +1,4 @@
+
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
@@ -5,11 +6,15 @@ import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { getFunctions, httpsCallable, type Functions } from 'firebase/functions';
 import { getFirebaseWebConfig } from './webappConfig';
 
-const app: FirebaseApp = !getApps().length ? initializeApp(getFirebaseWebConfig()) : getApp();
+const cfg = getFirebaseWebConfig();
+// Force Storage to use canonical gs:// bucket (avoid .app vs appspot confusion)
+const GS_BUCKET = "gs://rizeup-dealer-connect-n6k7r.appspot.com";
+
+const app: FirebaseApp = !getApps().length ? initializeApp(cfg) : getApp();
 
 const auth: Auth = getAuth(app);
 const db: Firestore = getFirestore(app);
-const storage: FirebaseStorage = getStorage(app);
+const storage: FirebaseStorage = getStorage(app, GS_BUCKET);
 
 const getClientFunctions = (): Functions => {
     const functionsInstance = getFunctions(getApp(), 'us-central1');

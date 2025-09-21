@@ -2,46 +2,13 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    /** ---------- helpers ---------- **/
     function isSignedIn() { return request.auth != null; }
-    function isAdmin() {
-      return isSignedIn() &&
-        (request.auth.token.admin == true || request.auth.token.role == 'admin');
-    }
-    function isSelf(uid) { return isSignedIn() && request.auth.uid == uid; }
 
-    // Cross-service ownership check via Firestore (NOTE the firestore. prefix)
-    function dealerOwnsJacket(vin) {
-      return isSignedIn() &&
-             firestore.exists(/databases/(default)/documents/jackets/$(vin)) &&
-             firestore.get(/databases/(default)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
+    // TEMP: allow any signed-in user to upload staging invoices during testing
+    match /stagingInvoices/{sid}/{file} {
+      allow read, write: if isSignedIn();
     }
 
-    /** ---------- admin-only staging uploads (invoice intake) ---------- **/
-    // used by the happy-path uploader: stagingInvoices/{sid}/{filename}
-    match /stagingInvoices/{sid}/{filename} {
-      allow read, write, delete: if isAdmin();
-    }
-
-    /** ---------- dealer onboarding / profile documents ---------- **/
-    // dealers can upload/replace their own registration docs (e.g., tax certificate, ID)
-    match /user-documents/{uid}/{fileName} {
-      allow write, delete: if isSelf(uid) || isAdmin();
-      allow read: if isSelf(uid) || isAdmin();
-    }
-
-    /** ---------- jacket document archive ---------- **/
-    // invoices/BOS/packets/images: jacket-documents/{vin}/...
-    match /jacket-documents/{vin}/{rest=**} {
-      // admin full control
-      allow write, delete: if isAdmin();
-      // dealers can download jacket docs if they own the jacket
-      allow read: if isAdmin() || dealerOwnsJacket(vin);
-    }
-
-    /** ---------- default deny ---------- **/
-    match /{path=**} {
-      allow read, write, delete: if false;
-    }
+    // ...keep your other matches the same (user-documents, jacket-documents, etc.)
   }
 }

@@ -9,23 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
-/**
- * Inline upload for Auction Invoice:
- *  - create stagingInvoices/{sid}
- *  - upload file -> Storage: stagingInvoices/{sid}/{filename}
- *  - write sourceUrl/sourcePath on doc
- *  - call createJacketsForInvoice({ sid })
- *  - goto /admin/jackets/{vin} on success, else /admin/staging/invoices/{sid}
- */
 export default function UploadAuctionInvoiceInline() {
   const router = useRouter();
   const { toast } = useToast();
   const [file, setFile] = React.useState<File | null>(null);
   const [pending, setPending] = React.useState(false);
+  const [progress, setProgress] = React.useState(0);
 
   const onChoose = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
     setFile(f);
+    setProgress(0);
   };
 
   const onUpload = async () => {
@@ -33,10 +27,8 @@ export default function UploadAuctionInvoiceInline() {
       toast({ title: "Pick a file", description: "Choose a PDF or image.", variant: "destructive" });
       return;
     }
-    // Basic type guard
-    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-    const isImg = /^image\//i.test(file.type);
-    if (!isPdf && !isImg) {
+    const okType = /pdf|image\//i.test(file.type) || /\.pdf$/i.test(file.name);
+    if (!okType) {
       toast({ title: "Unsupported file", description: "Upload a PDF or image.", variant: "destructive" });
       return;
     }
@@ -52,19 +44,29 @@ export default function UploadAuctionInvoiceInline() {
         originalFilename: file.name,
       });
       sid = stagingRef.id;
+      console.log("[upload] staging sid:", sid);
 
-      // 2) upload to storage
+      // 2) upload to storage (with progress)
       const path = `stagingInvoices/${sid}/${file.name}`;
       const storageRef = ref(storage, path);
       const task = uploadBytesResumable(storageRef, file);
 
       await new Promise<void>((resolve, reject) => {
-        task.on("state_changed", undefined, reject, () => resolve());
+        task.on(
+          "state_changed",
+          (snap) => {
+            const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+            setProgress(pct);
+          },
+          (err) => reject(err),
+          () => resolve()
+        );
       });
 
       const url = await getDownloadURL(storageRef);
+      console.log("[upload] uploaded ->", url);
 
-      // 3) write url/path to staging doc
+      // 3) write url to staging
       await updateDoc(doc(db, "stagingInvoices", sid), {
         sourceUrl: url,
         sourcePath: path,
@@ -72,11 +74,12 @@ export default function UploadAuctionInvoiceInline() {
         updatedAt: serverTimestamp(),
       });
 
-      toast({ title: "Uploaded", description: "Invoice uploaded. Parsing…" });
+      toast({ title: "Uploaded", description: `File uploaded (${progress || 100}%). Parsing…` });
 
-      // 4) call your parser/creator callable
+      // 4) call parser
       const createJacketsForInvoice = httpsCallableClient("createJacketsForInvoice");
       const res: any = await createJacketsForInvoice({ sid });
+      console.log("[parse] result:", res?.data);
 
       const vin =
         res?.data?.vin ||
@@ -85,20 +88,16 @@ export default function UploadAuctionInvoiceInline() {
 
       if (vin) {
         toast({ title: "Jacket created", description: `VIN ${vin}` });
-        // 5) go to jacket detail
         router.push(`/admin/jackets/${encodeURIComponent(vin)}`);
       } else {
-        toast({
-          title: "Parse complete",
-          description: "No VIN returned. Review the staging detail.",
-        });
+        toast({ title: "Parse complete", description: "Review the staging detail." });
         router.push(`/admin/staging/invoices/${sid}`);
       }
     } catch (e: any) {
-      console.error(e);
+      console.error("[upload] error:", e);
       toast({
         title: "Upload/Parse failed",
-        description: e?.message ?? "Unexpected error",
+        description: e?.message ?? String(e),
         variant: "destructive",
       });
       if (sid) router.push(`/admin/staging/invoices/${sid}`);
@@ -113,9 +112,10 @@ export default function UploadAuctionInvoiceInline() {
         Upload an Auction Invoice (PDF or image). We’ll parse it and create a Jacket.
       </div>
       <Input type="file" accept="application/pdf,image/*" onChange={onChoose} className="input-like" />
+      {pending && <div className="text-xs text-white/60">Uploading… {progress}%</div>}
       <div className="flex gap-2">
         <Button onClick={onUpload} disabled={!file || pending} className="btn-primary">
-          {pending ? "Uploading…" : "Upload & Parse"}
+          {pending ? "Working…" : "Upload & Parse"}
         </Button>
       </div>
     </div>
