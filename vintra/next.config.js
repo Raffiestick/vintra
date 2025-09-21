@@ -1,10 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  allowedDevOrigins: [
-    '*.cloudworkstations.dev',
-  ],
-  eslint: { ignoreDuringBuilds: true },
-  typescript: { ignoreBuildErrors: true },
+  // Allow all preview origins from Cloud Workstations.
+  allowedDevOrigins: ['*.cloudworkstations.dev'],
+  
+  // Configure allowed image hostnames.
   images: {
     remotePatterns: [
       {

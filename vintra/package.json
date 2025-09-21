@@ -7,7 +7,6 @@
   },
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
-    "dev:local": "next dev --port 3000",
     "build": "next build",
     "start": "next start -p 3000"
   },
