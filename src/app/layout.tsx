@@ -1,3 +1,4 @@
+
 export const dynamic = "force-dynamic";
 
 // src/app/layout.tsx
@@ -22,8 +23,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={cn("min-h-screen font-sans antialiased", inter.variable, manrope.variable)}>
         <AuthProvider>
           {children}
+          <Toaster />
         </AuthProvider>
-        <Toaster />
       </body>
     </html>
   );
