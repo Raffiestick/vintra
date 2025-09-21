@@ -1,3 +1,4 @@
+
 "use client";
 
 
@@ -61,7 +62,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { Loader2, Info, ChevronsUpDown, Check, FileUp, FilePlus2 } from "lucide-react";
-import { UploadInvoice } from "./UploadInvoice";
+import UploadAuctionInvoiceInline from "./UploadAuctionInvoiceInline";
 
 
 const jacketFormSchema = z.object({
@@ -210,7 +211,7 @@ export default function NewJacketPage() {
         </div>
         
         <TabsContent value="upload">
-            <UploadInvoice />
+            <UploadAuctionInvoiceInline />
         </TabsContent>
 
         <TabsContent value="manual">

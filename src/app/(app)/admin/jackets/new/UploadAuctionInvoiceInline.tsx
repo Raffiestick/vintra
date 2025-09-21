@@ -33,9 +33,10 @@ export default function UploadAuctionInvoiceInline() {
       toast({ title: "Pick a file", description: "Choose a PDF or image.", variant: "destructive" });
       return;
     }
-    // basic guard
-    const extOk = /pdf|image\//i.test(file.type) || /\.pdf$/i.test(file.name);
-    if (!extOk) {
+    // Basic type guard
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    const isImg = /^image\//i.test(file.type);
+    if (!isPdf && !isImg) {
       toast({ title: "Unsupported file", description: "Upload a PDF or image.", variant: "destructive" });
       return;
     }
@@ -58,7 +59,7 @@ export default function UploadAuctionInvoiceInline() {
       const task = uploadBytesResumable(storageRef, file);
 
       await new Promise<void>((resolve, reject) => {
-        task.on("state_changed", () => {}, reject, () => resolve());
+        task.on("state_changed", undefined, reject, () => resolve());
       });
 
       const url = await getDownloadURL(storageRef);
@@ -107,13 +108,13 @@ export default function UploadAuctionInvoiceInline() {
   };
 
   return (
-    <div className="panel p-4 space-y-3">
-      <div className="text-sm text-white/80">
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+      <div className="text-sm text-white/80 mb-2">
         Upload an Auction Invoice (PDF or image). We’ll parse it and create a Jacket.
       </div>
-      <Input type="file" accept="application/pdf,image/*" onChange={onChoose} className="input-like" />
-      <div className="flex gap-2">
-        <Button onClick={onUpload} disabled={!file || pending} className="btn-primary">
+      <Input type="file" accept="application/pdf,image/*" onChange={onChoose} />
+      <div className="flex gap-2 mt-3">
+        <Button onClick={onUpload} disabled={!file || pending}>
           {pending ? "Uploading…" : "Upload & Parse"}
         </Button>
       </div>
