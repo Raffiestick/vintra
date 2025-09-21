@@ -1,4 +1,3 @@
-
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
@@ -8,7 +7,7 @@ import { getFirebaseWebConfig } from './webappConfig';
 
 const cfg = getFirebaseWebConfig();
 // Force Storage to use canonical gs:// bucket (avoid .app vs appspot confusion)
-const GS_BUCKET = "gs://rizeup-dealer-connect-n6k7r.appspot.com";
+const GS_BUCKET = "rizeup-dealer-connect-n6k7r.appspot.com";
 
 const app: FirebaseApp = !getApps().length ? initializeApp(cfg) : getApp();
 
