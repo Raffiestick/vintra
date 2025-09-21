@@ -6,7 +6,7 @@
     "node": "20"
   },
   "scripts": {
-    "dev": "next dev -p 9099",
+    "dev": "next dev -p 9000",
     "build": "next build",
     "start": "next start -p 9099",
     "lint": "next lint"
