@@ -1,33 +1,22 @@
-import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
-import { getFirestore, type Firestore } from 'firebase/firestore';
-import { getStorage, type FirebaseStorage } from 'firebase/storage';
-import { getFunctions, httpsCallable, type Functions } from 'firebase/functions';
-import { getFirebaseWebConfig } from './webappConfig';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+import { getFunctions, httpsCallable, Functions } from 'firebase/functions';
+import { webappConfig } from './webappConfig';
 
-const cfg = getFirebaseWebConfig();
-// Force Storage to use canonical gs:// bucket (avoid .app vs appspot confusion)
-const GS_BUCKET = "gs://rizeup-dealer-connect-n6k7r.firebasestorage.app";
+// Initialize Firebase
+const app = !getApps().length ? initializeApp(webappConfig) : getApp();
 
-const app: FirebaseApp = !getApps().length ? initializeApp(cfg) : getApp();
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
 
-const auth: Auth = getAuth(app);
-const db: Firestore = getFirestore(app);
-const storage: FirebaseStorage = getStorage(app, GS_BUCKET);
+// Initialize Cloud Functions and pass them the app instance
+export const functions = getFunctions(app);
 
-const getClientFunctions = (): Functions => {
-    const functionsInstance = getFunctions(getApp(), 'us-central1');
-    if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined' && window.location.hostname === "localhost") {
-        // To connect to the local emulator, you can uncomment the line below,
-        // but it's often better to rely on the emulator suite's auto-detection.
-        // connectFunctionsEmulator(functionsInstance, "localhost", 5001);
-    }
-    return functionsInstance;
+// CORRECTED IMPLEMENTATION: This is a helper that pre-fills the 'functions' instance.
+// Now, other files can call it with just the function name, which fixes the error.
+export const httpsCallableClient = (name: string) => {
+  return httpsCallable(functions, name);
 };
-
-const httpsCallableClient = (name: string) => {
-    const functions = getClientFunctions();
-    return httpsCallable(functions, name);
-};
-
-export { app, auth, db, storage, httpsCallableClient };

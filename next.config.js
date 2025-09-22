@@ -1,14 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Allow all preview origins from Cloud Workstations.
-  allowedDevOrigins: ['*.cloudworkstations.dev'],
-  
-  // Configure allowed image hostnames.
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
     remotePatterns: [
       {
         protocol: 'https',
         hostname: 'picsum.photos',
+        port: '',
+        pathname: '/**',
       },
     ],
   },

@@ -1,289 +1,165 @@
 "use client";
 
+import React, { useState, useEffect } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { doc, collection, onSnapshot, Unsubscribe, DocumentData } from "firebase/firestore";
+import { db, functions } from "@/lib/firebase/client";
+import { httpsCallable } from "firebase/functions";
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import {
-  collection, doc, onSnapshot, orderBy, query, Timestamp,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
-import { useAuth } from '@/hooks/use-auth';
-import { useToast } from '@/hooks/use-toast';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
-import { httpsCallableClient } from '@/lib/firebase/client';
+const processStagedUnit = httpsCallable(functions, "processStagedUnit");
 
-type Status = 'new' | 'in-progress' | 'processed';
+// A self-contained component to manage each unit's state
+function StagedUnit({ unitData, unitId, sid }: { unitData: DocumentData, unitId: string, sid: string }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [state, setState] = useState(unitData);
+  const [isLoading, setIsLoading] = useState(false);
 
-interface InvoiceMeta { aucNo?: string; saleLocation?: string; }
+  const onChange = (key: string, value: any) => {
+    setState((prev: any) => ({ ...prev, [key]: value }));
+  };
 
-interface StagingHeader {
-  id: string;
-  source?: string;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-  invoiceMeta?: InvoiceMeta;
-  invoiceDate?: string;        // "YYYY-MM-DD"
-  invoiceDateDisplay?: string; // "M/D/YYYY"
-  invoiceDateTs?: Timestamp;   // Firestore Timestamp
-  fileUrl?: string;
-}
+  const handleProcess = async () => {
+    setIsLoading(true);
+    try {
+      const payload = { sid, unitId, updates: state };
+      const result: any = await processStagedUnit(payload);
+      
+      toast({ title: "Success!", description: `Jacket ${result.data.jacketId} created.` });
+      router.push(`/admin/jackets/${result.data.jacketId}`);
 
-interface StagingUnit {
-  id: string;
-  vin?: string;
-  year?: number;
-  make?: string;
-  model?: string;
-  color?: string;
-  hours?: number;
-  odometer?: number;
-  stockNo?: string;
-  saleLocation?: string;
-  titleInfo?: string;
-  itemPrice?: number;
-  buyerFee?: number;
-  onlineFee?: number;
-  processed?: boolean;
-  invoiceDate?: string;
-}
+    } catch (error: any) {
+      console.error("Failed to process unit:", error);
+      toast({ variant: 'destructive', title: "Processing Error", description: error.message });
+      setIsLoading(false);
+    }
+  };
 
-function currency(n?: number) {
-  const v = typeof n === 'number' ? n : 0;
-  return v.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-}
-
-function formatInvoiceDate(h: any): string {
-  if (h?.invoiceDateDisplay) return h.invoiceDateDisplay;
-  if (h?.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(h.invoiceDate)) {
-    const [y,m,d] = h.invoiceDate.split("-");
-    return `${+m}/${+d}/${y}`; // M/D/YYYY
-  }
-  if (h?.invoiceDateTs?.toDate) return h.invoiceDateTs.toDate().toLocaleDateString();
-  return "—";
-}
-
-
-function PageSkeleton() {
   return (
     <Card>
       <CardHeader>
-        <Skeleton className="h-8 w-1/2" />
-        <Skeleton className="h-4 w-2/3 mt-2" />
-      </CardHeader>
-      <CardContent>
-        <div className="flex gap-2 mb-4">
-          {[...Array(3)].map((_, i) => (<Skeleton key={i} className="h-6 w-28 rounded-full" />))}
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">
+            Unit: {unitData.vinOrHin || "(no VIN/HIN)"}
+            {unitData.processed && <span className="text-green-600 ml-2 font-normal text-base">✓ Processed</span>}
+          </CardTitle>
+          {!unitData.processed && (
+            <Button size="sm" onClick={handleProcess} disabled={isLoading}>
+              <Loader2 className={`mr-2 h-4 w-4 animate-spin ${!isLoading && 'hidden'}`} />
+              Process to Jacket
+            </Button>
+          )}
         </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {[...Array(7)].map((_, i) => (<TableHead key={i}><Skeleton className="h-5 w-full" /></TableHead>))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {[...Array(2)].map((_, r) => (
-              <TableRow key={r}>
-                {[...Array(7)].map((_, c) => (<TableCell key={c}><Skeleton className="h-6 w-full" /></TableCell>))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {Object.entries(state).map(([key, value]) => {
+            // Exclude non-editable fields
+            if (['processed', 'createdAt', 'processedAt'].includes(key)) return null;
+
+            const isNumeric = ['year', 'odometer', 'hours', 'lengthFeet', 'itemPrice', 'buyerFee', 'onlineFee', 'managementFee'].includes(key);
+
+            return (
+              <div key={key}>
+                <Label className="capitalize text-xs">{key.replace(/([A-Z])/g, ' $1').trim()}</Label>
+                <Input
+                  type={isNumeric ? 'number' : 'text'}
+                  value={value || ''}
+                  onChange={e => onChange(key, e.target.value)}
+                  disabled={unitData.processed}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {unitData.rawSnippet && (
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm text-muted-foreground hover:underline">
+              View Raw Snippet
+            </summary>
+            <pre className="mt-2 p-3 bg-slate-50 rounded-md text-xs text-slate-700 whitespace-pre-wrap">
+              {unitData.rawSnippet}
+            </pre>
+          </details>
+        )}
       </CardContent>
     </Card>
   );
 }
 
+
 export default function StagingInvoiceDetailPage() {
   const params = useParams<{ sid: string }>();
-  const stagingId = Array.isArray(params?.sid) ? params.sid[0] : params?.sid;
-  const { isAdmin, loading: authLoading } = useAuth();
-  const { toast } = useToast();
-  const router = useRouter();
+  const sid = params.sid;
 
-  const [hdr, setHdr] = useState<StagingHeader | null>(null);
-  const [units, setUnits] = useState<StagingUnit[]>([]);
-  const [hideProcessed, setHideProcessed] = useState(true);
-  const [working, setWorking] = useState<string | null>(null); // unitId or 'all'
+  const [invoice, setInvoice] = useState<DocumentData | null>(null);
+  const [units, setUnits] = useState<DocumentData[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!stagingId || !isAdmin) return;
+    if (!sid) return;
 
-    const unsubHdr = onSnapshot(doc(db, 'stagingInvoices', stagingId), (snap) => {
-      setHdr({ id: snap.id, ...(snap.data() as any) });
+    const docRef = doc(db, "stagingInvoices", sid);
+    const unsubDoc = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setInvoice(docSnap.data());
+      } else {
+        console.error("No such invoice!");
+      }
     });
 
-    const qUnits = query(collection(db, 'stagingInvoices', stagingId, 'units'), orderBy('createdAt', 'asc'));
-    const unsubUnits = onSnapshot(qUnits, (qs) => {
-      setUnits(qs.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as StagingUnit)));
+    const unitsRef = collection(db, "stagingInvoices", sid, "units");
+    const unsubUnits = onSnapshot(unitsRef, (querySnapshot) => {
+      const unitsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUnits(unitsData);
+      setLoading(false);
     });
 
-    return () => { unsubHdr(); unsubUnits(); };
-  }, [stagingId, isAdmin]);
+    // Cleanup subscription on unmount
+    return () => {
+      unsubDoc();
+      unsubUnits();
+    };
+  }, [sid]);
 
-  const processedCount = useMemo(() => units.filter((u) => u.processed === true).length, [units]);
-  const remaining = Math.max(0, units.length - processedCount);
-  const filtered = useMemo(() => (hideProcessed ? units.filter((u) => !u.processed) : units), [units, hideProcessed]);
-
-  const createOne = async (unitId: string) => {
-    if (!stagingId) return;
-    try {
-        setWorking(unitId);
-        const fn = httpsCallableClient('createJacketFromUnit');
-        const { data } = await fn({ stagingId, unitId });
-        const vin = (data as any)?.vin || ((data as any)?.path || '').split('/').pop();
-        if (!vin) throw new Error('Jacket created, but VIN missing in response.');
-        toast({ title: `Jacket ${vin} created` });
-        router.push(`/admin/jackets/${vin}`);
-    } catch (e: any) {
-        console.error(e);
-        toast({ title: 'Failed to process unit', description: e?.message ?? 'Unknown error', variant: 'destructive' });
-    } finally {
-        setWorking(null);
-    }
-  };
-
-
-  async function createAllRemaining() {
-    try {
-      setWorking('all');
-      const callable = httpsCallableClient('createJacketsForInvoice');
-      const resp: any = await callable({ stagingId });
-      const created = resp?.data?.created ?? 0;
-      toast({ title: 'Batch complete', description: `Created ${created} jacket(s).` });
-    } catch (e: any) {
-      console.error(e);
-      toast({ title: 'Batch failed', description: e?.message || 'Unknown error', variant: 'destructive' });
-    } finally {
-      setWorking(null);
-    }
+  if (loading) {
+    return <div className="container mx-auto py-8 text-center">Loading Staging Details...</div>;
   }
 
-  if (authLoading || !isAdmin || !stagingId) return <PageSkeleton />;
-
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto py-8 space-y-6">
       <Card>
-        <CardHeader className="items-start">
-          <CardTitle>Staged Invoice: {stagingId}</CardTitle>
-
-          <div className="text-sm text-muted-foreground">
-            <div className="space-y-1">
-              <div>
-                <span className="font-medium">Source:</span>{' '}
-                {(hdr?.source || 'N/A').toString().toUpperCase()}
-                {'  '}|{'  '}
-                <span className="font-medium">Auction #:</span>{' '}
-                {hdr?.invoiceMeta?.aucNo || 'N/A'}
-                {'  '}|{'  '}
-                <span className="font-medium">Invoice Date:</span>{' '}
-                {formatInvoiceDate(hdr)}
-                {'  '}|{'  '}
-                <span className="font-medium">Created:</span>{' '}
-                {hdr?.createdAt?.toDate ? hdr.createdAt.toDate().toLocaleString() : 'N A'}
-              </div>
-
-              {hdr?.invoiceMeta?.saleLocation ? (
-                <div>
-                  <span className="font-medium">Location:</span>{' '}
-                  {hdr.invoiceMeta.saleLocation}
-                </div>
-              ) : null}
+        <CardHeader>
+          <CardTitle className="text-2xl">Staging Invoice</CardTitle>
+          <CardDescription>
+            Invoice Date: {invoice?.invoiceDate || "-"} · 
+            Invoice #: {invoice?.invoiceNumber || "-"} · 
+            Units: {invoice?.unitCount ?? "-"}
+          </CardDescription>
+          {invoice?.invoiceUrl && (
+            <div className="pt-2">
+              <Link href={invoice.invoiceUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">
+                View Original Uploaded Invoice
+              </Link>
             </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Badge variant="secondary">Units: {units.length}</Badge>
-            <Badge variant="secondary">Processed: {processedCount}</Badge>
-            <Badge variant="secondary">Remaining: {remaining}</Badge>
-
-            <div className="ml-auto flex items-center gap-2">
-              <Button size="sm" onClick={createAllRemaining} disabled={working === 'all' || remaining === 0}>
-                {working === 'all' ? 'Creating…' : 'Create Jackets (All)'}
-              </Button>
-
-              {hdr?.fileUrl && (
-                <Button asChild variant="outline" size="sm">
-                  <a href={hdr.fileUrl} target="_blank" rel="noopener noreferrer">View Original</a>
-                </Button>
-              )}
-            </div>
-          </div>
+          )}
         </CardHeader>
-
-        <CardContent>
-          <div className="flex items-center space-x-2 mb-4">
-            <Checkbox id="hide-processed" checked={hideProcessed} onCheckedChange={(checked) => setHideProcessed(Boolean(checked))}/>
-            <Label htmlFor="hide-processed">Hide processed units</Label>
-          </div>
-
-          <div className="text-sm text-muted-foreground mb-3">
-            The following units were extracted from the invoice.
-          </div>
-
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>VIN</TableHead>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Title / Loc</TableHead>
-                <TableHead>Fees</TableHead>
-                <TableHead>Subtotal</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((u) => {
-                const subtotal = (u.itemPrice||0) + (u.buyerFee||0) + (u.onlineFee||0) + 100;
-                return (
-                  <TableRow key={u.id}>
-                    <TableCell className="font-mono">{u.vin || '—'}</TableCell>
-                    <TableCell>
-                      <div>{[u.year, u.make, u.model].filter(Boolean).join(' ')}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Color: {u.color ?? '—'}{u.hours ? ` • Hours: ${u.hours}` : u.odometer ? ` • Odometer: ${u.odometer}` : ''}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>{u.titleInfo || '—'}</div>
-                      <div className="text-xs text-muted-foreground">{u.saleLocation || '—'}</div>
-                    </TableCell>
-                     <TableCell className="text-xs">
-                        Price: {currency(u.itemPrice)} • Buyer: {currency(u.buyerFee)} • Online: {currency(u.onlineFee)} • Mgmt: $100
-                    </TableCell>
-                    <TableCell>{currency(subtotal)}</TableCell>
-                    <TableCell>
-                      <Badge variant={u.processed ? 'default' : 'outline'}>
-                        {u.processed ? 'Processed' : 'Pending'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button size="sm" onClick={() => createOne(u.id)} disabled={!!u.processed || working === u.id}>
-                        {working === u.id ? 'Creating…' : 'Create Jacket'}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
-                    {hideProcessed ? 'No unprocessed units in this batch.' : 'No units found in this batch.'}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
       </Card>
+      
+      <div className="space-y-4">
+        {units.map((unit) => (
+          <StagedUnit key={unit.id} unitData={unit} unitId={unit.id} sid={sid} />
+        ))}
+      </div>
     </div>
   );
 }

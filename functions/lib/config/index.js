@@ -36,49 +36,56 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.functions = exports.storage = exports.auth = exports.db = exports.admin = void 0;
+exports.seller = exports.bucket = exports.storage = exports.auth = exports.db = void 0;
 exports.assertAdmin = assertAdmin;
-exports.extractTextFromDocument = extractTextFromDocument;
+exports.logActivity = logActivity;
+exports.extractPdfText = extractPdfText;
+exports.pickInvoiceDateFromHeader = pickInvoiceDateFromHeader;
 const admin = __importStar(require("firebase-admin"));
-exports.admin = admin;
-const https_2 = require("firebase-functions/v2/https");
-const firestore_2 = require("firebase-admin/firestore");
+const https_1 = require("firebase-functions/v2/https");
+const firestore_1 = require("firebase-admin/firestore");
 const auth_1 = require("firebase-admin/auth");
 const storage_1 = require("firebase-admin/storage");
-const functions_1 = require("firebase-admin/functions");
 const pdf_parse_1 = __importDefault(require("pdf-parse"));
-// Initialize Firebase Admin SDK if not already done
 if (!admin.apps.length) {
     admin.initializeApp();
 }
-// Export core Firebase services
-const db = (0, firestore_2.getFirestore)();
-exports.db = db;
-const auth = (0, auth_1.getAuth)();
-exports.auth = auth;
-const storage = (0, storage_1.getStorage)();
-exports.storage = storage;
-const functions = (0, functions_1.getFunctions)();
-exports.functions = functions;
-// Helper function to assert admin privileges
+exports.db = (0, firestore_1.getFirestore)();
+exports.auth = (0, auth_1.getAuth)();
+exports.storage = (0, storage_1.getStorage)();
+exports.bucket = exports.storage.bucket();
+exports.seller = {
+    name: "RIZEUP VENTURES LLC DBA DOLPHIN CHASERS",
+    line1: "4336 BELLA VISTA DR",
+    line2: "ST PETE BEACH, FL 33706",
+    phone: "616-318-1991",
+};
 function assertAdmin(request) {
     var _a, _b;
     if (!((_b = (_a = request.auth) === null || _a === void 0 ? void 0 : _a.token) === null || _b === void 0 ? void 0 : _b.admin)) {
-        throw new https_2.HttpsError("permission-denied", "This function can only be called by an admin.");
+        throw new https_1.HttpsError("permission-denied", "This function can only be called by an admin.");
     }
 }
-// Helper to extract text from a document in Storage
-async function extractTextFromDocument(sourceUrl) {
-    const resp = await fetch(sourceUrl);
-    const buf = Buffer.from(await resp.arrayBuffer());
-    if (sourceUrl.toLowerCase().includes(".pdf")) {
-        const data = await (0, pdf_parse_1.default)(buf);
-        return data.text;
+async function logActivity(vin, entry) {
+    if (!vin)
+        return;
+    const activityRef = exports.db.collection('jackets').doc(vin).collection('activity');
+    await activityRef.add(Object.assign(Object.assign({}, entry), { timestamp: firestore_1.FieldValue.serverTimestamp() }));
+}
+async function extractPdfText(buf) {
+    const data = await (0, pdf_parse_1.default)(buf);
+    return data.text;
+}
+function pickInvoiceDateFromHeader(text) {
+    const dateMatch = text.match(/DATE:\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
+    if (!dateMatch)
+        return null;
+    try {
+        const date = new Date(dateMatch[1]);
+        return date.toISOString().split('T')[0];
     }
-    else if (/\.(jpe?g|png|gif|webp)$/i.test(sourceUrl)) {
-        console.warn("Image text extraction with Gemini is not yet implemented in this file.");
-        return "";
+    catch (e) {
+        return null;
     }
-    throw new https_2.HttpsError('invalid-argument', 'sourceUrl must be a PDF or image file.');
 }
 //# sourceMappingURL=index.js.map

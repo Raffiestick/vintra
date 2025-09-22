@@ -1,90 +1,26 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fmtUSD = void 0;
 exports.renderInvoiceHTML = renderInvoiceHTML;
-const fmtUSD = (n) => (n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
-exports.fmtUSD = fmtUSD;
+const fmtUSD = (n) => Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 function renderInvoiceHTML(j, seller, buyer) {
-    var _a, _b, _c, _d, _e;
-    const item = Number(j.itemPrice || 0), buyerFee = Number(j.buyerFee || 0), online = Number(j.onlineFee || 0), mgmt = Number(j.managementFee || 100);
-    const subtotal = item + buyerFee + online + mgmt;
-    const invoiceDate = j.invoiceDate ? new Date(`${j.invoiceDate}T00:00:00Z`).toLocaleDateString('en-US') : '';
-    return `<!doctype html>
-<html><head><meta charset="UTF-8">
-  <style>
-    body{font-family: Arial, Helvetica, sans-serif; color:#111; }
-    .wrap{width: 760px; margin: 20px auto;}
-    .hdr{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 16px;}
-    .title{font-size: 28px; font-weight:700; letter-spacing:1px;}
-    .box{border:1px solid #ddd; padding:12px; border-radius:6px; font-size:14px;}
-    table{width:100%; border-collapse:collapse; margin-top:12px;}
-    th,td{border:1px solid #e5e5e5; padding:8px; text-align:left; font-size:13px;}
-    th{background:#f6f6f6; font-weight:600;}
-    .totals td{border:none; padding:4px 0;}
-    .right{text-align:right;}
-    .muted{color:#666;}
-  </style>
-</head>
-<body><div class="wrap">
-  <div class="hdr">
-    <div class="title">INVOICE</div>
-    <div class="box">
-      <div><b>Date:</b> ${invoiceDate || '—'}</div>
-      <div><b>Jacket VIN:</b> ${j.vin || ''}</div>
-    </div>
-  </div>
-
-  <div style="display:flex; gap:12px;">
-    <div class="box" style="flex:1">
-      <div><b>Seller:</b> ${seller.name}${seller.dba ? ` (${seller.dba})` : ''}</div>
-      <div>${seller.addr1}</div><div>${seller.addr2}</div>
-      <div>${seller.phone}</div><div class="muted">${seller.email}</div>
-    </div>
-    <div class="box" style="flex:1">
-      <div><b>Buyer:</b> ${buyer.name || '—'}</div>
-      ${buyer.line1 ? `<div>${buyer.line1}</div>` : ''}
-      ${buyer.line2 ? `<div>${buyer.line2}</div>` : ''}
-      ${buyer.phone ? `<div>${buyer.phone}</div>` : ''}
-      ${buyer.email ? `<div class="muted">${buyer.email}</div>` : ''}
-    </div>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Year</th><th>Make</th><th>Model</th><th>VIN</th><th>Color</th><th>Odom/Hrs</th><th>Sale Loc</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>${(_a = j.year) !== null && _a !== void 0 ? _a : ''}</td>
-        <td>${(_b = j.make) !== null && _b !== void 0 ? _b : ''}</td>
-        <td>${(_c = j.model) !== null && _c !== void 0 ? _c : ''}</td>
-        <td>${(_d = j.vin) !== null && _d !== void 0 ? _d : ''}</td>
-        <td>${(_e = j.color) !== null && _e !== void 0 ? _e : ''}</td>
-        <td>${j.odometer || j.hours || ''}</td>
-        <td>${j.saleLocation || ''}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <div style="display:flex; gap:12px; margin-top:12px;">
-    <div class="box" style="flex:1">
-      <table>
-        <tbody class="totals">
-          <tr><td>Item Price</td><td class="right">${(0, exports.fmtUSD)(item)}</td></tr>
-          <tr><td>Buyer Fee</td><td class="right">${(0, exports.fmtUSD)(buyerFee)}</td></tr>
-          <tr><td>Online Fee</td><td class="right">${(0, exports.fmtUSD)(online)}</td></tr>
-          <tr><td>Management Fee</td><td class="right">${(0, exports.fmtUSD)(mgmt)}</td></tr>
-          <tr><td><b>Subtotal</b></td><td class="right"><b>${(0, exports.fmtUSD)(subtotal)}</b></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="box" style="flex:1">
-      <div class="muted">Notes:</div>
-      <div>${j.titleInfo ? `Title: ${j.titleInfo}` : ''}</div>
-    </div>
-  </div>
-</div></body></html>`;
+    var _a, _b, _c;
+    const financials = j.financials || {};
+    const itemPrice = Number(financials.itemPrice || 0);
+    const buyerFee = Number(financials.buyerFee || 0);
+    const onlineFee = Number(financials.onlineFee || 0);
+    const mgmtFee = Number(financials.managementFee || 0);
+    const miscFees = Array.isArray(financials.miscFees) ? financials.miscFees : [];
+    let subtotal = itemPrice + buyerFee + onlineFee + mgmtFee;
+    miscFees.forEach(fee => subtotal += Number(fee.amount || 0));
+    const amountPaid = Number(j.amountPaid || 0);
+    const balanceDue = subtotal - amountPaid;
+    const invoiceDate = j.invoiceDate ? new Date(`${j.invoiceDate}T12:00:00Z`).toLocaleDateString('en-US') : new Date().toLocaleDateString('en-US');
+    const miscFeeRows = miscFees.map(fee => `
+        <tr>
+            <td>${fee.name || 'Misc Fee'}</td>
+            <td class="amount">${fmtUSD(fee.amount)}</td>
+        </tr>
+    `).join('');
+    return `<!doctype html><html><head><meta charset="UTF-8"><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#333;font-size:14px;line-height:1.6;}.container{max-width:800px;margin:40px auto;padding:20px;}.header{text-align:center;margin-bottom:40px;}.header h1{margin:0;color:#8A2BE2;}.header p{margin:5px 0;color:#555;}.invoice-title{font-size:32px;font-weight:bold;color:#333;text-align:right;margin-bottom:20px;}.details-grid{display:flex;justify-content:space-between;gap:30px;margin-bottom:30px;}.details-box{flex:1;}.details-box h3{margin-top:0;border-bottom:2px solid #eee;padding-bottom:8px;font-size:16px;color:#555;}.meta-grid{text-align:right;font-size:13px;}.line-items{width:100%;border-collapse:collapse;margin-bottom:30px;}.line-items th,.line-items td{padding:10px;border-bottom:1px solid #eee;}.line-items th{background-color:#f9f9f9;text-align:left;font-weight:bold;}.line-items .amount{text-align:right;}.totals-table{width:50%;margin-left:auto;border-collapse:collapse;}.totals-table td{padding:8px 10px;}.totals-table .label{text-align:right;font-weight:bold;color:#555;}.totals-table .value{text-align:right;}.totals-table .balance-due{font-weight:bold;font-size:1.1em;}.footer{text-align:center;font-size:12px;color:#888;margin-top:50px;border-top:2px solid #eee;padding-top:20px;}.signatures{display:flex;justify-content:space-between;margin-top:60px;}.signature-box{width:45%;border-top:1px solid #333;padding-top:8px;}.disclaimer{font-size:12px;font-weight:bold;text-align:center;margin-top:30px;}</style></head><body><div class="container"><div class="header"><h1>RizeUp Ventures, LLC</h1><p>DBA Dolphin Chasers</p><p>616-318-1991 | admin@rizeupventures.com</p></div><div class="invoice-title">INVOICE</div><div class="details-grid"><div class="details-box"><h3>SOLD FROM</h3><p><strong>${seller.name}</strong><br>${seller.line1}<br>${seller.line2}<br>Phone: ${seller.phone}</p></div><div class="details-box"><h3>SOLD TO</h3><p><strong>${buyer.name || 'N/A'}</strong><br>${buyer.line1 || ''}<br>${buyer.line2 || ''}<br>Phone: ${buyer.phone || ''}</p></div><div class="meta-grid"><p><strong>Invoice ID:</strong> ${j.jacketId || 'N/A'}<br><strong>Date:</strong> ${invoiceDate}<br><strong>VIN:</strong> ${j.vin}</p></div></div><table class="line-items"><thead><tr><th>Description</th><th class="amount">Amount</th></tr></thead><tbody><tr><td>${(_a = j.primaryUnit) === null || _a === void 0 ? void 0 : _a.year} ${(_b = j.primaryUnit) === null || _b === void 0 ? void 0 : _b.make} ${(_c = j.primaryUnit) === null || _c === void 0 ? void 0 : _c.model}</td><td class="amount">${fmtUSD(itemPrice)}</td></tr><tr><td>Buyer Fee</td><td class="amount">${fmtUSD(buyerFee)}</td></tr><tr><td>Online Fee</td><td class="amount">${fmtUSD(onlineFee)}</td></tr><tr><td>Management Fee</td><td class="amount">${fmtUSD(mgmtFee)}</td></tr>${miscFeeRows}</tbody></table><table class="totals-table"><tr><td class="label">Total</td><td class="value">${fmtUSD(subtotal)}</td></tr><tr><td class="label">Amount Paid</td><td class="value">${fmtUSD(amountPaid)}</td></tr><tr><td class="label balance-due">Balance Due</td><td class="value balance-due">${fmtUSD(balanceDue)}</td></tr></table><div class="signatures"><div class="signature-box">Authorized Seller Signature</div><div class="signature-box">Authorized Buyer Signature (Signature on File)</div></div><div class="disclaimer">This is a dealer to dealer transaction: Selling dealer has Buyer dealer's signature on file for all transactions.</div><div class="footer"><p>ALL SALES FINAL. ALL UNITS ARE SOLD AS-IS, WHERE-IS. NO RETURNS/EXCHANGES.</p><p>ALL PAYMENTS MUST BE MADE BY WIRE, PAYABLE TO: RIZEUP VENTURES, LLC.</p></div></div></body></html>`;
 }
 //# sourceMappingURL=invoice.js.map

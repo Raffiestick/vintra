@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Redirecting...</title>
+  <script>
+    const vin = new URLSearchParams(window.location.search).get('vin');
+    if (vin) {
+      window.location.replace('/jacket/preview/' + encodeURIComponent(vin));
+    } else {
+      window.location.replace('/admin/jackets');
+    }
+  </script>
+</head>
+<body>
+  <p>If you are not redirected automatically, <a id="redirect-link" href="/admin/jackets">click here</a>.</p>
+  <script>
+    const vin = new URLSearchParams(window.location.search).get('vin');
+    if (vin) {
+      document.getElementById('redirect-link').href = '/jacket/preview/' + encodeURIComponent(vin);
+    }
+  </script>
+</body>
+</html>

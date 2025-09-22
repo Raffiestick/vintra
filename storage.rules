@@ -1,13 +1,18 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    function isSignedIn() { return request.auth != null; }
-
-    // TEMP: allow any signed-in user to upload invoices for testing
-    match /stagingInvoices/{sid}/{file} {
-      allow read, write: if isSignedIn();
+    
+    // Allow any signed-in user to upload to their own invoices folder.
+    match /invoices/{userId}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // NOTE: Your other rules for user-documents, etc., can be added back here later.
+    // Allow any signed-in user to access the staging area for now.
+    // We can tighten this to admins later.
+    match /stagingInvoices/{sid}/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
   }
 }
+
+

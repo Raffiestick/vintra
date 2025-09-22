@@ -1,35 +1,7 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.renderBoSHTML = renderBoSHTML;
-function renderBoSHTML(j, seller, buyer) {
-    const bosDate = j.invoiceDate ? new Date(`${j.invoiceDate}T00:00:00Z`).toLocaleDateString('en-US') : '';
-    return `<!doctype html>
-<html><head><meta charset="UTF-8">
-  <style>
-    body{font-family: Arial, Helvetica, sans-serif; color:#111;}
-    .wrap{width:760px; margin:20px auto;}
-    h1{font-size:26px; letter-spacing:1px;}
-    .box{border:1px solid #ddd; padding:12px; border-radius:6px; font-size:14px; margin-bottom:12px;}
-    table{width:100%; border-collapse:collapse; margin-top:8px;}
-    th,td{border:1px solid #e5e5e5; padding:8px; text-align:left; font-size:13px;}
-    th{background:#f6f6f6; font-weight:600;}
-  </style>
-</head>
-<body><div class="wrap">
-  <h1>Bill of Sale</h1>
-  <div class="box"><b>Date:</b> ${bosDate || '—'}</div>
-  <div class="box"><b>Seller:</b> ${seller.name}${seller.dba ? ` (${seller.dba})` : ''}</div>
-  <div class="box"><b>Buyer:</b> ${buyer.name || '—'}</div>
+export function renderBoSHTML(j: any, seller: any, buyer: any) {
+    const financials = j.financials || {};
+    const totalConsideration = Number(financials.totalPurchasePrice || 0);
+    const saleDate = j.invoiceDate ? new Date(`${j.invoiceDate}T12:00:00Z`).toLocaleDateString('en-US') : new Date().toLocaleDateString('en-US');
 
-  <table>
-    <thead><tr><th>Year</th><th>Make</th><th>Model</th><th>VIN</th><th>Color</th><th>Odom/Hrs</th></tr></thead>
-    <tbody><tr>
-      <td>${j.year ?? ''}</td><td>${j.make ?? ''}</td><td>${j.model ?? ''}</td>
-      <td>${j.vin ?? ''}</td><td>${j.color ?? ''}</td><td>${j.odometer || j.hours || ''}</td>
-    </tr></tbody>
-  </table>
-
-  ${j.saleLocation ? `<div class="box"><b>Sale Location:</b> ${j.saleLocation}</div>` : ''}
-  ${j.titleInfo ? `<div class="box"><b>Title Info:</b> ${j.titleInfo}</div>` : ''}
-</div></body></html>`;
+    return `<!doctype html><html><head><meta charset="UTF-8"><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#333;font-size:14px;line-height:1.6;}.container{max-width:800px;margin:40px auto;padding:20px;}.header{text-align:center;margin-bottom:40px;}.header h1{margin:0;color:#8A2BE2;}.header p{margin:5px 0;color:#555;}.title-main{font-size:32px;font-weight:bold;color:#333;text-align:center;margin-bottom:30px;}.details-box{border:1px solid #eee;border-radius:8px;padding:15px;margin-bottom:20px;}.details-box h3{margin-top:0;font-size:16px;color:#555;}.vehicle-table{width:100%;border-collapse:collapse;}.vehicle-table td{padding:8px;border-bottom:1px solid #f0f0f0;}.vehicle-table td:first-child{font-weight:bold;width:120px;}.consideration{text-align:center;margin:30px 0;font-size:16px;}.signatures{display:flex;justify-content:space-between;margin-top:60px;text-align:center;}.signature-box{width:45%;border-top:1px solid #333;padding-top:8px;}.footer{text-align:center;font-size:12px;color:#888;margin-top:50px;border-top:2px solid #eee;padding-top:20px;}.disclaimer-bold{font-size:14px;font-weight:bold;text-align:center;margin:40px 0;padding:15px;border:1px solid #ddd;border-radius:8px;background-color:#f9f9f9;}</style></head><body><div class="container"><div class="header"><h1>RizeUp Ventures, LLC</h1><p>DBA Dolphin Chasers</p><p>616-318-1991 | admin@rizeupventures.com</p></div><div class="title-main">DEALER TO DEALER BILL OF SALE</div><div class="details-box"><h3>SELLER</h3><p><strong>${seller.name}</strong><br>${seller.line1}<br>${seller.line2}<br>Phone: ${seller.phone}</p></div><div class="details-box"><h3>BUYER</h3><p><strong>${buyer.name || 'N/A'}</strong><br>${buyer.line1 || ''}<br>${buyer.line2 || ''}<br>Phone: ${buyer.phone || ''}</p></div><div class="details-box"><h3>VEHICLE INFORMATION</h3><table class="vehicle-table"><tr><td>Vehicle:</td><td>${j.primaryUnit?.year} ${j.primaryUnit?.make} ${j.primaryUnit?.model}</td></tr><tr><td>VIN:</td><td>${j.vin}</td></tr><tr><td>Color:</td><td>${j.primaryUnit?.color || ''}</td></tr><tr><td>Odometer:</td><td>${j.primaryUnit?.odometer || 'N/A'}</td></tr></table></div><div class="consideration">For the sum of <strong>${totalConsideration.toLocaleString("en-US", { style: "currency", currency: "USD" })}</strong>, receipt of which is hereby acknowledged, the Seller sells and transfers to the Buyer the vehicle described above.<br><strong>Date of Sale:</strong> ${saleDate}</div><div class="disclaimer-bold">This is a dealer to dealer transaction: Selling dealer has Buyer dealer's signature on file for all transactions.</div><div class="signatures"><div class="signature-box">Authorized Seller Signature</div><div class="signature-box">Authorized Buyer Signature (Signature on File)</div></div><div class="footer"><p>The undersigned seller affirms that they are the legal owner of the vehicle and have full authority to sell it. The vehicle is sold free and clear of all liens and encumbrances.</p><p>ALL SALES FINAL. ALL UNITS ARE SOLD AS-IS, WHERE-IS. NO RETURNS/EXCHANGES.</p></div></div></body></html>`;
 }
