@@ -1,5 +1,5 @@
 "use strict";
-return (mod && mod.__esModule) ? mod : { "default": mod };
+    return (mod && mod.__esModule) ? mod : { "default": mod };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateJacketPacket = void 0;
 const https_1 = require("firebase-functions/v2/https");
@@ -8,10 +8,9 @@ const puppeteer_core_1 = __importDefault(require("puppeteer-core"));
 const pdf_lib_1 = require("pdf-lib");
 const config_1 = require("../config");
 exports.generateJacketPacket = (0, https_1.onCall)({ region: "us-central1", timeoutSeconds: 180, memory: "1GiB" }, async (request) => {
-    var _a, _b;
     (0, config_1.assertAdmin)(request);
     try {
-        const rawVin = ((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.vin) !== null && _b !== void 0 ? _b : "").toString().trim().toUpperCase();
+        const rawVin = (request.data?.vin ?? "").toString().trim().toUpperCase();
         if (!rawVin) {
             throw new https_1.HttpsError("invalid-argument", "Missing 'vin'");
         }
@@ -56,7 +55,7 @@ exports.generateJacketPacket = (0, https_1.onCall)({ region: "us-central1", time
         // Append any other attachments (PDFs and common images)
         for (const d of Array.isArray(j.documents) ? j.documents : []) {
             try {
-                if (!(d === null || d === void 0 ? void 0 : d.url) || typeof (d === null || d === void 0 ? void 0 : d.name) !== "string")
+                if (!d?.url || typeof d?.name !== "string")
                     continue;
                 const u = new URL(d.url);
                 let objectPath = "";
@@ -73,7 +72,7 @@ exports.generateJacketPacket = (0, https_1.onCall)({ region: "us-central1", time
                 const file = config_1.bucket.file(objectPath);
                 const [buf] = await file.download();
                 const [md] = await file.getMetadata().catch(() => [{ contentType: "" }]);
-                const ct = String((md === null || md === void 0 ? void 0 : md.contentType) || "");
+                const ct = String(md?.contentType || "");
                 if (ct.startsWith("application/pdf")) {
                     const extPdf = await pdf_lib_1.PDFDocument.load(buf);
                     const pages = await packet.copyPages(extPdf, extPdf.getPageIndices());
@@ -92,7 +91,7 @@ exports.generateJacketPacket = (0, https_1.onCall)({ region: "us-central1", time
                 }
             }
             catch (e) {
-                console.warn("Could not append doc:", d === null || d === void 0 ? void 0 : d.name, e);
+                console.warn("Could not append doc:", d?.name, e);
             }
         }
         const packetBytes = await packet.save();
@@ -107,7 +106,6 @@ exports.generateJacketPacket = (0, https_1.onCall)({ region: "us-central1", time
         console.error("generateJacketPacket error:", err);
         if (err instanceof https_1.HttpsError)
             throw err;
-        throw new https_1.HttpsError("internal", (err === null || err === void 0 ? void 0 : err.message) || "Internal error");
+        throw new https_1.HttpsError("internal", err?.message || "Internal error");
     }
 });
-//# sourceMappingURL=packet.js.map

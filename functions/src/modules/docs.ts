@@ -39,4 +39,3 @@ exports.attachStagedDocToJacket = (0, https_1.onCall)({ region: "us-central1" },
     await stagedDocRef.delete().catch(() => { }); // optional
     return { success: true, message: `Document attached to jacket ${vin}.` };
 });
-//# sourceMappingURL=docs.js.map

@@ -30,6 +30,6 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     ".next/types/**/*.ts"
-  ],
+, "functions/src/models/jacket.ts"  ],
   "exclude": ["node_modules"]
 }

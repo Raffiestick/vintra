@@ -5,7 +5,6 @@ exports.renderInvoiceHTML = renderInvoiceHTML;
 const fmtUSD = (n) => (n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 exports.fmtUSD = fmtUSD;
 function renderInvoiceHTML(j, seller, buyer) {
-    var _a, _b, _c, _d, _e;
     const item = Number(j.itemPrice || 0), buyerFee = Number(j.buyerFee || 0), online = Number(j.onlineFee || 0), mgmt = Number(j.managementFee || 100);
     const subtotal = item + buyerFee + online + mgmt;
     const invoiceDate = j.invoiceDate ? new Date(`${j.invoiceDate}T00:00:00Z`).toLocaleDateString('en-US') : '';
@@ -57,11 +56,11 @@ function renderInvoiceHTML(j, seller, buyer) {
     </thead>
     <tbody>
       <tr>
-        <td>${(_a = j.year) !== null && _a !== void 0 ? _a : ''}</td>
-        <td>${(_b = j.make) !== null && _b !== void 0 ? _b : ''}</td>
-        <td>${(_c = j.model) !== null && _c !== void 0 ? _c : ''}</td>
-        <td>${(_d = j.vin) !== null && _d !== void 0 ? _d : ''}</td>
-        <td>${(_e = j.color) !== null && _e !== void 0 ? _e : ''}</td>
+        <td>${j.year ?? ''}</td>
+        <td>${j.make ?? ''}</td>
+        <td>${j.model ?? ''}</td>
+        <td>${j.vin ?? ''}</td>
+        <td>${j.color ?? ''}</td>
         <td>${j.odometer || j.hours || ''}</td>
         <td>${j.saleLocation || ''}</td>
       </tr>
@@ -87,4 +86,3 @@ function renderInvoiceHTML(j, seller, buyer) {
   </div>
 </div></body></html>`;
 }
-//# sourceMappingURL=invoice.js.map

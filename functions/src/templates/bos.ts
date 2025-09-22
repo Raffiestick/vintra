@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.renderBoSHTML = renderBoSHTML;
 function renderBoSHTML(j, seller, buyer) {
-    var _a, _b, _c, _d, _e;
     const bosDate = j.invoiceDate ? new Date(`${j.invoiceDate}T00:00:00Z`).toLocaleDateString('en-US') : '';
     return `<!doctype html>
 <html><head><meta charset="UTF-8">
@@ -25,8 +24,8 @@ function renderBoSHTML(j, seller, buyer) {
   <table>
     <thead><tr><th>Year</th><th>Make</th><th>Model</th><th>VIN</th><th>Color</th><th>Odom/Hrs</th></tr></thead>
     <tbody><tr>
-      <td>${(_a = j.year) !== null && _a !== void 0 ? _a : ''}</td><td>${(_b = j.make) !== null && _b !== void 0 ? _b : ''}</td><td>${(_c = j.model) !== null && _c !== void 0 ? _c : ''}</td>
-      <td>${(_d = j.vin) !== null && _d !== void 0 ? _d : ''}</td><td>${(_e = j.color) !== null && _e !== void 0 ? _e : ''}</td><td>${j.odometer || j.hours || ''}</td>
+      <td>${j.year ?? ''}</td><td>${j.make ?? ''}</td><td>${j.model ?? ''}</td>
+      <td>${j.vin ?? ''}</td><td>${j.color ?? ''}</td><td>${j.odometer || j.hours || ''}</td>
     </tr></tbody>
   </table>
 
@@ -34,4 +33,3 @@ function renderBoSHTML(j, seller, buyer) {
   ${j.titleInfo ? `<div class="box"><b>Title Info:</b> ${j.titleInfo}</div>` : ''}
 </div></body></html>`;
 }
-//# sourceMappingURL=bos.js.map

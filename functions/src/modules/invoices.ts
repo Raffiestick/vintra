@@ -1,5 +1,5 @@
 "use strict";
-return (mod && mod.__esModule) ? mod : { "default": mod };
+    return (mod && mod.__esModule) ? mod : { "default": mod };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateBillOfSale = exports.generateJacketInvoice = void 0;
 const https_1 = require("firebase-functions/v2/https");
@@ -25,14 +25,13 @@ async function getBuyerData(dealerId) {
             };
         }
     }
-    catch (_a) { }
+    catch { }
     return { name: `Dealer ${dealerId || ""}` };
 }
 exports.generateJacketInvoice = (0, https_1.onCall)({ region: "us-central1", timeoutSeconds: 60, memory: "1GiB" }, async (request) => {
-    var _a, _b;
     (0, config_1.assertAdmin)(request);
     try {
-        const rawVin = ((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.vin) !== null && _b !== void 0 ? _b : "").toString().trim().toUpperCase();
+        const rawVin = (request.data?.vin ?? "").toString().trim().toUpperCase();
         if (!rawVin) {
             throw new https_1.HttpsError("invalid-argument", "Missing 'vin'");
         }
@@ -59,14 +58,13 @@ exports.generateJacketInvoice = (0, https_1.onCall)({ region: "us-central1", tim
         console.error("generateJacketInvoice error:", e);
         if (e instanceof https_1.HttpsError)
             throw e;
-        throw new https_1.HttpsError("internal", (e === null || e === void 0 ? void 0 : e.message) || "Internal error");
+        throw new https_1.HttpsError("internal", e?.message || "Internal error");
     }
 });
 exports.generateBillOfSale = (0, https_1.onCall)({ region: "us-central1", timeoutSeconds: 60, memory: "1GiB" }, async (request) => {
-    var _a, _b;
     (0, config_1.assertAdmin)(request);
     try {
-        const rawVin = ((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.vin) !== null && _b !== void 0 ? _b : "").toString().trim().toUpperCase();
+        const rawVin = (request.data?.vin ?? "").toString().trim().toUpperCase();
         if (!rawVin) {
             throw new https_1.HttpsError("invalid-argument", "Missing 'vin'");
         }
@@ -93,7 +91,6 @@ exports.generateBillOfSale = (0, https_1.onCall)({ region: "us-central1", timeou
         console.error("generateBillOfSale error:", e);
         if (e instanceof https_1.HttpsError)
             throw e;
-        throw new https_1.HttpsError("internal", (e === null || e === void 0 ? void 0 : e.message) || "Internal error");
+        throw new https_1.HttpsError("internal", e?.message || "Internal error");
     }
 });
-//# sourceMappingURL=invoices.js.map

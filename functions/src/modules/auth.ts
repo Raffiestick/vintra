@@ -17,7 +17,6 @@ exports.signInWithCustomToken = (0, https_1.onCall)({ region: "us-central1" }, a
     }
 });
 exports.manageDealerApplication = (0, https_1.onCall)({ region: "us-central1" }, async (request) => {
-    var _a, _b, _c, _d, _e, _f;
     (0, config_1.assertAdmin)(request);
     const { uid, action } = request.data || {};
     if (!uid || !action || !["approve", "deny"].includes(String(action))) {
@@ -31,7 +30,7 @@ exports.manageDealerApplication = (0, https_1.onCall)({ region: "us-central1" },
         }
         catch (err) {
             console.error("manageDealerApplication (deny) error:", err);
-            throw new https_1.HttpsError("internal", (err === null || err === void 0 ? void 0 : err.message) || "Failed to deny application.");
+            throw new https_1.HttpsError("internal", err?.message || "Failed to deny application.");
         }
     }
     // --- Approval Logic ---
@@ -47,24 +46,24 @@ exports.manageDealerApplication = (0, https_1.onCall)({ region: "us-central1" },
         await userDocRef.set({
             status: "approved",
             approvedAt: now,
-            approvedBy: (_a = request.auth) === null || _a === void 0 ? void 0 : _a.uid,
+            approvedBy: request.auth?.uid,
             updatedAt: now,
         }, { merge: true });
         // 3. Upsert into approvedDealers collection
         const approvedRef = config_1.db.collection("approvedDealers").doc(uid);
         await approvedRef.set({
             uid,
-            companyName: (_b = user.companyName) !== null && _b !== void 0 ? _b : "",
-            contactName: (_c = user.contactName) !== null && _c !== void 0 ? _c : "",
-            email: (_d = user.email) !== null && _d !== void 0 ? _d : "",
-            createdAt: (_e = user.createdAt) !== null && _e !== void 0 ? _e : now,
+            companyName: user.companyName ?? "",
+            contactName: user.contactName ?? "",
+            email: user.email ?? "",
+            createdAt: user.createdAt ?? now,
             approvedAt: now,
             updatedAt: now,
         }, { merge: true });
         // 4. Audit log
         await userDocRef.collection("activity").add({
             type: "approved",
-            actorUid: (_f = request.auth) === null || _f === void 0 ? void 0 : _f.uid,
+            actorUid: request.auth?.uid,
             at: now,
             meta: {},
         });
@@ -72,11 +71,10 @@ exports.manageDealerApplication = (0, https_1.onCall)({ region: "us-central1" },
     }
     catch (err) {
         console.error("manageDealerApplication (approve) error:", err);
-        throw new https_1.HttpsError("internal", (err === null || err === void 0 ? void 0 : err.message) || "Failed to approve application.");
+        throw new https_1.HttpsError("internal", err?.message || "Failed to approve application.");
     }
 });
 exports.generateJacketId = (0, https_1.onCall)({ region: "us-central1" }, async (_request) => {
     const jacketId = Math.floor(100000 + Math.random() * 900000).toString();
     return { jacketId };
 });
-//# sourceMappingURL=auth.js.map
