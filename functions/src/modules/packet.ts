@@ -56,7 +56,16 @@ export const generateJacketPacket = onCall({
         const jacketSnap = await jacketRef.get();
         if (!jacketSnap.exists) throw new HttpsError("not-found", "Jacket not found.");
 
-        const jacketData = jacketSnap.data() as JacketData;
+        const rawData = jacketSnap.data() || {};
+        const jacketData = { ...rawData } as JacketData;
+        
+        // Smartly set the auctionSaleDate for the templates
+        if (rawData.auctionSaleDate && typeof rawData.auctionSaleDate.toDate === 'function') {
+            jacketData.auctionSaleDate = rawData.auctionSaleDate.toDate();
+        } else {
+            jacketData.auctionSaleDate = new Date();
+        }
+
         const { seller, buyer } = await getParticipantData(jacketData);
 
         // 1. Generate all three HTML documents

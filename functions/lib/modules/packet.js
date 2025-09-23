@@ -58,7 +58,15 @@ exports.generateJacketPacket = (0, https_1.onCall)({
         const jacketSnap = await jacketRef.get();
         if (!jacketSnap.exists)
             throw new https_1.HttpsError("not-found", "Jacket not found.");
-        const jacketData = jacketSnap.data();
+        const rawData = jacketSnap.data() || {};
+        const jacketData = Object.assign({}, rawData);
+        // Smartly set the auctionSaleDate for the templates
+        if (rawData.auctionSaleDate && typeof rawData.auctionSaleDate.toDate === 'function') {
+            jacketData.auctionSaleDate = rawData.auctionSaleDate.toDate();
+        }
+        else {
+            jacketData.auctionSaleDate = new Date();
+        }
         const { seller, buyer } = await getParticipantData(jacketData);
         // 1. Generate all three HTML documents
         const coverHtml = (0, cover_1.renderCoverHTML)(jacketData, seller);

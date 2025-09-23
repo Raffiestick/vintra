@@ -56,7 +56,16 @@ exports.generateJacketInvoice = (0, https_1.onCall)({
         const jacketSnap = await jacketRef.get();
         if (!jacketSnap.exists)
             throw new https_1.HttpsError("not-found", "Jacket not found.");
-        const jacketData = jacketSnap.data();
+        const rawData = jacketSnap.data() || {};
+        const jacketData = Object.assign({}, rawData);
+        // Smartly set the auctionSaleDate for the template
+        // If it exists as a Timestamp, convert it. Otherwise, default to the current date.
+        if (rawData.auctionSaleDate && typeof rawData.auctionSaleDate.toDate === 'function') {
+            jacketData.auctionSaleDate = rawData.auctionSaleDate.toDate();
+        }
+        else {
+            jacketData.auctionSaleDate = new Date();
+        }
         const { seller, buyer } = await getParticipantData(jacketData);
         const html = (0, invoice_1.renderInvoiceHTML)(jacketData, seller, buyer);
         const browser = await puppeteer_core_1.default.launch({
@@ -96,7 +105,15 @@ exports.generateBillOfSale = (0, https_1.onCall)({
         const jacketSnap = await jacketRef.get();
         if (!jacketSnap.exists)
             throw new https_1.HttpsError("not-found", "Jacket not found.");
-        const jacketData = jacketSnap.data();
+        const rawData = jacketSnap.data() || {};
+        const jacketData = Object.assign({}, rawData);
+        // Smartly set the auctionSaleDate for the template
+        if (rawData.auctionSaleDate && typeof rawData.auctionSaleDate.toDate === 'function') {
+            jacketData.auctionSaleDate = rawData.auctionSaleDate.toDate();
+        }
+        else {
+            jacketData.auctionSaleDate = new Date();
+        }
         const { seller, buyer } = await getParticipantData(jacketData);
         const html = (0, bos_1.renderBoSHTML)(jacketData, seller, buyer);
         const browser = await puppeteer_core_1.default.launch({

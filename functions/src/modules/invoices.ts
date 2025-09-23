@@ -54,7 +54,17 @@ export const generateJacketInvoice = onCall({
         const jacketSnap = await jacketRef.get();
         if (!jacketSnap.exists) throw new HttpsError("not-found", "Jacket not found.");
         
-        const jacketData = jacketSnap.data() as JacketData;
+        const rawData = jacketSnap.data() || {};
+        const jacketData = { ...rawData } as JacketData;
+
+        // Smartly set the auctionSaleDate for the template
+        // If it exists as a Timestamp, convert it. Otherwise, default to the current date.
+        if (rawData.auctionSaleDate && typeof rawData.auctionSaleDate.toDate === 'function') {
+            jacketData.auctionSaleDate = rawData.auctionSaleDate.toDate();
+        } else {
+            jacketData.auctionSaleDate = new Date();
+        }
+
         const { seller, buyer } = await getParticipantData(jacketData);
         const html = renderInvoiceHTML(jacketData, seller, buyer);
 
@@ -99,7 +109,16 @@ export const generateBillOfSale = onCall({
         const jacketSnap = await jacketRef.get();
         if (!jacketSnap.exists) throw new HttpsError("not-found", "Jacket not found.");
 
-        const jacketData = jacketSnap.data() as JacketData;
+        const rawData = jacketSnap.data() || {};
+        const jacketData = { ...rawData } as JacketData;
+
+        // Smartly set the auctionSaleDate for the template
+        if (rawData.auctionSaleDate && typeof rawData.auctionSaleDate.toDate === 'function') {
+            jacketData.auctionSaleDate = rawData.auctionSaleDate.toDate();
+        } else {
+            jacketData.auctionSaleDate = new Date();
+        }
+
         const { seller, buyer } = await getParticipantData(jacketData);
         const html = renderBoSHTML(jacketData, seller, buyer);
 

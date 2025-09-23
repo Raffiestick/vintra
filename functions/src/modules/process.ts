@@ -21,15 +21,19 @@ export const processStagedUnit = onCall({ cors: true, region: "us-central1" }, a
 
   const stage = stageSnap.data() || {};
   const unit = { ...(unitSnap.data() || {}), ...(updates || {}) };
-  const vinOrHin = unit.vin;
+
+  // --- LOGIC CORRECTED HERE ---
+  // Smartly find the VIN/HIN from multiple possible fields
+  const vinOrHin = unit.vin || unit.hin || unit.vinOrHin;
   if (!vinOrHin) throw new HttpsError("failed-precondition", "VIN/HIN is required to create a jacket");
 
-  const jacketId = (unit.vin?.toString() || vinOrHin).toUpperCase();
+  const jacketId = vinOrHin.toString().toUpperCase();
   const jacketNumber = vinOrHin.slice(-6); 
 
   const jacketRef = db.collection("jackets").doc(jacketId);
   await jacketRef.set({
     ...unit,
+    vin: jacketId, // Ensure the primary 'vin' field is always set
     jacketNumber, 
     auctionSaleDate: stage.auctionSaleDate || null,
     invoiceNumber: stage.auctionInvoiceNumber || null,
@@ -56,9 +60,7 @@ export const createJacketsForInvoice = onCall({ cors: true, region: "us-central1
 
   const stageRef = db.collection("stagingInvoices").doc(stagingId);
   const stageSnap = await stageRef.get();
-  if (!stageSnap.exists) {
-    throw new HttpsError("not-found", "Staging invoice not found.");
-  }
+  if (!stageSnap.exists) throw new HttpsError("not-found", "Staging invoice not found.");
   const stage = stageSnap.data() || {};
 
   const unitsRef = db.collection('stagingInvoices').doc(stagingId).collection('units');
@@ -67,11 +69,9 @@ export const createJacketsForInvoice = onCall({ cors: true, region: "us-central1
   let createdCount = 0;
   const promises = unitsSnapshot.docs.map(async (unitDoc) => {
     const unitData = unitDoc.data();
-    if (unitData.processed) {
-      return;
-    }
+    if (unitData.processed) return;
 
-    const vinOrHin = unitData.vin;
+    const vinOrHin = unitData.vin || unitData.hin || unitData.vinOrHin;
     if (!vinOrHin) {
       console.warn(`Skipping unit ${unitDoc.id} due to missing VIN.`);
       return;
@@ -83,6 +83,7 @@ export const createJacketsForInvoice = onCall({ cors: true, region: "us-central1
 
     await jacketRef.set({
       ...unitData,
+      vin: jacketId,
       jacketNumber,
       auctionSaleDate: stage.auctionSaleDate || null,
       invoiceNumber: stage.auctionInvoiceNumber || null,
@@ -102,10 +103,6 @@ export const createJacketsForInvoice = onCall({ cors: true, region: "us-central1
 
   await Promise.all(promises);
 
-  await stageRef.update({
-    status: 'processed',
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-
+  await stageRef.update({ status: 'processed', updatedAt: FieldValue.serverTimestamp() });
   return { created: createdCount };
 });
