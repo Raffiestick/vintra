@@ -1,25 +1,26 @@
 "use strict";
+// functions/src/modules/staging.ts
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createStagingBatchFromManualEntry = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-admin/firestore");
-const config_1 = require("../config");
-exports.createStagingBatchFromManualEntry = (0, https_1.onCall)({ cors: /.*/ }, async (request) => {
+const config_1 = require("../config"); // CORRECTED
+const utils_1 = require("../utils"); // CORRECTED
+exports.createStagingBatchFromManualEntry = (0, https_1.onCall)({ cors: true, region: "us-central1" }, async (request) => {
     var _a;
-    (0, config_1.assertAdmin)(request);
-    const { invoiceDate, invoiceUrl, invoiceNumber, units } = request.data;
+    (0, utils_1.assertAdmin)(request);
+    const { auctionSaleDate, auctionInvoiceNumber, units } = request.data;
     const actorUid = (_a = request.auth) === null || _a === void 0 ? void 0 : _a.uid;
     if (!Array.isArray(units) || units.length === 0) {
         throw new https_1.HttpsError("invalid-argument", "The 'units' array is required.");
     }
     try {
         const stagingRef = await config_1.db.collection("stagingInvoices").add({
-            invoiceDate: invoiceDate || null,
-            invoiceNumber: invoiceNumber || null,
-            invoiceUrl: invoiceUrl || null,
+            auctionSaleDate: auctionSaleDate || null,
+            auctionInvoiceNumber: auctionInvoiceNumber || null,
             status: "manual-entry",
             uploaderUid: actorUid,
-            fileName: invoiceUrl ? "Uploaded Invoice" : "Manual Entry",
+            fileName: "Manual Entry",
             unitCount: units.length,
             createdAt: firestore_1.FieldValue.serverTimestamp(),
         });

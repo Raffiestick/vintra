@@ -1,19 +1,25 @@
 "use strict";
-/**
- * Main entry point for all Cloud Functions.
- * We are using explicit named exports to avoid conflicts.
- */
+// functions/src/index.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateJacketInvoice = exports.generateBillOfSale = exports.processStagedUnit = exports.createStagingBatchFromManualEntry = void 0;
-// Functions for the new staging workflow
+exports.generateBillOfSale = exports.generateJacketInvoice = exports.processStagedUnit = exports.createStagingBatchFromManualEntry = exports.generateJacketId = exports.manageDealerApplication = exports.signInWithCustomToken = void 0;
+/**
+ * This line is CRUCIAL. It imports and runs the Firebase Admin configuration
+ * which initializes the app. It must be the first line of this file.
+ */
+require("./config");
+// --- Authentication & User Management ---
+var auth_1 = require("./modules/auth");
+Object.defineProperty(exports, "signInWithCustomToken", { enumerable: true, get: function () { return auth_1.signInWithCustomToken; } });
+Object.defineProperty(exports, "manageDealerApplication", { enumerable: true, get: function () { return auth_1.manageDealerApplication; } });
+Object.defineProperty(exports, "generateJacketId", { enumerable: true, get: function () { return auth_1.generateJacketId; } });
+// --- Staging & Processing ---
 var staging_1 = require("./modules/staging");
 Object.defineProperty(exports, "createStagingBatchFromManualEntry", { enumerable: true, get: function () { return staging_1.createStagingBatchFromManualEntry; } });
 var process_1 = require("./modules/process");
 Object.defineProperty(exports, "processStagedUnit", { enumerable: true, get: function () { return process_1.processStagedUnit; } });
-// Existing functions from the invoices module
+// --- Document & Packet Generation ---
+// export { attachStagedDocToJacket } from "./modules/docs"; // Temporarily disabled for debugging
 var invoices_1 = require("./modules/invoices");
-Object.defineProperty(exports, "generateBillOfSale", { enumerable: true, get: function () { return invoices_1.generateBillOfSale; } });
 Object.defineProperty(exports, "generateJacketInvoice", { enumerable: true, get: function () { return invoices_1.generateJacketInvoice; } });
-// Other function modules like auth, docs, and packet are ignored for now
-// to ensure the build succeeds. We can add them back later if needed.
+Object.defineProperty(exports, "generateBillOfSale", { enumerable: true, get: function () { return invoices_1.generateBillOfSale; } });
 //# sourceMappingURL=index.js.map

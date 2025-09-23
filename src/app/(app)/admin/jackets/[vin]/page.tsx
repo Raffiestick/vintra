@@ -1,7 +1,4 @@
-
-
 "use client";
-
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
@@ -53,7 +50,7 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon, Trash2, Replace, Printer, ScrollText, Files, CreditCard } from "lucide-react";
+import { Loader2, UploadCloud, Download, FileText, Check, ChevronsUpDown, Calendar as CalendarIcon, Trash2, Replace, Printer, ScrollText, Files, CreditCard, UserPlus } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -83,25 +80,27 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 
+// Updated Document Types
+type DocType = "Title" | "Power of Attorney" | "Release Form" | "POA" | "Addendum" | "Misc Doc";
 
 interface MiscFee {
-    id: string; // Now mandatory
-    description: string;
-    amount: number;
-    paid?: boolean;
-    paidAt?: Timestamp | null;
-    note?: string;
-    createdAt?: Timestamp;
+  id: string;
+  description: string;
+  amount: number;
+  paid?: boolean;
+  paidAt?: Timestamp | null;
+  note?: string;
+  createdAt?: Timestamp;
 }
 
 interface JacketDocument {
-    id: string; // Now mandatory
-    name: string;
-    type: "title" | "poa" | "addendum";
-    url: string;
-    createdAt?: Timestamp;
+  id: string;
+  name: string;
+  type: DocType;
+  url: string;
+  createdAt?: Timestamp;
 }
 
 interface Jacket {
@@ -111,11 +110,10 @@ interface Jacket {
   model?: string;
   color?: string;
   odometer?: number;
-  jacketId?: string;
-  auctionSaleDate?: Timestamp;
+  jacketNumber?: string; // New field
+  invoiceDate?: string;   // New field
   isAuctionPaid?: boolean;
-  isMgmtPaid?: boolean; // Legacy field
-  isMgmtFeePaid?: boolean; // New field
+  isMgmtFeePaid?: boolean;
   itemPrice?: number;
   buyerFee?: number;
   onlineFee?: number;
@@ -137,8 +135,6 @@ interface Jacket {
 }
 
 const num = (x: any) => Number(x ?? 0);
-const isMgmtPaidNormalized = (j: Jacket | null | undefined) =>
-  Boolean(j && ((j.isMgmtFeePaid ?? j.isMgmtPaid) === true));
 
 interface ApprovedDealer {
   uid: string;
@@ -160,91 +156,187 @@ interface Activity {
   meta?: any;
 }
 
-
 async function logActivity(vin: string, entry: Omit<Activity, "id" | "ts" | "actorUid" | "actorEmail" | "actorName"> & { ts?: any }) {
-    const user = auth.currentUser;
-    if (!user || !vin) return;
+  const user = auth.currentUser;
+  if (!user || !vin) return;
 
-    const base = {
-        actorUid: user.uid,
-        actorEmail: user.email || "",
-        actorName: user.displayName || "",
-    };
-    
-    try {
-        await addDoc(collection(db, "jackets", vin, "activity"), {
-            ...base,
-            ...entry,
-            ts: entry.ts ?? Timestamp.fromDate(new Date()),
-        });
-    } catch (error) {
-        console.error("Failed to log activity:", error);
-    }
+  const base = {
+    actorUid: user.uid,
+    actorEmail: user.email || "",
+    actorName: user.displayName || "",
+  };
+  
+  try {
+    await addDoc(collection(db, "jackets", vin, "activity"), {
+      ...base,
+      ...entry,
+      ts: entry.ts ?? Timestamp.fromDate(new Date()),
+    });
+  } catch (error) {
+    console.error("Failed to log activity:", error);
+  }
 }
 
 function JacketDetailSkeleton() {
+    return (
+      <main className="w-full max-w-screen-xl mx-auto p-4 md:p-6 space-y-6">
+        <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+            <div className="space-y-1">
+                <Skeleton className="h-9 w-72 mb-2" />
+                <Skeleton className="h-5 w-96" />
+            </div>
+            <div className="flex-shrink-0 flex flex-col items-end gap-4">
+                <div className="flex items-center gap-2">
+                    <Skeleton className="h-9 w-28" />
+                    <Skeleton className="h-9 w-36" />
+                    <Skeleton className="h-9 w-32" />
+                </div>
+                <Skeleton className="h-16 w-96" />
+            </div>
+        </div>
+        <Skeleton className="h-10 w-full" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
+            <div className="lg:col-span-4 space-y-6">
+                <Skeleton className="h-48 w-full" />
+                <Skeleton className="h-48 w-full" />
+            </div>
+            <div className="lg:col-span-8">
+                <Skeleton className="h-96 w-full" />
+            </div>
+        </div>
+      </main>
+    );
+}
+  
+
+// Compact component for assigning a dealer
+function AssignDealerComponent({ jacket, approvedDealers, isAdmin }: { jacket: Jacket, approvedDealers: ApprovedDealer[], isAdmin: boolean }) {
+  const { toast } = useToast();
+  const [isEditing, setIsEditing] = useState(!jacket.dealerId);
+  const [selectedDealer, setSelectedDealer] = useState(jacket.dealerId || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [comboboxOpen, setComboboxOpen] = useState(false);
+
+  const assignedDealer = useMemo(() => {
+    if (!jacket.dealerId || approvedDealers.length === 0) return null;
+    return approvedDealers.find(d => d.uid === jacket.dealerId) || null;
+  }, [jacket.dealerId, approvedDealers]);
+
+  useEffect(() => {
+      setIsEditing(!jacket.dealerId);
+      setSelectedDealer(jacket.dealerId || '');
+  }, [jacket.dealerId]);
+
+
+  const handleSave = async () => {
+    if (!jacket.vin || !selectedDealer || !isAdmin) {
+      toast({ title: "Error", description: "No dealer selected.", variant: "destructive" });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const dealer = approvedDealers.find(d => d.uid === selectedDealer);
+      const jacketDocRef = doc(db, "jackets", jacket.vin);
+      await updateDoc(jacketDocRef, {
+        dealerId: selectedDealer,
+        updatedAt: serverTimestamp(),
+      });
+      toast({ title: "Success", description: "Dealer assigned successfully." });
+      await logActivity(jacket.vin, {
+        type: "assignDealer",
+        message: `Assigned to dealer ${dealer?.companyName || selectedDealer}`,
+        meta: { dealerUid: selectedDealer, dealerEmail: dealer?.email, dealerName: dealer?.companyName }
+      });
+      setIsEditing(false);
+    } catch (err: any) {
+      console.error("Failed to assign dealer:", err);
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isAdmin) {
+    return assignedDealer ? (
+        <div className="text-sm">
+            <p className="text-muted-foreground">Assigned Dealer</p>
+            <p className="font-semibold">{assignedDealer.companyName}</p>
+        </div>
+    ) : null;
+  }
+
+  if (!isEditing && assignedDealer) {
+    return (
+      <div className="flex items-center gap-4 text-sm p-3 rounded-lg bg-muted/50 border">
+        <div>
+          <p className="text-muted-foreground">Assigned Dealer</p>
+          <p className="font-semibold">{assignedDealer.companyName}</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>Change</Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-8">
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-8 w-3/4 mb-2" />
-          <Skeleton className="h-4 w-1/2" />
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i}>
-                <Skeleton className="h-4 w-20 mb-1" />
-                <Skeleton className="h-5 w-24" />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Status</CardTitle>
-        </CardHeader>
-        <CardContent className="flex items-center space-x-8">
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-10 w-32" />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Financials</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-32 w-full" />
-        </CardContent>
-      </Card>
+    <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
+       <UserPlus className="h-5 w-5 text-muted-foreground" />
+      <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={comboboxOpen}
+            className="w-64 justify-between bg-card"
+          >
+            {selectedDealer ? approvedDealers.find((d) => d.uid === selectedDealer)?.companyName : "Select dealer..."}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-0 bg-card border-border">
+          <Command>
+            <CommandInput placeholder="Search dealer..." />
+            <CommandEmpty>No dealer found.</CommandEmpty>
+            <CommandGroup>
+              {approvedDealers.map((dealer) => (
+                <CommandItem
+                  key={dealer.uid}
+                  value={dealer.companyName}
+                  onSelect={() => {
+                    setSelectedDealer(dealer.uid);
+                    setComboboxOpen(false);
+                  }}
+                >
+                  <Check className={cn("mr-2 h-4 w-4", selectedDealer === dealer.uid ? "opacity-100" : "opacity-0")} />
+                  {dealer.companyName}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      <Button onClick={handleSave} disabled={isSaving || !selectedDealer}>
+        {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Assign"}
+      </Button>
+      {assignedDealer && <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>Cancel</Button>}
     </div>
   );
 }
 
+
 export default function JacketDetailPage() {
   const params = useParams<{ vin: string | string[] }>();
-  const vin = useMemo(
-    () => (Array.isArray(params?.vin) ? params.vin[0] : params?.vin),
-    [params?.vin]
-  );
+  const vin = useMemo(() => (Array.isArray(params?.vin) ? params.vin[0] : params?.vin), [params?.vin]);
 
   const { toast } = useToast();
-  const { user, isAdmin, loading: authLoading } = useAuth(); 
+  const { user, isAdmin, loading: authLoading } = useAuth();
 
   const [jacket, setJacket] = useState<Jacket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
-  const [invoiceUrlLocal, setInvoiceUrlLocal] = useState<string | null>(null);
-  const [invoiceIdLocal, setInvoiceIdLocal] = useState<string | null>(null);
-  
   const [isGeneratingBos, setIsGeneratingBos] = useState(false);
-  const [bosUrlLocal, setBosUrlLocal] = useState<string | null>(null);
-
   const [isGeneratingPacket, setIsGeneratingPacket] = useState(false);
-  const [packetUrlLocal, setPacketUrlLocal] = useState<string | null>(null);
 
   // Misc Fee states
   const [feeDescription, setFeeDescription] = useState("");
@@ -256,7 +348,7 @@ export default function JacketDetailPage() {
 
   // Document states
   const [docFile, setDocFile] = useState<File | null>(null);
-  const [docType, setDocType] = useState<JacketDocument['type'] | ''>('');
+  const [docType, setDocType] = useState<DocType | ''>('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [docError, setDocError] = useState('');
@@ -264,12 +356,7 @@ export default function JacketDetailPage() {
   const [isDeletingDoc, setIsDeletingDoc] = useState(false);
   const [replacingDocId, setReplacingDocId] = useState<string | null>(null);
 
-
   const [approvedDealers, setApprovedDealers] = useState<ApprovedDealer[]>([]);
-  const [isEditingDealer, setIsEditingDealer] = useState(false);
-  const [selectedDealer, setSelectedDealer] = useState('');
-  const [isSavingDealer, setIsSavingDealer] = useState(false);
-  const [comboboxOpen, setComboboxOpen] = useState(false);
 
   // State for payment modals
   const [paymentDialog, setPaymentDialog] = useState<{ open: boolean, type: PaymentType | null }>({ open: false, type: null });
@@ -282,18 +369,11 @@ export default function JacketDetailPage() {
   const [activityLog, setActivityLog] = useState<Activity[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(true);
 
-
-  const assignedDealer = useMemo(() => {
-    if (!jacket?.dealerId || approvedDealers.length === 0) return null;
-    return approvedDealers.find(d => d.uid === jacket.dealerId) || null;
-  }, [jacket?.dealerId, approvedDealers]);
-
   useSafeSnapshot(() => {
     if (!vin || !isAdmin) {
       if (!authLoading) setLoading(false);
       return;
     }
-
     const jacketDocRef = doc(db, "jackets", vin as string);
     return onSnapshot(
       jacketDocRef,
@@ -301,11 +381,6 @@ export default function JacketDetailPage() {
         if (docSnap.exists()) {
           const jacketData = { vin: docSnap.id, ...docSnap.data() } as Jacket;
           setJacket(jacketData);
-          if (!jacketData.dealerId) {
-            setIsEditingDealer(true); 
-          } else {
-            setIsEditingDealer(false);
-          }
           setError(null);
         } else {
           setError("Jacket not found.");
@@ -322,216 +397,115 @@ export default function JacketDetailPage() {
   
   useSafeSnapshot(() => {
     if (!vin || !isAdmin) {
-        if (!authLoading) setLoadingActivity(false);
-        return;
+      if (!authLoading) setLoadingActivity(false);
+      return;
     }
     const activityQuery = query(collection(db, "jackets", vin as string, "activity"), orderBy("ts", "desc"));
     return onSnapshot(activityQuery, (snapshot) => {
-        const activities = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Activity));
-        setActivityLog(activities);
-        setLoadingActivity(false);
+      const activities = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Activity));
+      setActivityLog(activities);
+      setLoadingActivity(false);
     }, (err) => {
-        console.error("Error fetching activity log:", err);
-        setLoadingActivity(false);
+      console.error("Error fetching activity log:", err);
+      setLoadingActivity(false);
     });
   }, [vin, isAdmin, authLoading]);
 
-
-  // One-time migration for isMgmtPaid -> isMgmtFeePaid
   useEffect(() => {
-    if (isAdmin && jacket && typeof jacket.isMgmtPaid === 'boolean' && typeof jacket.isMgmtFeePaid === 'undefined') {
-        const jacketDocRef = doc(db, "jackets", jacket.vin);
-        console.info(`Migrating isMgmtPaid -> isMgmtFeePaid for VIN ${jacket.vin}`);
-        updateDoc(jacketDocRef, {
-            isMgmtFeePaid: jacket.isMgmtPaid,
-            isMgmtPaid: deleteField(),
-            updatedAt: serverTimestamp()
-        }).catch(err => {
-            console.error("One-time migration failed:", err);
-        });
-    }
-  }, [jacket, isAdmin]);
-
-  // One-time migration for documents to add IDs
-  useEffect(() => {
-    if (isAdmin && jacket?.documents && jacket.documents.some(d => !d.id)) {
-        console.log(`Migrating documents to add IDs for VIN ${jacket.vin}`);
-        const jacketDocRef = doc(db, "jackets", jacket.vin);
-        const updatedDocuments = jacket.documents.map((doc, index) => 
-            doc.id ? doc : { ...doc, id: `doc-${Date.now()}-${index}` }
-        );
-        updateDoc(jacketDocRef, {
-            documents: updatedDocuments,
-            updatedAt: serverTimestamp()
-        }).catch(err => {
-            console.error("Document ID migration failed:", err);
-        });
-    }
-  }, [jacket?.documents, jacket?.vin, isAdmin]);
-
-  // Backfill IDs for misc fees
-  useEffect(() => {
-    if (isAdmin && jacket?.vin && Array.isArray(jacket.miscFees) && jacket.miscFees.some(fee => !fee.id)) {
-      console.log(`Backfilling IDs for misc fees on VIN ${jacket.vin}`);
-      const jacketDocRef = doc(db, "jackets", jacket.vin);
-      const updatedFees = jacket.miscFees.map((fee, index) =>
-        fee.id ? fee : { ...fee, id: `fee-${Date.now()}-${index}` }
-      );
-      updateDoc(jacketDocRef, {
-        miscFees: updatedFees,
-        updatedAt: serverTimestamp(),
-      })
-      .then(() => toast({ title: "Fees Updated", description: "Successfully backfilled IDs for misc fees." }))
-      .catch(err => {
-        console.error("Misc fee ID backfill failed:", err);
-        toast({ title: "Fee Update Failed", description: "Could not backfill IDs for misc fees.", variant: "destructive" });
-      });
-    }
-  }, [isAdmin, jacket?.vin, jacket?.miscFees, toast]);
-
-
-  useEffect(() => {
-      async function fetchDealers() {
-          if (!isAdmin) return;
-          try {
-              const q = query(collection(db, "users"), where("status", "==", "approved"));
-              const querySnapshot = await getDocs(q);
-              const dealers = querySnapshot.docs.map(doc => ({
-                  uid: doc.id,
-                  companyName: doc.data().companyName || 'N/A',
-                  contactName: doc.data().contactName || 'N/A',
-                  email: doc.data().email || 'N/A'
-              } as ApprovedDealer));
-              setApprovedDealers(dealers);
-          } catch (error) {
-              console.error("Failed to fetch dealers:", error);
-              toast({ title: "Error", description: "Could not load approved dealers.", variant: "destructive" });
-          }
+    async function fetchDealers() {
+      if (!isAdmin) return;
+      try {
+        const q = query(collection(db, "users"), where("status", "==", "approved"));
+        const querySnapshot = await getDocs(q);
+        const dealers = querySnapshot.docs.map(doc => ({
+          uid: doc.id,
+          companyName: doc.data().companyName || 'N/A',
+          contactName: doc.data().contactName || 'N/A',
+          email: doc.data().email || 'N/A'
+        } as ApprovedDealer));
+        setApprovedDealers(dealers);
+      } catch (error) {
+        console.error("Failed to fetch dealers:", error);
+        toast({ title: "Error", description: "Could not load approved dealers.", variant: "destructive" });
       }
-      fetchDealers();
+    }
+    fetchDealers();
   }, [isAdmin, toast]);
 
-  useEffect(() => {
-      if (jacket?.invoiceUrl) setInvoiceUrlLocal(null);
-      if(jacket?.invoiceId) setInvoiceIdLocal(null);
-      if(jacket?.bosUrl) setBosUrlLocal(null);
-      if(jacket?.packetUrl) setPacketUrlLocal(null);
-  }, [jacket?.invoiceUrl, jacket?.invoiceId, jacket?.bosUrl, jacket?.packetUrl]);
-  
-  const handleGenerateInvoice = useCallback(async () => {
-    if (!vin || !isAdmin) return;
-    setIsGeneratingInvoice(true);
-    try {
-        const generateJacketInvoice = httpsCallableClient('generateJacketInvoice');
-        const result = await generateJacketInvoice({ vin });
-        const { url, invoiceId } = result.data as { url?: string, invoiceId?: string };
+    const handleGenerateInvoice = useCallback(async () => {
+        if (!vin || !isAdmin) return;
+        setIsGeneratingInvoice(true);
+        try {
+            const generateJacketInvoice = httpsCallableClient('generateJacketInvoice');
+            const result = await generateJacketInvoice({ vin });
+            const { url, invoiceId } = result.data as { url?: string, invoiceId?: string };
 
-        if (url) {
-            setInvoiceUrlLocal(url);
-            if (invoiceId) setInvoiceIdLocal(invoiceId);
-            toast({
-                title: "Invoice Ready!",
-                description: (
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
-                        Click here to open the invoice.
-                    </a>
-                )
-            });
-            await logActivity(vin, { type: "invoiceGenerated", message: `Invoice generated ${invoiceId ? " — " + invoiceId : ""}`, meta: { invoiceId } });
-        } else {
-            toast({
-                title: "Invoice Generation Started",
-                description: "The invoice is being generated and will appear here shortly.",
-            });
+            if (url) {
+                toast({
+                    title: "Invoice Ready!",
+                    description: ( <a href={url} target="_blank" rel="noopener noreferrer" className="underline font-bold"> Click here to open the invoice. </a>)
+                });
+                await logActivity(vin, { type: "invoiceGenerated", message: `Invoice generated ${invoiceId ? " — " + invoiceId : ""}`, meta: { invoiceId } });
+            } else {
+                toast({ title: "Invoice Generation Started", description: "The invoice is being generated and will appear here shortly." });
+            }
+        } catch (err: any) {
+            console.error("Error generating invoice:", err);
+            toast({ title: "Invoice Generation Failed", description: err.message, variant: "destructive" });
+        } finally {
+            setIsGeneratingInvoice(false);
         }
-    } catch (err: any) {
-        console.error("Error generating invoice:", err);
-        toast({
-            title: "Invoice Generation Failed",
-            description: err.message,
-            variant: "destructive",
-        });
-    } finally {
-        setIsGeneratingInvoice(false);
-    }
-  }, [vin, isAdmin, toast]);
+    }, [vin, isAdmin, toast]);
 
-  const handleGenerateBos = useCallback(async () => {
-    if (!vin || !isAdmin) return;
-    setIsGeneratingBos(true);
-    try {
-        const generateBillOfSale = httpsCallableClient('generateBillOfSale');
-        const result = await generateBillOfSale({ vin });
-        const { url } = result.data as { url?: string };
-
-        if (url) {
-            setBosUrlLocal(url);
-            toast({
-                title: "Bill of Sale Ready!",
-                description: (
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
-                        Click here to open the BOS.
-                    </a>
-                )
-            });
-            await logActivity(vin, { type: "bosGenerated", message: "Bill of Sale generated", meta: { url } });
-        } else {
-            toast({
-                title: "BOS Generation Started",
-                description: "The Bill of Sale is being generated and will appear here shortly.",
-            });
+    const handleGenerateBos = useCallback(async () => {
+        if (!vin || !isAdmin) return;
+        setIsGeneratingBos(true);
+        try {
+            const generateBillOfSale = httpsCallableClient('generateBillOfSale');
+            const result = await generateBillOfSale({ vin });
+            const { url } = result.data as { url?: string };
+    
+            if (url) {
+                toast({
+                    title: "Bill of Sale Ready!",
+                    description: ( <a href={url} target="_blank" rel="noopener noreferrer" className="underline font-bold"> Click here to open the BOS. </a> )
+                });
+                await logActivity(vin, { type: "bosGenerated", message: "Bill of Sale generated", meta: { url } });
+            } else {
+                toast({ title: "BOS Generation Started", description: "The Bill of Sale is being generated and will appear here shortly." });
+            }
+        } catch (err: any) {
+            console.error("Error generating Bill of Sale:", err);
+            toast({ title: "BOS Generation Failed", description: err.message, variant: "destructive" });
+        } finally {
+            setIsGeneratingBos(false);
         }
-    } catch (err: any) {
-        console.error("Error generating Bill of Sale:", err);
-        toast({
-            title: "BOS Generation Failed",
-            description: err.message,
-            variant: "destructive",
-        });
-    } finally {
-        setIsGeneratingBos(false);
-    }
-  }, [vin, isAdmin, toast]);
+    }, [vin, isAdmin, toast]);
 
-
-  const handleGeneratePacket = useCallback(async () => {
-    if (!vin || !isAdmin) return;
-    setIsGeneratingPacket(true);
-    try {
-        const generateJacketPacket = httpsCallableClient('generateJacketPacket');
-        const result = await generateJacketPacket({ vin });
-        const { url } = result.data as { url?: string };
-        
-        if (url) {
-            setPacketUrlLocal(url);
-            toast({
-                title: "Jacket Packet Ready!",
-                description: (
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
-                        Click here to open the packet.
-                    </a>
-                )
-            });
-            await logActivity(vin as string, { type: "packetGenerated", message: "Jacket Packet generated", meta: { url } });
-        } else {
-            toast({
-                title: "Packet Generation Started",
-                description: "The jacket packet is being generated and will appear here shortly.",
-            });
+    const handleGeneratePacket = useCallback(async () => {
+        if (!vin || !isAdmin) return;
+        setIsGeneratingPacket(true);
+        try {
+            const generateJacketPacket = httpsCallableClient('generateJacketPacket');
+            const result = await generateJacketPacket({ vin });
+            const { url } = result.data as { url?: string };
+            
+            if (url) {
+                toast({
+                    title: "Jacket Packet Ready!",
+                    description: ( <a href={url} target="_blank" rel="noopener noreferrer" className="underline font-bold"> Click here to open the packet. </a> )
+                });
+                await logActivity(vin as string, { type: "packetGenerated", message: "Jacket Packet generated", meta: { url } });
+            } else {
+                toast({ title: "Packet Generation Started", description: "The jacket packet is being generated and will appear here shortly." });
+            }
+        } catch (err: any) {
+            console.error("Error generating jacket packet:", err);
+            toast({ title: "Packet Generation Failed", description: err.message, variant: "destructive" });
+        } finally {
+            setIsGeneratingPacket(false);
         }
-        
-    } catch (err: any) {
-        console.error("Error generating jacket packet:", err);
-        toast({
-            title: "Packet Generation Failed",
-            description: err.message,
-            variant: "destructive",
-        });
-    } finally {
-        setIsGeneratingPacket(false);
-    }
-  }, [vin, isAdmin, toast]);
-
+    }, [vin, isAdmin, toast]);
 
   const handlePaymentStatusChange = (type: PaymentType, value: boolean) => {
     if (!isAdmin) return;
@@ -550,9 +524,7 @@ export default function JacketDetailPage() {
     const jacketDocRef = doc(db, "jackets", vin as string);
     const type = paymentDialog.type;
     
-    let updateData: any = {
-      updatedAt: serverTimestamp(),
-    };
+    let updateData: any = { updatedAt: serverTimestamp() };
     
     if (type === 'auction') {
       updateData.isAuctionPaid = true;
@@ -562,12 +534,10 @@ export default function JacketDetailPage() {
       updateData.isMgmtFeePaid = true;
       updateData.mgmtPaidAt = Timestamp.fromDate(paymentDate);
       updateData.mgmtPaymentRef = paymentRef.trim();
-      updateData.isMgmtPaid = deleteField(); // Clean up legacy field
     }
 
     try {
       await updateDoc(jacketDocRef, updateData);
-      console.log(`${type} Paid saved`);
       toast({ title: "Status Updated", description: `Marked as paid successfully.` });
       
       const logMessage = `${type === 'auction' ? 'Auction' : 'Mgmt fee'} marked PAID (${paymentDate.toLocaleDateString()}${paymentRef ? " — " + paymentRef : ""})`;
@@ -592,9 +562,7 @@ export default function JacketDetailPage() {
     const jacketDocRef = doc(db, "jackets", vin as string);
     const type = unpaidConfirmDialog.type;
 
-    let updateData: any = {
-      updatedAt: serverTimestamp(),
-    };
+    let updateData: any = { updatedAt: serverTimestamp() };
     
     if (type === 'auction') {
       updateData.isAuctionPaid = false;
@@ -604,12 +572,10 @@ export default function JacketDetailPage() {
         updateData.isMgmtFeePaid = false;
         updateData.mgmtPaidAt = deleteField();
         updateData.mgmtPaymentRef = deleteField();
-        updateData.isMgmtPaid = deleteField(); // Clean up legacy field
     }
 
     try {
       await updateDoc(jacketDocRef, updateData);
-      console.log(`${type} Paid cleared`);
       toast({ title: "Status Updated", description: `Marked as unpaid.` });
       
       await logActivity(vin as string, {
@@ -704,7 +670,6 @@ export default function JacketDetailPage() {
             const isPaid = action === 'pay';
             logMessage = `Misc fee "${f.description}" marked ${isPaid ? 'PAID' : 'UNPAID'}`;
             logType = isPaid ? 'miscFeePaidOn' : 'miscFeePaidOff';
-            // Use null for unpaid instead of deleteField()
             return { ...f, paid: isPaid, paidAt: isPaid ? Timestamp.now() : null };
           }
           return f;
@@ -728,8 +693,7 @@ export default function JacketDetailPage() {
     }
   };
 
-
-  const uploadFile = (file: File, type: JacketDocument['type'], onProgress: (p: number) => void): Promise<string> => {
+  const uploadFile = (file: File, type: DocType, onProgress: (p: number) => void): Promise<string> => {
     return new Promise((resolve, reject) => {
       const storagePath = `jacket-documents/${vin}/${type}/${file.name}`;
       const storageRef = ref(storage, storagePath);
@@ -804,13 +768,13 @@ export default function JacketDetailPage() {
 
   const handleReplaceDocument = async (docId: string, newFile: File) => {
     if (!isAdmin || !vin || !jacket?.documents) return;
-    
+  
     const docToReplace = jacket.documents.find(d => d.id === docId);
     if (!docToReplace) {
         toast({ title: "Error", description: "Document not found to replace.", variant: "destructive" });
         return;
     }
-    
+  
     setReplacingDocId(docId);
     setUploadProgress(0);
 
@@ -854,7 +818,7 @@ export default function JacketDetailPage() {
 
   const handleDeleteDocument = async () => {
     if (!isAdmin || !vin || !docToDelete) return;
-    
+  
     setIsDeletingDoc(true);
 
     try {
@@ -880,7 +844,6 @@ export default function JacketDetailPage() {
            }
         }
 
-
         toast({ title: "Document Deleted", description: `${docToDelete.name} has been removed.` });
         
         await logActivity(vin as string, {
@@ -901,37 +864,6 @@ export default function JacketDetailPage() {
         setDocToDelete(null);
     }
   };
-  
-  const handleSaveDealer = async () => {
-      if (!vin || !selectedDealer || !isAdmin) {
-          toast({ title: "Error", description: "No dealer selected.", variant: "destructive" });
-          return;
-      }
-      setIsSavingDealer(true);
-      try {
-          const dealer = approvedDealers.find(d => d.uid === selectedDealer);
-          const jacketDocRef = doc(db, "jackets", vin as string);
-          await updateDoc(jacketDocRef, {
-              dealerId: selectedDealer,
-              updatedAt: serverTimestamp(),
-          });
-          toast({ title: "Success", description: "Dealer assigned successfully." });
-          
-          await logActivity(vin as string, {
-              type: "assignDealer",
-              message: `Assigned to dealer ${dealer?.companyName || selectedDealer}`,
-              meta: { dealerUid: selectedDealer, dealerEmail: dealer?.email, dealerName: dealer?.companyName }
-          });
-          
-          setIsEditingDealer(false);
-      } catch (err: any) {
-          console.error("Failed to assign dealer:", err);
-          toast({ title: "Error", description: err.message, variant: "destructive" });
-      } finally {
-          setIsSavingDealer(false);
-      }
-  };
-
 
   const fmtCurrency = (n?: number): string => {
     if (n === null || typeof n === "undefined") {
@@ -952,7 +884,7 @@ export default function JacketDetailPage() {
     const paidMisc = (jacket.miscFees || []).filter(f => f.paid).reduce((acc, fee) => acc + num(fee.amount), 0);
     const unpaidMisc = (jacket.miscFees || []).filter(f => !f.paid).reduce((acc, fee) => acc + num(fee.amount), 0);
     
-    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (isMgmtPaidNormalized(jacket) ? mgmtDue : 0) + paidMisc;
+    const amountPaid = (jacket.isAuctionPaid ? auctionDue : 0) + (jacket.isMgmtFeePaid ? mgmtDue : 0) + paidMisc;
     const totalCost = auctionDue + mgmtDue + paidMisc + unpaidMisc;
     const balanceDue = Math.max(0, totalCost - amountPaid);
 
@@ -961,16 +893,14 @@ export default function JacketDetailPage() {
 
   if (loading || authLoading) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8">
         <JacketDetailSkeleton />
-      </main>
     );
   }
 
   if (error) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8">
-        <Card className="w-full max-w-lg text-center panel">
+        <Card className="w-full max-w-lg text-center">
           <CardHeader>
             <CardTitle className="text-2xl font-bold text-destructive">
               Error
@@ -987,7 +917,7 @@ export default function JacketDetailPage() {
   if (!jacket) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 md:p-8">
-        <Card className="w-full max-w-lg text-center panel">
+        <Card className="w-full max-w-lg text-center">
           <CardHeader>
             <CardTitle className="text-2xl font-bold">
               Jacket Not Found
@@ -1007,702 +937,445 @@ export default function JacketDetailPage() {
     );
   }
   
-  const effectiveInvoiceUrl = invoiceUrlLocal ?? jacket?.invoiceUrl ?? "";
-  const effectiveInvoiceId = invoiceIdLocal ?? jacket?.invoiceId;
-  const effectiveBosUrl = bosUrlLocal ?? jacket?.bosUrl ?? "";
-  const effectivePacketUrl = packetUrlLocal ?? jacket?.packetUrl ?? "";
-
-
-  const PaymentSwitch = ({
-    id,
-    label,
-    checked,
-    paidAt,
-    paymentRef,
-  }: {
-    id: PaymentType;
-    label: string;
-    checked: boolean;
-    paidAt?: Timestamp;
-    paymentRef?: string;
-  }) => (
-    <div className="flex-1">
-        <div className="flex items-center justify-between">
-            <Label htmlFor={`is${id.charAt(0).toUpperCase() + id.slice(1)}Paid`} className="text-base font-medium">
-            {label}
-            </Label>
-            <div className="flex items-center space-x-2">
-                <Badge variant={checked ? 'default' : 'destructive'} className="mr-2">{checked ? 'Paid' : 'Unpaid'}</Badge>
-                <TooltipProvider>
-                <Tooltip delayDuration={0}>
-                    <TooltipTrigger disabled={!isAdmin} asChild>
-                         <Switch
-                            id={`is${id.charAt(0).toUpperCase() + id.slice(1)}Paid`}
-                            checked={checked}
-                            onCheckedChange={(val) => handlePaymentStatusChange(id, val)}
-                            disabled={!isAdmin || isUpdatingPayment}
-                            aria-readonly={!isAdmin}
-                        />
-                    </TooltipTrigger>
-                    {!isAdmin && (
-                    <TooltipContent>
-                        <p>Admin only</p>
-                    </TooltipContent>
-                    )}
-                </Tooltip>
-                </TooltipProvider>
-            </div>
-        </div>
-        {checked && paidAt && (
-            <div className="text-xs text-muted-foreground mt-2">
-                Paid on {paidAt.toDate().toLocaleDateString()}
-                {paymentRef && <p className="font-mono text-xs mt-1 p-1 bg-muted rounded w-fit">Ref: {paymentRef}</p>}
-            </div>
-        )}
-    </div>
-  );
+  const formattedAuctionDate = jacket.invoiceDate && isValid(new Date(jacket.invoiceDate)) 
+    ? format(new Date(jacket.invoiceDate), 'PP') 
+    : 'N/A';
   
   const FinancialsGridItem = ({label, value}: {label: string, value: string | number}) => (
-    <div className="rounded-md border p-3">
-        <dt className="text-xs text-muted-foreground">{label}</dt>
-        <dd className="text-lg font-semibold">{typeof value === 'number' ? fmtCurrency(value) : value}</dd>
+    <div className="flex flex-col gap-1 rounded-lg border p-3">
+        <dt className="text-sm text-muted-foreground">{label}</dt>
+        <dd className="text-xl font-semibold tracking-tight">{value}</dd>
     </div>
   );
 
   return (
-    <main className="flex min-h-screen flex-col items-start bg-background gap-4">
-        <div className="w-full max-w-screen-xl mx-auto px-3 sm:px-4 md:px-6 space-y-4">
-            <div className="flex items-center justify-between gap-4 pt-4">
-                 <div>
-                    <h1 className="text-2xl font-bold">
-                        {jacket.year} {jacket.make} {jacket.model}
-                    </h1>
-                    <div className="text-sm text-muted-foreground space-x-4">
-                        <span className="font-mono">{jacket.vin}</span>
-                        <span>Color: {jacket.color}</span>
-                        <span>Odometer: {jacket.odometer}</span>
-                        <span>Auction Date: {jacket.auctionSaleDate?.toDate().toLocaleDateString()}</span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    {jacket.jacketId && <Badge variant="secondary" className="font-mono">Jacket ID: {jacket.jacketId}</Badge>}
-                    {isAdmin && (
-                        <>
-                        <Button size="sm" onClick={handleGenerateInvoice} disabled={isGeneratingInvoice || !isAdmin} className="btn-soft">
-                            <div className="flex items-center gap-2">
-                                {isGeneratingInvoice ? <Loader2 className="animate-spin" /> : <FileText />}
-                                <div className="leading-tight text-left">
-                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Generate</div>
-                                    <div className="text-sm font-semibold">Invoice</div>
-                                </div>
-                            </div>
-                        </Button>
-                        <Button size="sm" onClick={handleGenerateBos} disabled={isGeneratingBos || !isAdmin} className="btn-soft">
-                            <div className="flex items-center gap-2">
-                                {isGeneratingBos ? <Loader2 className="animate-spin" /> : <ScrollText />}
-                                <div className="leading-tight text-left">
-                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Generate</div>
-                                    <div className="text-sm font-semibold">Bill of Sale</div>
-                                </div>
-                            </div>
-                        </Button>
-                        <Button size="sm" onClick={handleGeneratePacket} disabled={isGeneratingPacket || !isAdmin} className="btn-primary">
-                            <div className="flex items-center gap-2">
-                                {isGeneratingPacket ? <Loader2 className="animate-spin" /> : <Files />}
-                                <div className="leading-tight text-left">
-                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-zinc-800">Generate</div>
-                                    <div className="text-sm font-semibold">Jacket</div>
-                                </div>
-                            </div>
-                        </Button>
-                        </>
-                    )}
-                </div>
+    <main className="w-full max-w-screen-xl mx-auto p-4 md:p-6 space-y-6">
+      {/* --- HEADER --- */}
+      <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold tracking-tight">{jacket.year} {jacket.make} {jacket.model}</h1>
+            {jacket.jacketNumber && <Badge variant="secondary" className="text-base">#{jacket.jacketNumber}</Badge>}
+          </div>
+          <div className="flex items-center text-sm text-muted-foreground gap-x-4 gap-y-1 flex-wrap">
+            <span className="font-mono">{jacket.vin}</span>
+            <span>Color: <span className="font-medium text-foreground">{jacket.color || 'N/A'}</span></span>
+            <span>Odometer: <span className="font-medium text-foreground">{jacket.odometer || 'N/A'}</span></span>
+            <span>Auction Date: <span className="font-medium text-foreground">{formattedAuctionDate}</span></span>
+          </div>
+        </div>
+        <div className="flex-shrink-0 flex flex-col items-end gap-4">
+            <div className="flex items-center gap-2">
+                <Button size="sm" onClick={handleGenerateInvoice} disabled={isGeneratingInvoice || !isAdmin}>
+                    <FileText className="mr-2 h-4 w-4" /> Create Invoice
+                </Button>
+                <Button size="sm" onClick={handleGenerateBos} disabled={isGeneratingBos || !isAdmin} variant="outline">
+                    <ScrollText className="mr-2 h-4 w-4" /> Create Bill of Sale
+                </Button>
+                <Button size="sm" onClick={handleGeneratePacket} disabled={isGeneratingPacket || !isAdmin} variant="outline">
+                    <Files className="mr-2 h-4 w-4" /> Generate Jacket
+                </Button>
             </div>
-
-          <Tabs defaultValue="overview" className="w-full">
-            <TabsList>
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="misc-fees">
-                    Misc Fees <Badge variant="secondary" className="ml-2">{jacket.miscFees?.length || 0}</Badge>
-                </TabsTrigger>
-                <TabsTrigger value="documents">
-                    Documents <Badge variant="secondary" className="ml-2">{jacket.documents?.length || 0}</Badge>
-                </TabsTrigger>
-                <TabsTrigger value="activity">Activity</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="overview" className="mt-4">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                    <div className="md:col-span-7 space-y-4">
-                        <Card className="panel">
-                            <CardHeader><CardTitle>Payment Status</CardTitle></CardHeader>
-                            <CardContent className="space-y-4">
-                                <PaymentSwitch
-                                    id="auction"
-                                    label="Auction Paid"
-                                    checked={jacket.isAuctionPaid ?? false}
-                                    paidAt={jacket.auctionPaidAt}
-                                    paymentRef={jacket.auctionPaymentRef}
-                                />
-                                <PaymentSwitch
-                                    id="mgmt"
-                                    label="Management Fee Paid"
-                                    checked={isMgmtPaidNormalized(jacket)}
-                                    paidAt={jacket.mgmtPaidAt}
-                                    paymentRef={jacket.mgmtPaymentRef}
-                                />
-                            </CardContent>
-                        </Card>
-
-                        {isAdmin && (
-                          <Card className="panel">
-                            <CardHeader>
-                              <CardTitle>Assign Dealer</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              {isEditingDealer ? (
-                                <div className="flex items-center gap-2">
-                                  <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
-                                    <PopoverTrigger asChild>
-                                      <Button
-                                        variant="outline"
-                                        role="combobox"
-                                        aria-expanded={comboboxOpen}
-                                        className="w-[300px] justify-between input-like"
-                                      >
-                                        {selectedDealer
-                                          ? approvedDealers.find((d) => d.uid === selectedDealer)?.companyName
-                                          : "Select dealer..."}
-                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-[300px] p-0 bg-[hsl(var(--panel))] border-white/10">
-                                      <Command>
-                                        <CommandInput placeholder="Search dealer..." className="input-like"/>
-                                        <CommandEmpty>No dealer found.</CommandEmpty>
-                                        <CommandGroup>
-                                          {approvedDealers.map((dealer) => (
-                                            <CommandItem
-                                              key={dealer.uid}
-                                              value={dealer.companyName}
-                                              onSelect={() => {
-                                                setSelectedDealer(dealer.uid);
-                                                setComboboxOpen(false);
-                                              }}
-                                            >
-                                              <Check
-                                                className={cn(
-                                                  "mr-2 h-4 w-4",
-                                                  selectedDealer === dealer.uid ? "opacity-100" : "opacity-0"
-                                                )}
-                                              />
-                                              <div>
-                                                <div>{dealer.companyName}</div>
-                                                <div className="text-xs text-muted-foreground">{dealer.email}</div>
-                                              </div>
-                                            </CommandItem>
-                                          ))}
-                                        </CommandGroup>
-                                      </Command>
-                                    </PopoverContent>
-                                  </Popover>
-                                  <Button onClick={handleSaveDealer} disabled={isSavingDealer || !selectedDealer} className="btn-primary">
-                                    {isSavingDealer ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                                    Save
-                                  </Button>
-                                   <Button variant="ghost" onClick={() => {setIsEditingDealer(false); setSelectedDealer(jacket.dealerId || '')}}>
-                                    Cancel
-                                  </Button>
-                                </div>
-                              ) : assignedDealer ? (
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <p className="font-medium">{assignedDealer.companyName}</p>
-                                    <p className="text-sm text-muted-foreground">{assignedDealer.email}</p>
-                                  </div>
-                                  <Button variant="outline" onClick={() => {setIsEditingDealer(true); setSelectedDealer(assignedDealer.uid)}} className="btn-soft">
-                                    Change
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="text-sm text-muted-foreground">
-                                  No dealer assigned.
-                                   <Button variant="link" className="pl-1" onClick={() => setIsEditingDealer(true)}>Assign one</Button>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        )}
-                    </div>
-                    <div className="md:col-span-5 space-y-4">
-                       {financials && (
-                           <Card className="panel">
-                             <CardHeader>
-                               <CardTitle>Financials</CardTitle>
-                             </CardHeader>
-                             <CardContent className="grid grid-cols-2 gap-3 text-sm">
-                                <FinancialsGridItem label="Auction Total" value={financials.auctionDue} />
-                                <FinancialsGridItem label="Mgmt Fee" value={financials.mgmtDue} />
-                                <FinancialsGridItem label="Paid Misc Fees" value={financials.paidMisc} />
-                                <FinancialsGridItem label="Unpaid Misc Fees" value={financials.unpaidMisc} />
-                                <FinancialsGridItem label="Subtotal" value={financials.subtotal} />
-                                <FinancialsGridItem label="Paid" value={financials.amountPaid} />
-                                <FinancialsGridItem label="Balance Due" value={financials.outstanding} />
-                             </CardContent>
-                           </Card>
-                       )}
-                    </div>
-                </div>
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                        <Card className="panel">
-                            <CardHeader>
-                                <CardTitle>Jacket Invoice</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-3">
-                                <div>
-                                    <span className="text-sm text-muted-foreground">Jacket #: </span>
-                                    <span className="font-semibold">{jacket?.jacketId || '—'}</span>
-                                </div>
-                                <div>
-                                    <span className="text-sm text-muted-foreground">Invoice ID: </span>
-                                    <span className="font-semibold">{effectiveInvoiceId || "Not issued yet"}</span>
-                                </div>
-                                {effectiveInvoiceUrl ? (
-                                    <div className="flex items-center gap-2">
-                                        <Button asChild size="sm" className="btn-soft">
-                                            <a href={effectiveInvoiceUrl} target="_blank" rel="noopener noreferrer">
-                                                <Download className="mr-2 h-4 w-4" /> Open Invoice PDF
-                                            </a>
-                                        </Button>
-                                        <Button variant="secondary" size="sm" onClick={() => window.open(effectiveInvoiceUrl, '_blank')} className="btn-soft">
-                                            <Printer className="mr-2 h-4 w-4" /> Print
-                                        </Button>
-                                    </div>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground">No invoice has been generated yet.</p>
-                                )}
-                            </CardContent>
-                        </Card>
-                         <Card className="panel">
-                            <CardHeader>
-                                <CardTitle>Bill of Sale</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-3">
-                                <div>
-                                  <span className="text-sm text-muted-foreground">Jacket #: </span>
-                                  <span className="font-semibold">{jacket?.jacketId || '—'}</span>
-                                </div>
-                                <div>
-                                  <span className="text-sm text-muted-foreground">BOS: </span>
-                                  <span className="font-semibold">{effectiveBosUrl ? "Ready" : "Not generated"}</span>
-                                </div>
-                                {effectiveBosUrl ? (
-                                    <div className="flex items-center gap-2">
-                                        <Button asChild size="sm" className="btn-soft">
-                                            <a href={effectiveBosUrl} target="_blank" rel="noopener noreferrer">
-                                                <Download className="mr-2 h-4 w-4" /> Open BOS PDF
-                                            </a>
-                                        </Button>
-                                        <Button variant="secondary" size="sm" onClick={() => window.open(effectiveBosUrl, '_blank')} className="btn-soft">
-                                            <Printer className="mr-2 h-4 w-4" /> Print
-                                        </Button>
-                                    </div>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground">No Bill of Sale has been generated yet.</p>
-                                )}
-                            </CardContent>
-                        </Card>
-                         <Card className="panel">
-                            <CardHeader>
-                                <CardTitle>Jacket Packet</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-3">
-                                <div>
-                                  <span className="text-sm text-muted-foreground">Jacket #: </span>
-                                  <span className="font-semibold">{jacket?.jacketId || '—'}</span>
-                                </div>
-                                <div>
-                                  <span className="text-sm text-muted-foreground">Packet: </span>
-                                  <span className="font-semibold">{effectivePacketUrl ? "Ready" : "Not generated"}</span>
-                                </div>
-                                {effectivePacketUrl ? (
-                                  <div className="flex items-center gap-2">
-                                    <Button asChild size="sm" className="btn-primary">
-                                        <a href={effectivePacketUrl} target="_blank" rel="noopener noreferrer">
-                                            <Download className="mr-2 h-4 w-4" /> Open Packet PDF
-                                        </a>
-                                    </Button>
-                                    <Button variant="secondary" size="sm" onClick={() => window.open(effectivePacketUrl, '_blank')} className="btn-soft">
-                                      <Printer className="mr-2 h-4 w-4" />
-                                      Print
-                                    </Button>
-                                  </div>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground">No packet has been generated yet.</p>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </div>
-            </TabsContent>
-            
-            <TabsContent value="misc-fees">
-              <Card className="panel">
-                <CardHeader>
-                  <CardTitle>Miscellaneous Fees</CardTitle>
-                  <CardDescription>Manage additional fees associated with this jacket.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {(!jacket.miscFees || jacket.miscFees.length === 0) ? (
-                      <p className="text-sm text-muted-foreground p-4 text-center">No misc fees yet.</p>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Amount</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Added</TableHead>
-                            {isAdmin && <TableHead className="text-right">Actions</TableHead>}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {jacket.miscFees.map((fee) => (
-                            <TableRow key={fee.id}>
-                              <TableCell className="font-medium">{fee.description}</TableCell>
-                              <TableCell>{fmtCurrency(fee.amount)}</TableCell>
-                              <TableCell>
-                                <Badge variant={fee.paid ? 'default' : 'destructive'}>
-                                  {fee.paid ? 'Paid' : 'Unpaid'}
-                                </Badge>
-                                {fee.paid && fee.paidAt && (
-                                    <p className="text-xs text-muted-foreground mt-1">{fee.paidAt.toDate().toLocaleDateString()}</p>
-                                )}
-                              </TableCell>
-                              <TableCell>{fee.createdAt ? fee.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
-                              {isAdmin && (
-                                <TableCell className="text-right">
-                                    <div className="flex items-center justify-end gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setFeeToModify({ fee, action: fee.paid ? 'unpay' : 'pay' })}
-                                            disabled={isModifyingFee}
-                                            className="btn-soft"
-                                        >
-                                            <CreditCard className="mr-2 h-4 w-4" /> Mark {fee.paid ? 'Unpaid' : 'Paid'}
-                                        </Button>
-                                        <Button
-                                            variant="destructive"
-                                            size="icon"
-                                            onClick={() => setFeeToModify({ fee, action: 'delete' })}
-                                            disabled={isModifyingFee}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </TableCell>
-                              )}
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </div>
-                </CardContent>
-                {isAdmin && (
-                  <CardFooter className="border-t pt-6">
-                    <form onSubmit={handleAddFee} className="w-full space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                        <div className="md:col-span-2 space-y-1">
-                          <Label htmlFor="feeDescription">Fee Description</Label>
-                          <Input
-                            id="feeDescription"
-                            value={feeDescription}
-                            onChange={(e) => setFeeDescription(e.target.value)}
-                            placeholder="e.g. Lost Key Replacement"
-                            disabled={isAddingFee}
-                            className="input-like"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="feeAmount">Amount ($)</Label>
-                          <Input
-                            id="feeAmount"
-                            type="number"
-                            value={feeAmount}
-                            onChange={(e) => setFeeAmount(e.target.value)}
-                            placeholder="50.00"
-                            step="0.01"
-                            disabled={isAddingFee}
-                            className="input-like"
-                          />
-                        </div>
-                      </div>
-                      {feeError && <p className="text-sm text-destructive">{feeError}</p>}
-                      <Button type="submit" disabled={isAddingFee} className="btn-primary">
-                        {isAddingFee ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding...</> : 'Add Fee'}
-                      </Button>
-                    </form>
-                  </CardFooter>
-                )}
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="documents">
-                <Card className="panel">
-                    <CardHeader>
-                        <CardTitle>Documents</CardTitle>
-                         <CardDescription>Manage titles, POAs, and other documents for this jacket.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {(!jacket.documents || jacket.documents.length === 0) ? (
-                                <p className="text-sm text-muted-foreground p-4 text-center">No documents yet.</p>
-                            ) : (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>File Name</TableHead>
-                                            <TableHead>Type</TableHead>
-                                            <TableHead>Added</TableHead>
-                                            {isAdmin && <TableHead className="text-right">Actions</TableHead>}
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {jacket.documents.map((doc) => (
-                                            <TableRow key={doc.id}>
-                                                <TableCell className="font-medium">
-                                                  <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:underline text-primary">
-                                                    {doc.name}
-                                                  </a>
-                                                  {replacingDocId === doc.id && (
-                                                      <div className="flex items-center gap-2 pt-2">
-                                                          <Progress value={uploadProgress} className="w-full h-2" />
-                                                          <span className="text-xs text-muted-foreground">{Math.round(uploadProgress)}%</span>
-                                                      </div>
-                                                  )}
-                                                </TableCell>
-                                                <TableCell><Badge variant="outline" className="capitalize">{doc.type}</Badge></TableCell>
-                                                <TableCell>{doc.createdAt ? doc.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
-                                                {isAdmin && (
-                                                    <TableCell className="text-right">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                          <Button asChild variant="outline" size="icon" className="btn-soft">
-                                                            <a href={doc.url} target="_blank" rel="noopener noreferrer"><Download className="h-4 w-4" /></a>
-                                                          </Button>
-                                                          <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            onClick={() => document.getElementById(`replace-input-${doc.id}`)?.click()}
-                                                            disabled={!!replacingDocId}
-                                                            className="btn-soft"
-                                                          >
-                                                            <Replace className="h-4 w-4"/>
-                                                            <input
-                                                              type="file"
-                                                              id={`replace-input-${doc.id}`}
-                                                              className="hidden"
-                                                              onChange={(e) => {
-                                                                  if (e.target.files?.[0]) {
-                                                                      handleReplaceDocument(doc.id, e.target.files[0]);
-                                                                  }
-                                                              }}
-                                                            />
-                                                          </Button>
-                                                          <Button variant="destructive" size="icon" onClick={() => setDocToDelete(doc)} disabled={isDeletingDoc}>
-                                                              <Trash2 className="h-4 w-4" />
-                                                          </Button>
-                                                        </div>
-                                                    </TableCell>
-                                                )}
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            )}
-                        </div>
-                    </CardContent>
-                    {isAdmin && (
-                        <CardFooter className="border-t pt-6">
-                            <form onSubmit={handleUploadDocument} className="w-full space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                    <div className="space-y-1">
-                                        <Label htmlFor="docType">Document Type</Label>
-                                        <Select value={docType} onValueChange={(v) => setDocType(v as JacketDocument['type'])} disabled={isUploading}>
-                                            <SelectTrigger className="input-like">
-                                                <SelectValue placeholder="Select type..." />
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-[hsl(var(--panel))] border-white/10">
-                                                <SelectItem value="title">Title</SelectItem>
-                                                <SelectItem value="poa">POA</SelectItem>
-                                                <SelectItem value="addendum">Addendum</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label htmlFor="docFile">File</Label>
-                                        <Input 
-                                            id="docFile"
-                                            type="file"
-                                            onChange={(e) => setDocFile(e.target.files ? e.target.files[0] : null)}
-                                            disabled={isUploading}
-                                            className="input-like"
-                                        />
-                                    </div>
-                                     <Button type="submit" disabled={isUploading || !docFile || !docType} className="btn-primary">
-                                        {isUploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Uploading...</> : <><UploadCloud className="mr-2 h-4 w-4"/>Upload</>}
-                                    </Button>
-                                </div>
-                                {isUploading && (
-                                    <div className="flex items-center gap-2 pt-1">
-                                        <Progress value={uploadProgress} className="w-full h-2" />
-                                        <span className="text-xs text-muted-foreground">
-                                        {Math.round(uploadProgress)}%
-                                        </span>
-                                    </div>
-                                )}
-                                {docError && <p className="text-sm text-destructive">{docError}</p>}
-                            </form>
-                        </CardFooter>
-                    )}
-                </Card>
-            </TabsContent>
-            
-            <TabsContent value="activity">
-                 {isAdmin && (
-                  <Card className="panel">
-                    <CardHeader><CardTitle>Activity Log</CardTitle></CardHeader>
-                    <CardContent>
-                      {loadingActivity ? (
-                          <div className="space-y-4">
-                            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
-                          </div>
-                      ) : activityLog.length === 0 ? (
-                        <p className="text-sm text-muted-foreground p-4 text-center">No activity recorded yet.</p>
-                      ) : (
-                        <div className="space-y-4">
-                          {activityLog.map(activity => (
-                            <div key={activity.id} className="text-sm border-b pb-2">
-                              <p className="font-medium">{activity.message}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {activity.ts.toDate().toLocaleString()} by {activity.actorName || activity.actorEmail || activity.actorUid}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                )}
-            </TabsContent>
-          </Tabs>
+            <AssignDealerComponent jacket={jacket} approvedDealers={approvedDealers} isAdmin={!!isAdmin} />
+        </div>
       </div>
 
-      {/* Dialog for marking as Paid */}
-      <Dialog open={paymentDialog.open} onOpenChange={(open) => setPaymentDialog({ ...paymentDialog, open })}>
-        <DialogContent className="panel">
-          <DialogHeader>
-            <DialogTitle>Confirm Payment for {paymentDialog.type === 'auction' ? 'Auction' : 'Management Fee'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Payment Date</Label>
-                <Popover>
-                    <PopoverTrigger asChild>
-                    <Button
-                        variant={"outline"}
-                        className={cn("w-full justify-start text-left font-normal input-like", !paymentDate && "text-muted-foreground")}
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {paymentDate ? format(paymentDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 panel">
-                    <Calendar
-                        mode="single"
-                        selected={paymentDate}
-                        onSelect={setPaymentDate}
-                        initialFocus
-                    />
-                    </PopoverContent>
-                </Popover>
+      {/* --- TABS --- */}
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="bg-muted/50 p-1 h-auto">
+          <TabsTrigger value="overview" className="transition-colors data-[state=inactive]:hover:bg-muted focus-visible:ring-offset-0">Overview</TabsTrigger>
+          <TabsTrigger value="misc-fees" className="transition-colors data-[state=inactive]:hover:bg-muted focus-visible:ring-offset-0">
+            Misc Fees <Badge variant="secondary" className="ml-2">{jacket.miscFees?.length || 0}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="documents" className="transition-colors data-[state=inactive]:hover:bg-muted focus-visible:ring-offset-0">
+            Documents <Badge variant="secondary" className="ml-2">{jacket.documents?.length || 0}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="transition-colors data-[state=inactive]:hover:bg-muted focus-visible:ring-offset-0">Activity Log</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-4 space-y-6">
+                <Card>
+                    <CardHeader><CardTitle>Payment Status</CardTitle></CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                              <Label htmlFor="auctionPaid" className="font-medium">Auction Paid</Label>
+                              <div className="flex items-center space-x-2">
+                                  <Badge variant={jacket.isAuctionPaid ? 'default' : 'destructive'} className="mr-2">{jacket.isAuctionPaid ? 'Paid' : 'Unpaid'}</Badge>
+                                  <TooltipProvider>
+                                  <Tooltip delayDuration={0}>
+                                      <TooltipTrigger disabled={!isAdmin} asChild>
+                                          <Switch id="auctionPaid" checked={jacket.isAuctionPaid} onCheckedChange={(val) => handlePaymentStatusChange('auction', val)} disabled={!isAdmin || isUpdatingPayment} />
+                                      </TooltipTrigger>
+                                      {!isAdmin && <TooltipContent><p>Admin only</p></TooltipContent>}
+                                  </Tooltip>
+                                  </TooltipProvider>
+                              </div>
+                          </div>
+                          {jacket.isAuctionPaid && jacket.auctionPaidAt && (
+                              <div className="text-xs text-muted-foreground mt-2">
+                                  Paid on {jacket.auctionPaidAt.toDate().toLocaleDateString()}
+                                  {jacket.auctionPaymentRef && <p className="font-mono text-xs mt-1 p-1 bg-muted rounded w-fit">Ref: {jacket.auctionPaymentRef}</p>}
+                              </div>
+                          )}
+                      </div>
+                      <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                              <Label htmlFor="mgmtPaid" className="font-medium">Management Fee Paid</Label>
+                              <div className="flex items-center space-x-2">
+                                  <Badge variant={jacket.isMgmtFeePaid ? 'default' : 'destructive'} className="mr-2">{jacket.isMgmtFeePaid ? 'Paid' : 'Unpaid'}</Badge>
+                                  <TooltipProvider>
+                                  <Tooltip delayDuration={0}>
+                                      <TooltipTrigger disabled={!isAdmin} asChild>
+                                          <Switch id="mgmtPaid" checked={jacket.isMgmtFeePaid} onCheckedChange={(val) => handlePaymentStatusChange('mgmt', val)} disabled={!isAdmin || isUpdatingPayment} />
+                                      </TooltipTrigger>
+                                      {!isAdmin && <TooltipContent><p>Admin only</p></TooltipContent>}
+                                  </Tooltip>
+                                  </TooltipProvider>
+                              </div>
+                          </div>
+                          {jacket.isMgmtFeePaid && jacket.mgmtPaidAt && (
+                              <div className="text-xs text-muted-foreground mt-2">
+                                  Paid on {jacket.mgmtPaidAt.toDate().toLocaleDateString()}
+                                  {jacket.mgmtPaymentRef && <p className="font-mono text-xs mt-1 p-1 bg-muted rounded w-fit">Ref: {jacket.mgmtPaymentRef}</p>}
+                              </div>
+                          )}
+                      </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader><CardTitle>Download Documents</CardTitle></CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex justify-between items-center text-sm">
+                            <Label>Jacket Invoice</Label>
+                            {jacket.invoiceUrl ? <Button asChild size="sm" variant="outline"><a href={jacket.invoiceUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4 w-4" />Open</a></Button> : <Badge variant="outline">Not Generated</Badge>}
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                            <Label>Bill of Sale</Label>
+                            {jacket.bosUrl ? <Button asChild size="sm" variant="outline"><a href={jacket.bosUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4 w-4" />Open</a></Button> : <Badge variant="outline">Not Generated</Badge>}
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                            <Label>Full Jacket Packet</Label>
+                            {jacket.packetUrl ? <Button asChild size="sm" variant="outline"><a href={jacket.packetUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4 w-4" />Open</a></Button> : <Badge variant="outline">Not Generated</Badge>}
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
-            <div className="space-y-2">
-              <Label>Reference / Note (Optional)</Label>
-              <Input value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} placeholder="e.g. Check #12345" className="input-like"/>
+            <div className="lg:col-span-8">
+              {financials && (
+                <Card>
+                  <CardHeader><CardTitle>Financials</CardTitle></CardHeader>
+                  <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <FinancialsGridItem label="Item Price" value={fmtCurrency(jacket.itemPrice)} />
+                      <FinancialsGridItem label="Buyer Fee" value={fmtCurrency(jacket.buyerFee)} />
+                      <FinancialsGridItem label="Online Fee" value={fmtCurrency(jacket.onlineFee)} />
+                      <FinancialsGridItem label="Management Fee" value={fmtCurrency(jacket.managementFee)} />
+                      <FinancialsGridItem label="Paid Misc Fees" value={fmtCurrency(financials.paidMisc)} />
+                      <FinancialsGridItem label="Unpaid Misc Fees" value={fmtCurrency(financials.unpaidMisc)} />
+                      <div className="col-span-2 md:col-span-3 border-t my-2"></div>
+                      <FinancialsGridItem label="Total Cost" value={fmtCurrency(financials.subtotal)} />
+                      <FinancialsGridItem label="Total Paid" value={fmtCurrency(financials.amountPaid)} />
+                      <FinancialsGridItem label="Balance Due" value={fmtCurrency(financials.outstanding)} />
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPaymentDialog({ open: false, type: null })} className="btn-soft">Cancel</Button>
-            <Button onClick={handleConfirmPaid} disabled={isUpdatingPayment || !paymentDate} className="btn-primary">
-              {isUpdatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Payment
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </TabsContent>
+        
+        <TabsContent value="misc-fees" className="mt-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Miscellaneous Fees</CardTitle>
+                    <CardDescription>Manage additional fees associated with this jacket.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                    {(!jacket.miscFees || jacket.miscFees.length === 0) ? (
+                        <p className="text-sm text-muted-foreground p-4 text-center">No misc fees yet.</p>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Description</TableHead>
+                                    <TableHead>Amount</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead>Added</TableHead>
+                                    {isAdmin && <TableHead className="text-right">Actions</TableHead>}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                            {jacket.miscFees.map((fee) => (
+                                <TableRow key={fee.id}>
+                                    <TableCell className="font-medium">{fee.description}</TableCell>
+                                    <TableCell>{fmtCurrency(fee.amount)}</TableCell>
+                                    <TableCell>
+                                        <Badge variant={fee.paid ? 'default' : 'destructive'}>
+                                        {fee.paid ? 'Paid' : 'Unpaid'}
+                                        </Badge>
+                                        {fee.paid && fee.paidAt && (
+                                            <p className="text-xs text-muted-foreground mt-1">{fee.paidAt.toDate().toLocaleDateString()}</p>
+                                        )}
+                                    </TableCell>
+                                    <TableCell>{fee.createdAt ? fee.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
+                                    {isAdmin && (
+                                        <TableCell className="text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <Button variant="outline" size="sm" onClick={() => setFeeToModify({ fee, action: fee.paid ? 'unpay' : 'pay' })} disabled={isModifyingFee}>
+                                                    <CreditCard className="mr-2 h-4 w-4" /> Mark {fee.paid ? 'Unpaid' : 'Paid'}
+                                                </Button>
+                                                <Button variant="destructive" size="icon" onClick={() => setFeeToModify({ fee, action: 'delete' })} disabled={isModifyingFee}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                    )}
+                                </TableRow>
+                            ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                    </div>
+                </CardContent>
+                {isAdmin && (
+                    <CardFooter className="border-t pt-6">
+                        <form onSubmit={handleAddFee} className="w-full space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                <div className="md:col-span-2 space-y-1">
+                                    <Label htmlFor="feeDescription">Fee Description</Label>
+                                    <Input id="feeDescription" value={feeDescription} onChange={(e) => setFeeDescription(e.target.value)} placeholder="e.g. Lost Key Replacement" disabled={isAddingFee} className="bg-background"/>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="feeAmount">Amount ($)</Label>
+                                    <Input id="feeAmount" type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="50.00" step="0.01" disabled={isAddingFee} className="bg-background" />
+                                </div>
+                            </div>
+                            {feeError && <p className="text-sm text-destructive">{feeError}</p>}
+                            <Button type="submit" disabled={isAddingFee}>
+                                {isAddingFee ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding...</> : 'Add Fee'}
+                            </Button>
+                        </form>
+                    </CardFooter>
+                )}
+            </Card>
+        </TabsContent>
+
+        <TabsContent value="documents" className="mt-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Documents</CardTitle>
+                    <CardDescription>Manage titles, POAs, and other documents for this jacket.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                        {(!jacket.documents || jacket.documents.length === 0) ? (
+                            <p className="text-sm text-muted-foreground p-4 text-center">No documents yet.</p>
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>File Name</TableHead>
+                                        <TableHead>Type</TableHead>
+                                        <TableHead>Added</TableHead>
+                                        {isAdmin && <TableHead className="text-right">Actions</TableHead>}
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {jacket.documents.map((doc) => (
+                                        <TableRow key={doc.id}>
+                                            <TableCell className="font-medium">
+                                                <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:underline text-primary">
+                                                    {doc.name}
+                                                </a>
+                                                {replacingDocId === doc.id && (
+                                                    <div className="flex items-center gap-2 pt-2">
+                                                        <Progress value={uploadProgress} className="w-full h-2" />
+                                                        <span className="text-xs text-muted-foreground">{Math.round(uploadProgress)}%</span>
+                                                    </div>
+                                                )}
+                                            </TableCell>
+                                            <TableCell><Badge variant="outline" className="capitalize">{doc.type}</Badge></TableCell>
+                                            <TableCell>{doc.createdAt ? doc.createdAt.toDate().toLocaleDateString() : 'N/A'}</TableCell>
+                                            {isAdmin && (
+                                                <TableCell className="text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <Button asChild variant="outline" size="icon">
+                                                            <a href={doc.url} target="_blank" rel="noopener noreferrer"><Download className="h-4 w-4" /></a>
+                                                        </Button>
+                                                        <Button variant="outline" size="icon" onClick={() => document.getElementById(`replace-input-${doc.id}`)?.click()} disabled={!!replacingDocId}>
+                                                            <Replace className="h-4 w-4"/>
+                                                            <input type="file" id={`replace-input-${doc.id}`} className="hidden" onChange={(e) => { if (e.target.files?.[0]) { handleReplaceDocument(doc.id, e.target.files[0]); } }} />
+                                                        </Button>
+                                                        <Button variant="destructive" size="icon" onClick={() => setDocToDelete(doc)} disabled={isDeletingDoc}>
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            )}
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </div>
+                </CardContent>
+                {isAdmin && (
+                    <CardFooter className="border-t pt-6">
+                        <form onSubmit={handleUploadDocument} className="w-full space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                <div className="space-y-1">
+                                    <Label htmlFor="docType">Document Type</Label>
+                                    <Select value={docType} onValueChange={(v) => setDocType(v as DocType)} disabled={isUploading}>
+                                        <SelectTrigger className="bg-background">
+                                            <SelectValue placeholder="Select type..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-card border-border">
+                                            <SelectItem value="Title">Title</SelectItem>
+                                            <SelectItem value="Power of Attorney">Power of Attorney</SelectItem>
+                                            <SelectItem value="Release Form">Release Form</SelectItem>
+                                            <SelectItem value="POA">POA</SelectItem>
+                                            <SelectItem value="Addendum">Addendum</SelectItem>
+                                            <SelectItem value="Misc Doc">Misc Doc</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="docFile">File</Label>
+                                    <Input id="docFile" type="file" onChange={(e) => setDocFile(e.target.files ? e.target.files[0] : null)} disabled={isUploading} className="bg-background" />
+                                </div>
+                                <Button type="submit" disabled={isUploading || !docFile || !docType}>
+                                    {isUploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Uploading...</> : <><UploadCloud className="mr-2 h-4 w-4"/>Upload</>}
+                                </Button>
+                            </div>
+                            {isUploading && <Progress value={uploadProgress} className="w-full h-2 mt-2" />}
+                            {docError && <p className="text-sm text-destructive mt-2">{docError}</p>}
+                        </form>
+                    </CardFooter>
+                )}
+            </Card>
+        </TabsContent>
+        
+        <TabsContent value="activity" className="mt-6">
+            {isAdmin && (
+            <Card>
+                <CardHeader><CardTitle>Activity Log</CardTitle></CardHeader>
+                <CardContent>
+                {loadingActivity ? (
+                    <div className="space-y-4">
+                        {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+                    </div>
+                ) : activityLog.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-4 text-center">No activity recorded yet.</p>
+                ) : (
+                    <div className="space-y-4">
+                    {activityLog.map(activity => (
+                        <div key={activity.id} className="text-sm border-b pb-2">
+                        <p className="font-medium">{activity.message}</p>
+                        <p className="text-xs text-muted-foreground">
+                            {activity.ts.toDate().toLocaleString()} by {activity.actorName || activity.actorEmail || activity.actorUid}
+                        </p>
+                        </div>
+                    ))}
+                    </div>
+                )}
+                </CardContent>
+            </Card>
+            )}
+        </TabsContent>
+      </Tabs>
       
-      <AlertDialog open={unpaidConfirmDialog.open} onOpenChange={(open) => setUnpaidConfirmDialog({ ...unpaidConfirmDialog, open })}>
-        <AlertDialogContent className="panel">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will mark the {unpaidConfirmDialog.type} fee as unpaid and clear its payment date and reference. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setUnpaidConfirmDialog({ open: false, type: null })} className="btn-soft">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmUnpaid} disabled={isUpdatingPayment} className="bg-destructive hover:bg-destructive/90">
-              {isUpdatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Yes, Mark as Unpaid
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={!!docToDelete} onOpenChange={(open) => !open && setDocToDelete(null)}>
-        <AlertDialogContent className="panel">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure you want to delete this document?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the file <span className="font-medium">"{docToDelete?.name}"</span> from storage and remove its record from this jacket. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDocToDelete(null)} disabled={isDeletingDoc} className="btn-soft">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteDocument} disabled={isDeletingDoc} className="bg-destructive hover:bg-destructive/90">
-              {isDeletingDoc && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Yes, Delete Document
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={!!feeToModify} onOpenChange={(open) => !open && setFeeToModify(null)}>
-        <AlertDialogContent className="panel">
+      {/* --- DIALOGS & ALERTS --- */}
+        <Dialog open={paymentDialog.open} onOpenChange={(open) => setPaymentDialog({ ...paymentDialog, open })}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Payment for {paymentDialog.type === 'auction' ? 'Auction' : 'Management Fee'}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Payment Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                    <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-card", !paymentDate && "text-muted-foreground")}>
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {paymentDate ? format(paymentDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-card border-border">
+                    <Calendar mode="single" selected={paymentDate} onSelect={setPaymentDate} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+              </div>
+              <div className="space-y-2">
+                <Label>Reference / Note (Optional)</Label>
+                <Input value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)} placeholder="e.g. Check #12345" className="bg-card"/>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPaymentDialog({ open: false, type: null })}>Cancel</Button>
+              <Button onClick={handleConfirmPaid} disabled={isUpdatingPayment || !paymentDate}>
+                {isUpdatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save Payment
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      
+        <AlertDialog open={unpaidConfirmDialog.open} onOpenChange={(open) => setUnpaidConfirmDialog({ ...unpaidConfirmDialog, open })}>
+          <AlertDialogContent>
             <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    {feeToModify?.action === 'delete' ? `This will permanently delete the fee "${feeToModify?.fee.description}". This action cannot be undone.` :
-                    `This will mark the fee "${feeToModify?.fee.description}" as ${feeToModify?.action === 'pay' ? 'Paid' : 'Unpaid'}.`}
-                </AlertDialogDescription>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will mark the {unpaidConfirmDialog.type} fee as unpaid and clear its payment date and reference. This action cannot be undone.
+              </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setFeeToModify(null)} className="btn-soft">Cancel</AlertDialogCancel>
-                <AlertDialogAction 
-                    onClick={handleModifyFee} 
-                    disabled={isModifyingFee}
-                    className={feeToModify?.action === 'delete' ? "bg-destructive hover:bg-destructive/90" : "btn-primary"}
-                >
-                    {isModifyingFee && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Yes, proceed
-                </AlertDialogAction>
+              <AlertDialogCancel onClick={() => setUnpaidConfirmDialog({ open: false, type: null })}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirmUnpaid} disabled={isUpdatingPayment} className="bg-destructive hover:bg-destructive/90">
+                {isUpdatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Yes, Mark as Unpaid
+              </AlertDialogAction>
             </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          </AlertDialogContent>
+        </AlertDialog>
 
+        <AlertDialog open={!!docToDelete} onOpenChange={(open) => !open && setDocToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to delete this document?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the file <span className="font-medium">"{docToDelete?.name}"</span> from storage and remove its record from this jacket. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setDocToDelete(null)} disabled={isDeletingDoc}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteDocument} disabled={isDeletingDoc} className="bg-destructive hover:bg-destructive/90">
+                {isDeletingDoc && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Yes, Delete Document
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={!!feeToModify} onOpenChange={(open) => !open && setFeeToModify(null)}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      {feeToModify?.action === 'delete' ? `This will permanently delete the fee "${feeToModify?.fee.description}". This action cannot be undone.` :
+                      `This will mark the fee "${feeToModify?.fee.description}" as ${feeToModify?.action === 'pay' ? 'Paid' : 'Unpaid'}.`}
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel onClick={() => setFeeToModify(null)}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleModifyFee} disabled={isModifyingFee} className={feeToModify?.action === 'delete' ? "bg-destructive hover:bg-destructive/90" : ""}>
+                      {isModifyingFee && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Yes, proceed
+                  </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
     </main>
   );
 }

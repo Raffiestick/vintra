@@ -1,8 +1,8 @@
 "use strict";
+// functions/src/parsers/npa.ts
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseNpaInvoiceText = parseNpaInvoiceText;
-// functions/src/parsers/npa.ts
-const config_1 = require("../config");
+const utils_1 = require("../utils");
 // This regex finds lines that are LIKELY a VIN, HIN, or other unique ID.
 const ID_RE = /^(?![0-9]{5,8}$)(?=[A-Z0-9-]{12,18}$)[A-Z0-9-]+$/;
 // This regex finds the year, make, and model on a single line.
@@ -14,19 +14,12 @@ function parseNpaInvoiceText(text) {
     for (const line of lines) {
         // Check if the line is a vehicle identifier
         if (ID_RE.test(line)) {
-            // If we were already building a unit, save it before starting a new one.
             if (currentUnit) {
                 units.push(currentUnit);
             }
-            // Start a new unit
-            currentUnit = { vinOrHin: line };
-            if (line.length === 17)
-                currentUnit.vin = line;
-            if (line.length === 12)
-                currentUnit.hin = line;
+            currentUnit = { vin: line };
             continue;
         }
-        // If we haven't found the first vehicle yet, skip until we do.
         if (!currentUnit) {
             continue;
         }
@@ -41,14 +34,14 @@ function parseNpaInvoiceText(text) {
         // --- Check for Odometer/Color ---
         const odoColorMatch = line.match(/^(\d{2,})\s+\[([A-Z\/]+)\]$/);
         if (odoColorMatch) {
-            currentUnit.odometer = parseInt(odoColorMatch[1], 10);
+            currentUnit.odometer = parseInt(odoColorMatch[1], 10); // CORRECTED
             currentUnit.color = odoColorMatch[2];
             continue;
         }
         // --- Check for Title Info ---
         const titleMatch = line.match(/^(AZ TITLE|BOS ONLY|FL TITLE|FL REPO TITLE|SC TITLE|ME TITLE|BOS)$/);
         if (titleMatch) {
-            currentUnit.titleInfo = titleMatch[1];
+            currentUnit.titleInfo = titleMatch[1]; // CORRECTED
             continue;
         }
         // --- Check for Fees ---
@@ -57,7 +50,7 @@ function parseNpaInvoiceText(text) {
             const feeName = feeMatch[1];
             const amount = parseFloat(feeMatch[2].replace(/,/g, ''));
             if (feeName === 'Item Price')
-                currentUnit.itemPrice = amount;
+                currentUnit.itemPrice = amount; // CORRECTED
             if (feeName === 'Buyer Fee')
                 currentUnit.buyerFee = amount;
             if (feeName === 'Online Fee')
@@ -65,12 +58,11 @@ function parseNpaInvoiceText(text) {
             continue;
         }
     }
-    // Add the last processed unit to the array
     if (currentUnit) {
         units.push(currentUnit);
     }
     return {
-        invoiceDate: (0, config_1.pickInvoiceDateFromHeader)(text),
+        auctionSaleDate: (0, utils_1.pickInvoiceDateFromHeader)(text),
         units,
     };
 }

@@ -1,14 +1,25 @@
+// functions/src/index.ts
+
 /**
- * Main entry point for all Cloud Functions.
- * We are using explicit named exports to avoid conflicts.
+ * This line is CRUCIAL. It imports and runs the Firebase Admin configuration
+ * which initializes the app. It must be the first line of this file.
  */
+import "./config";
 
-// Functions for the new staging workflow
-export { createStagingBatchFromManualEntry } from './modules/staging';
-export { processStagedUnit } from './modules/process';
+// --- Authentication & User Management ---
+export {
+    signInWithCustomToken,
+    manageDealerApplication,
+    generateJacketId,
+} from "./modules/auth";
 
-// Existing functions from the invoices module
-export { generateBillOfSale, generateJacketInvoice } from './modules/invoices';
+// --- Staging & Processing ---
+export { createStagingBatchFromManualEntry } from "./modules/staging";
+export { processStagedUnit } from "./modules/process";
 
-// Other function modules like auth, docs, and packet are ignored for now
-// to ensure the build succeeds. We can add them back later if needed.
+// --- Document & Packet Generation ---
+// export { attachStagedDocToJacket } from "./modules/docs"; // Temporarily disabled for debugging
+export {
+    generateJacketInvoice,
+    generateBillOfSale,
+} from "./modules/invoices";

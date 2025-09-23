@@ -1,11 +1,13 @@
 "use strict";
+// functions/src/modules/docs.ts
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.attachStagedDocToJacket = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-admin/firestore");
-const config_1 = require("../config");
+const config_1 = require("../config"); // CORRECTED
+const utils_1 = require("../utils"); // CORRECTED
 exports.attachStagedDocToJacket = (0, https_1.onCall)({ cors: true, region: "us-central1" }, async (request) => {
-    (0, config_1.assertAdmin)(request);
+    (0, utils_1.assertAdmin)(request);
     const { docId, vin, typeOverride } = request.data || {};
     if (!docId || !vin) {
         throw new https_1.HttpsError("invalid-argument", "docId and vin are required.");

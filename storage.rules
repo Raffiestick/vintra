@@ -1,18 +1,25 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    
-    // Allow any signed-in user to upload to their own invoices folder.
-    match /invoices/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+    // Helper function to check if the logged-in user is in the 'admins' collection in Firestore.
+    function isAdmin() {
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    // Allow any signed-in user to access the staging area for now.
-    // We can tighten this to admins later.
-    match /stagingInvoices/{sid}/{allPaths=**} {
-      allow read, write: if request.auth != null;
+    // Allow any authenticated user to read files.
+    // For an internal tool, this is generally safe.
+    match /{allPaths=**} {
+      allow read: if request.auth != null;
     }
+
+    // Allow Admins to upload, update, and delete files within the jacket-documents folder.
+    // This rule protects all files for all jackets.
+    match /jacket-documents/{vin}/{allChildren=**} {
+      allow write: if request.auth != null && isAdmin();
+    }
+
+    // Add other specific rules for other folders as needed.
+    // E.g. match /invoices/{userId}/{fileName} { ... }
   }
 }
-
-

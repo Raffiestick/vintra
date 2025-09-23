@@ -1,6 +1,9 @@
+// functions/src/modules/auth.ts
+
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { FieldValue } from "firebase-admin/firestore";
-import { db, auth, assertAdmin } from "../config";
+import { db, auth } from "../config"; // CORRECTED
+import { assertAdmin } from "../utils"; // CORRECTED
 
 export const signInWithCustomToken = onCall({ cors: true, region: "us-central1" }, async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Authentication is required.");
@@ -42,7 +45,8 @@ export const manageDealerApplication = onCall({ cors: true, region: "us-central1
 });
 
 export const generateJacketId = onCall({ cors: true, region: "us-central1" }, async () => {
+    // This is a simple, non-sequential ID generator.
+    // A more robust solution might use a counter in Firestore.
     const jacketId = `J${Date.now()}`;
     return { jacketId };
 });
-

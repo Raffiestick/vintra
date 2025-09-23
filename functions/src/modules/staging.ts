@@ -1,10 +1,13 @@
+// functions/src/modules/staging.ts
+
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { FieldValue } from "firebase-admin/firestore";
-import { db, assertAdmin } from "../config";
+import { db } from "../config"; // CORRECTED
+import { assertAdmin } from "../utils"; // CORRECTED
 
-export const createStagingBatchFromManualEntry = onCall({ cors: /.*/ }, async (request) => {
+export const createStagingBatchFromManualEntry = onCall({ cors: true, region: "us-central1" }, async (request) => {
   assertAdmin(request);
-  const { invoiceDate, invoiceUrl, invoiceNumber, units } = request.data;
+  const { auctionSaleDate, auctionInvoiceNumber, units } = request.data;
   const actorUid = request.auth?.uid;
 
   if (!Array.isArray(units) || units.length === 0) {
@@ -13,12 +16,11 @@ export const createStagingBatchFromManualEntry = onCall({ cors: /.*/ }, async (r
 
   try {
     const stagingRef = await db.collection("stagingInvoices").add({
-      invoiceDate: invoiceDate || null,
-      invoiceNumber: invoiceNumber || null,
-      invoiceUrl: invoiceUrl || null,
+      auctionSaleDate: auctionSaleDate || null,
+      auctionInvoiceNumber: auctionInvoiceNumber || null,
       status: "manual-entry",
       uploaderUid: actorUid,
-      fileName: invoiceUrl ? "Uploaded Invoice" : "Manual Entry",
+      fileName: "Manual Entry",
       unitCount: units.length,
       createdAt: FieldValue.serverTimestamp(),
     });
