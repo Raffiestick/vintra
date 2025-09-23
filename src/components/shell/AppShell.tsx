@@ -42,9 +42,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   /* --- role-based nav items --- */
   const adminNav = [
     { label: "Dashboard", href: "/admin" },
+    { label: "Create New Jacket", href: "/admin/jackets/new" },
     { label: "Staging Invoices", href: "/admin/staging/invoices" },
     { label: "Jackets", href: "/admin/jackets" },
-    { label: "Create New Jacket", href: "/admin/jackets/new" },
     { label: "Approved Dealers", href: "/admin/approved-dealers" },
     { label: "Dealer Mgmt", href: "/admin/dealer-management" },
   ];

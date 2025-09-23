@@ -40,6 +40,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(u);
         if (u) {
           const tok = await getIdTokenResult(u, true);
+          // ----> ADD THIS LINE HERE <----
+          console.log("USER TOKEN CLAIMS:", tok.claims);
+          // ------------------------------
           setClaims(tok.claims ?? null);
         } else {
           setClaims(null);

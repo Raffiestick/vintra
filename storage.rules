@@ -2,24 +2,25 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Helper function to check if the logged-in user is in the 'admins' collection in Firestore.
+    // --- THIS FUNCTION IS NOW CORRECTED ---
+    // It now checks for the 'admin' custom claim on the user's token.
     function isAdmin() {
-      return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      return request.auth.token.admin == true;
     }
 
     // Allow any authenticated user to read files.
-    // For an internal tool, this is generally safe.
     match /{allPaths=**} {
       allow read: if request.auth != null;
     }
 
-    // Allow Admins to upload, update, and delete files within the jacket-documents folder.
-    // This rule protects all files for all jackets.
+    // Allow Admins to write to the jacket-documents folder.
     match /jacket-documents/{vin}/{allChildren=**} {
       allow write: if request.auth != null && isAdmin();
     }
 
-    // Add other specific rules for other folders as needed.
-    // E.g. match /invoices/{userId}/{fileName} { ... }
+    // Allow Admins to write files to the invoices folder.
+    match /invoices/{userId}/{allChildren=**} {
+        allow write: if request.auth != null && isAdmin();
+    }
   }
 }
