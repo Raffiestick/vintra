@@ -7,11 +7,11 @@ import { getStorage } from "firebase-admin/storage";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import { PDFDocument } from "pdf-lib";
+import fetch from "node-fetch";
 import { renderInvoiceHTML, type Company, type Party, type JacketData } from "../templates/invoice";
 import { renderBoSHTML } from "../templates/bos";
 import { renderCoverHTML } from "../templates/cover";
 
-// Helper function to get Seller and Buyer data
 async function getParticipantData(jacketData: any): Promise<{ seller: Company, buyer: Party }> {
     const seller: Company = {
         name: "RizeUp Ventures, LLC", dba: "Dolphin Chasers",
@@ -30,8 +30,7 @@ async function getParticipantData(jacketData: any): Promise<{ seller: Company, b
     return { seller, buyer };
 }
 
-// Helper function to turn a single HTML string into a PDF buffer
-async function createPdf(html: string): Promise<Buffer> {
+async function createPdfFromHtml(html: string): Promise<Buffer> {
     const browser = await puppeteer.launch({
         args: chromium.args,
         executablePath: await chromium.executablePath(),
@@ -39,13 +38,24 @@ async function createPdf(html: string): Promise<Buffer> {
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '1in', right: '1in', bottom: '1in', left: '1in' } });
     await browser.close();
     return pdfBuffer;
 }
 
+async function createPdfFromImage(imageBuffer: Buffer, contentType: string): Promise<Buffer> {
+    const base64Image = imageBuffer.toString('base64');
+    const html = `
+        <!DOCTYPE html>
+        <html>
+            <head><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; } img { max-width: 100%; max-height: 100%; object-fit: contain; }</style></head>
+            <body><img src="data:${contentType};base64,${base64Image}" /></body>
+        </html>`;
+    return createPdfFromHtml(html);
+}
+
 export const generateJacketPacket = onCall({ 
-    cors: true, region: "us-central1", memory: "1GiB", timeoutSeconds: 120 
+    cors: true, region: "us-central1", memory: "1GiB", timeoutSeconds: 180 
 }, async (request) => {
     assertAdmin(request);
     const { vin } = request.data;
@@ -59,7 +69,6 @@ export const generateJacketPacket = onCall({
         const rawData = jacketSnap.data() || {};
         const jacketData = { ...rawData } as JacketData;
         
-        // Smartly set the auctionSaleDate for the templates
         if (rawData.auctionSaleDate && typeof rawData.auctionSaleDate.toDate === 'function') {
             jacketData.auctionSaleDate = rawData.auctionSaleDate.toDate();
         } else {
@@ -68,34 +77,51 @@ export const generateJacketPacket = onCall({
 
         const { seller, buyer } = await getParticipantData(jacketData);
 
-        // 1. Generate all three HTML documents
         const coverHtml = renderCoverHTML(jacketData, seller);
         const invoiceHtml = renderInvoiceHTML(jacketData, seller, buyer);
         const bosHtml = renderBoSHTML(jacketData, seller, buyer);
 
-        // 2. Convert each HTML to a PDF in parallel
         const [coverPdf, invoicePdf, bosPdf] = await Promise.all([
-            createPdf(coverHtml),
-            createPdf(invoiceHtml),
-            createPdf(bosHtml)
+            createPdfFromHtml(coverHtml),
+            createPdfFromHtml(invoiceHtml),
+            createPdfFromHtml(bosHtml)
         ]);
         
-        // 3. Merge the PDFs into a single document
         const mergedPdf = await PDFDocument.create();
-        const coverDoc = await PDFDocument.load(coverPdf);
-        const invoiceDoc = await PDFDocument.load(invoicePdf);
-        const bosDoc = await PDFDocument.load(bosPdf);
+        const pdfsToMerge = [coverPdf, invoicePdf, bosPdf];
 
-        const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
-        mergedPdf.addPage(coverPage);
-        const invoicePages = await mergedPdf.copyPages(invoiceDoc, invoiceDoc.getPageIndices());
-        invoicePages.forEach(page => mergedPdf.addPage(page));
-        const bosPages = await mergedPdf.copyPages(bosDoc, bosDoc.getPageIndices());
-        bosPages.forEach(page => mergedPdf.addPage(page));
+        const attachmentPromises = (jacketData.documents || []).map(async (doc) => {
+            try {
+                const response = await fetch(doc.url);
+                if (!response.ok) throw new Error(`Failed to fetch ${doc.name}`);
+                
+                const fileBuffer = await response.buffer();
+                const contentType = response.headers.get('content-type') || '';
+
+                if (contentType.includes('pdf')) {
+                    return fileBuffer;
+                } else if (contentType.startsWith('image/')) {
+                    return await createPdfFromImage(fileBuffer, contentType);
+                }
+                console.warn(`Skipping unsupported document type: ${contentType} for ${doc.name}`);
+                return null;
+            } catch (error) {
+                console.error(`Failed to process attached document ${doc.name}:`, error);
+                return null;
+            }
+        });
+
+        const additionalPdfBuffers = (await Promise.all(attachmentPromises)).filter(b => b !== null) as Buffer[];
+        pdfsToMerge.push(...additionalPdfBuffers);
+
+        for (const pdfBuffer of pdfsToMerge) {
+            const pdf = await PDFDocument.load(pdfBuffer);
+            const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+            copiedPages.forEach(page => mergedPdf.addPage(page));
+        }
 
         const mergedPdfBytes = await mergedPdf.save();
         
-        // 4. Save the final merged PDF to storage
         const filePath = `jacket-packets/${vin}/Jacket-${jacketData.jacketNumber || vin}.pdf`;
         const file = getStorage().bucket().file(filePath);
         await file.save(Buffer.from(mergedPdfBytes), { contentType: 'application/pdf' });

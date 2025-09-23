@@ -3,7 +3,10 @@
 import type { JacketData, Company } from "./invoice";
 
 export function renderCoverHTML(jacketData: JacketData, seller: Company): string {
-  const { jacketNumber, year, make, model, vin } = jacketData;
+  const { jacketNumber, year, make, model, vin, documents = [] } = jacketData;
+
+  // Create a list item for each uploaded document
+  const documentListItems = documents.map(doc => `<li>${doc.type}</li>`).join('');
 
   const html = `<!DOCTYPE html>
 <html>
@@ -41,7 +44,11 @@ export function renderCoverHTML(jacketData: JacketData, seller: Company): string
     </div>
     <div class="list">
       <h3>JACKET INCLUDES</h3>
-      <ul><li>Invoice</li><li>Bill of Sale</li></ul>
+      <ul>
+        <li>Invoice</li>
+        <li>Bill of Sale</li>
+        ${documentListItems}
+      </ul>
     </div>
     <div class="footer">
       ${seller.name} • ${seller.line1}, ${seller.line2}<br/>
