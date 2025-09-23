@@ -141,7 +141,7 @@ export default function StagingInvoiceDetailPage() {
         <CardHeader>
           <CardTitle className="text-2xl">Staging Invoice</CardTitle>
           <CardDescription>
-            Invoice Date: {invoice?.invoiceDate || "-"} · 
+          Invoice Date: {invoice?.auctionSaleDate ? invoice.auctionSaleDate.toDate().toLocaleDateString('en-US', { timeZone: 'UTC' }) : "-"} · 
             Invoice #: {invoice?.invoiceNumber || "-"} · 
             Units: {invoice?.unitCount ?? "-"}
           </CardDescription>

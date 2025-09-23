@@ -2,8 +2,8 @@
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { FieldValue } from "firebase-admin/firestore";
-import { db } from "../config"; // CORRECTED
-import { assertAdmin } from "../utils"; // CORRECTED
+import { db } from "../config";
+import { assertAdmin } from "../utils";
 
 export const createStagingBatchFromManualEntry = onCall({ cors: true, region: "us-central1" }, async (request) => {
   assertAdmin(request);
@@ -16,7 +16,9 @@ export const createStagingBatchFromManualEntry = onCall({ cors: true, region: "u
 
   try {
     const stagingRef = await db.collection("stagingInvoices").add({
-      auctionSaleDate: auctionSaleDate || null,
+      // --- LINE CHANGED HERE ---
+      // Convert the date string to a proper Date object before saving
+      auctionSaleDate: auctionSaleDate ? new Date(auctionSaleDate) : null,
       auctionInvoiceNumber: auctionInvoiceNumber || null,
       status: "manual-entry",
       uploaderUid: actorUid,
@@ -29,7 +31,6 @@ export const createStagingBatchFromManualEntry = onCall({ cors: true, region: "u
     const batch = db.batch();
     for (const unit of units) {
       const unitRef = stagingRef.collection("units").doc();
-      // This ensures we don't save empty fields to Firestore
       const cleanUnit = Object.fromEntries(
         Object.entries(unit).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
       );

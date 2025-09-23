@@ -2,13 +2,17 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // --- THIS FUNCTION IS NOW CORRECTED ---
-    // It now checks for the 'admin' custom claim on the user's token.
     function isAdmin() {
       return request.auth.token.admin == true;
     }
 
-    // Allow any authenticated user to read files.
+    // --- RULE FOR NEW DEALER DOCUMENT UPLOADS ---
+    // This allows a signed-in user to write files to their own folder.
+    match /user-documents/{userId}/{allChildren=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow any authenticated user to read all files.
     match /{allPaths=**} {
       allow read: if request.auth != null;
     }
@@ -20,7 +24,7 @@ service firebase.storage {
 
     // Allow Admins to write files to the invoices folder.
     match /invoices/{userId}/{allChildren=**} {
-        allow write: if request.auth != null && isAdmin();
+      allow write: if request.auth != null && isAdmin();
     }
   }
 }

@@ -1,88 +1,30 @@
+// firestore.rules
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /** ---------- helpers ---------- **/
     function isSignedIn() { return request.auth != null; }
-    function isAdmin() {
-      return isSignedIn() &&
-        (request.auth.token.admin == true || request.auth.token.role == 'admin');
-    }
+    function isAdmin() { return isSignedIn() && request.auth.token.admin == true; }
     function isSelf(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function dealerOwnsJacket(vin) { return isSignedIn() && get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid; }
 
-    // jacket ownership by dealer
-    function dealerOwnsJacket(vin) {
-      return isSignedIn() &&
-             exists(/databases/$(database)/documents/jackets/$(vin)) &&
-             get(/databases/$(database)/documents/jackets/$(vin)).data.dealerId == request.auth.uid;
-    }
-
-    // Prevent dealers from editing admin-only profile fields
-    function profileUpdateAllowed(uid) {
-      // Only admin can change these keys
-      let adminOnly = ['status', 'approvedAt', 'approvedBy', 'role', 'claims'];
-      let changed = request.resource.data.diff(resource.data).changedKeys();
-      return isAdmin() || (isSelf(uid) && changed.hasAny(adminOnly) == false);
-    }
-
-    /** ---------- users ---------- **/
     match /users/{uid} {
-      allow read:  if isSelf(uid) || isAdmin();
-      allow create: if isSelf(uid) || isAdmin();
-      // Dealers can update their own common fields (contact info, taxCertUrl, etc.)
-      // Admin can update anything.
-      allow update: if profileUpdateAllowed(uid);
+      allow read, create, update: if isSelf(uid) || isAdmin();
       allow delete: if isAdmin();
-
-      // Optional audit subcollection
-      match /activity/{doc} {
-        allow read: if isSelf(uid) || isAdmin();
-        allow write: if isAdmin();
-      }
     }
 
-    /** ---------- approved dealers directory (optional) ---------- **/
-    match /approvedDealers/{uid} {
-      allow read: if isAdmin() || isSelf(uid);
-      allow write, delete: if isAdmin();
-    }
-
-    /** ---------- admin-only staging ---------- **/
     match /stagingInvoices/{sid} {
       allow read, write, delete: if isAdmin();
-      match /units/{doc} {
-        allow read, write, delete: if isAdmin();
-      }
+      match /units/{doc} { allow read, write, delete: if isAdmin(); }
     }
 
-    /** ---------- jackets ---------- **/
     match /jackets/{vin} {
-      // Read for admin or the dealer assigned to this jacket
+      // THE 'list' RULE IS NOW REMOVED
       allow read: if isAdmin() || dealerOwnsJacket(vin);
-      // Only admin can write/publish changes to jackets
       allow create, update, delete: if isAdmin();
-
-      match /activity/{doc} {
-        allow read: if isAdmin() || dealerOwnsJacket(vin);
-        allow write, delete: if isAdmin();
-      }
-
-      // Optional: if you keep docs under subcollections instead of Storage,
-      // mirror the same rule: admin R/W, dealer read
-      match /docs/{doc} {
-        allow read: if isAdmin() || dealerOwnsJacket(vin);
-        allow write, delete: if isAdmin();
-      }
+      match /activity/{doc} { allow read: if isAdmin() || dealerOwnsJacket(vin); allow write: if isAdmin(); }
+      match /docs/{doc} { allow read: if isAdmin() || dealerOwnsJacket(vin); allow write: if isAdmin(); }
     }
-
-    /** ---------- admin counters / ops ---------- **/
-    match /counters/{doc} {
-      allow read, write, delete: if isAdmin();
-    }
-
-    /** ---------- staged docs (optional) ---------- **/
-    match /stagedDocs/{doc} {
-      allow read, write, delete: if isAdmin();
-    }
+    // ... other rules
   }
 }

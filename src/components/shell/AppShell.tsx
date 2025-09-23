@@ -50,7 +50,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   ];
 
   const dealerNav = [
-    { label: "Dashboard", href: "/dealer" },
     { label: "My Jackets", href: "/dealer/jackets" },
     { label: "Content Generator", href: "/dealer/content-generator" },
     { label: "Print", href: "/dealer/print" },

@@ -101,8 +101,8 @@ export default function NewJacketQuickEntryPage() {
       }
 
       const payload = {
-        invoiceDate: format(invoiceDate, "yyyy-MM-dd"),
-        invoiceNumber: invoiceNumber || null,
+        auctionSaleDate: invoiceDate.toISOString(),
+        auctionInvoiceNumber: invoiceNumber || null,
         invoiceUrl,
         units: units.map(u => {
           const unitData = { ...u.data };
@@ -121,7 +121,7 @@ export default function NewJacketQuickEntryPage() {
       const sid = result.data.sid;
       
       toast({ title: "Success!", description: "Staging batch created. Redirecting..." });
-      router.push(`/admin/staging/invoices/${sid}`);
+      router.push(`/admin/staging/invoices`);
 
     } catch (error: any) {
       console.error("Failed to create staging batch:", error);
