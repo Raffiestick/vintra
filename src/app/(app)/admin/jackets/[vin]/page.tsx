@@ -65,6 +65,7 @@ import {
   Files,
   CreditCard,
   UserPlus,
+  Save, // NEW
 } from "lucide-react";
 import {
   Tooltip,
@@ -146,10 +147,13 @@ interface Jacket {
   odometer?: number;
   jacketNumber?: string;
 
-  /** new preferred field from Agent’s update */
+  /** preferred timestamp */
   auctionSaleDate?: Timestamp;
-  /** legacy field your live code used */
+  /** legacy string date */
   invoiceDate?: string;
+
+  /** NEW: title number used on reassignment */
+  titleNumber?: string;
 
   isAuctionPaid?: boolean;
   isMgmtFeePaid?: boolean;
@@ -163,6 +167,9 @@ interface Jacket {
   invoiceUrl?: string;
   bosUrl?: string;
   packetUrl?: string;
+  /** existing: reassignment download */
+  reassignmentUrl?: string;
+
   creatorId?: string;
   dealerId?: string;
   createdAt?: Timestamp;
@@ -205,7 +212,9 @@ interface Activity {
     | "docDeleted"
     | "invoiceGenerated"
     | "bosGenerated"
-    | "packetGenerated";
+    | "packetGenerated"
+    | "reassignmentGenerated"
+    | "titleInfoUpdated"; // NEW
   message: string;
   meta?: any;
 }
@@ -428,6 +437,11 @@ export default function JacketDetailPage() {
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [isGeneratingBos, setIsGeneratingBos] = useState(false);
   const [isGeneratingPacket, setIsGeneratingPacket] = useState(false);
+  const [isGeneratingReassignment, setIsGeneratingReassignment] = useState(false); // NEW
+
+  // NEW: Title Number state
+  const [titleNumber, setTitleNumber] = useState("");
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
 
   // Misc Fee states
   const [feeDescription, setFeeDescription] = useState("");
@@ -554,7 +568,14 @@ export default function JacketDetailPage() {
     fetchDealers();
   }, [isAdmin, toast]);
 
-  /** --- Document Generation (kept your httpsCallableClient wrapper) --- */
+  /** NEW: populate Title Number from jacket on load */
+  useEffect(() => {
+    if (jacket?.titleNumber) {
+      setTitleNumber(jacket.titleNumber);
+    }
+  }, [jacket]);
+
+  /** --- Document Generation (httpsCallableClient wrapper) --- */
   const handleGenerateInvoice = useCallback(async () => {
     if (!vin || !isAdmin) return;
     setIsGeneratingInvoice(true);
@@ -646,6 +667,42 @@ export default function JacketDetailPage() {
     }
   }, [vin, isAdmin, toast]);
 
+  const handleGenerateReassignment = useCallback(async () => {
+    if (!vin || !isAdmin) return;
+    setIsGeneratingReassignment(true);
+    try {
+      const generateReassignmentForm = httpsCallableClient("generateReassignmentForm");
+      const result = await generateReassignmentForm({ vin });
+      const { url } = (result?.data ?? {}) as { url?: string };
+
+      if (url) {
+        toast({
+          title: "Reassignment Ready!",
+          description: (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="underline font-bold">
+              Open Reassignment PDF
+            </a>
+          ),
+        });
+      } else {
+        toast({
+          title: "Reassignment Form Started",
+          description: "The document is being generated and will appear shortly.",
+        });
+      }
+
+      await logActivity(vin as string, {
+        type: "reassignmentGenerated",
+        message: "Dealer Reassignment Form generation triggered",
+      });
+    } catch (err: any) {
+      console.error("Error generating reassignment form:", err);
+      toast({ title: "Generation Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsGeneratingReassignment(false);
+    }
+  }, [vin, isAdmin, toast]);
+
   const handleGeneratePacket = useCallback(async () => {
     if (!vin || !isAdmin) return;
     setIsGeneratingPacket(true);
@@ -691,6 +748,28 @@ export default function JacketDetailPage() {
       setIsGeneratingPacket(false);
     }
   }, [vin, isAdmin, toast]);
+
+  /** NEW: Save Title Number */
+  const handleSaveTitleNumber = async () => {
+    if (!vin || !isAdmin) return;
+    setIsSavingTitle(true);
+    try {
+      const jacketDocRef = doc(db, "jackets", vin as string);
+      await updateDoc(jacketDocRef, {
+        titleNumber: titleNumber,
+        updatedAt: serverTimestamp(),
+      });
+      toast({ title: "Success", description: "Title Number has been saved." });
+      await logActivity(vin as string, {
+        type: "titleInfoUpdated",
+        message: `Title Number set to ${titleNumber}`,
+      });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
 
   /** --- Payments --- */
   const handlePaymentStatusChange = (type: PaymentType, value: boolean) => {
@@ -1038,7 +1117,7 @@ export default function JacketDetailPage() {
       const currentDoc = await getDoc(jacketDocRef);
       const currentData = currentDoc.data() as Jacket;
 
-      const updatedDocuments = (currentData.documents || []).filter(
+    const updatedDocuments = (currentData.documents || []).filter(
         (d) => d.id !== docToDelete.id
       );
 
@@ -1171,16 +1250,13 @@ export default function JacketDetailPage() {
     );
   }
 
-  /** Auction Date fix:
-   * Prefer Timestamp field (auctionSaleDate) if present;
-   * fallback to legacy invoiceDate string; else "N/A".
-   */
+  /** Auction Date fix */
   const formattedAuctionDate =
-    (jacket.auctionSaleDate && jacket.auctionSaleDate.toDate) ?
-      format(jacket.auctionSaleDate.toDate(), "PP") :
-      (jacket.invoiceDate && isValid(new Date(jacket.invoiceDate)) ?
-        format(new Date(jacket.invoiceDate), "PP") :
-        "N/A");
+    jacket.auctionSaleDate?.toDate
+      ? format(jacket.auctionSaleDate.toDate(), "PP")
+      : jacket.invoiceDate && isValid(new Date(jacket.invoiceDate))
+      ? format(new Date(jacket.invoiceDate), "PP")
+      : "N/A";
 
   const FinancialsGridItem = ({
     label,
@@ -1201,7 +1277,7 @@ export default function JacketDetailPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-3xl font-bold tracking-tight">
               {jacket.year} {jacket.make} {jacket.model}
             </h1>
@@ -1215,9 +1291,7 @@ export default function JacketDetailPage() {
             <span className="font-mono">{jacket.vin}</span>
             <span>
               Color:{" "}
-              <span className="font-medium text-foreground">
-                {jacket.color || "N/A"}
-              </span>
+              <span className="font-medium text-foreground">{jacket.color || "N/A"}</span>
             </span>
             <span>
               Odometer:{" "}
@@ -1267,6 +1341,25 @@ export default function JacketDetailPage() {
               <ScrollText className={cn("mr-2 h-4 w-4", isGeneratingBos && "hidden")} />
               Bill of Sale
             </Button>
+
+            {/* NEW: Reassignment button */}
+            <Button
+              size="sm"
+              onClick={handleGenerateReassignment}
+              disabled={isGeneratingReassignment || !isAdmin}
+              className="btn-soft"
+            >
+              <Loader2
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  !isGeneratingReassignment && "hidden",
+                  isGeneratingReassignment && "animate-spin"
+                )}
+              />
+              <ScrollText className={cn("mr-2 h-4 w-4", isGeneratingReassignment && "hidden")} />
+              Reassignment
+            </Button>
+
             <Button
               size="sm"
               onClick={handleGeneratePacket}
@@ -1293,6 +1386,42 @@ export default function JacketDetailPage() {
           )}
         </div>
       </div>
+
+      {/* NEW: Title Information card (directly under Assigned Dealer) */}
+      <Card className="panel">
+        <CardHeader>
+          <CardTitle>Title Information</CardTitle>
+          <CardDescription>
+            Enter the title number for this vehicle. This will be used on the Reassignment Form.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-end gap-4">
+            <div className="flex-grow space-y-1">
+              <Label htmlFor="titleNumber">Title Number</Label>
+              <Input
+                id="titleNumber"
+                value={titleNumber}
+                onChange={(e) => setTitleNumber(e.target.value)}
+                placeholder="Enter title number..."
+                className="input-like"
+              />
+            </div>
+            <Button
+              onClick={handleSaveTitleNumber}
+              disabled={isSavingTitle || !isAdmin}
+              className="btn-soft"
+            >
+              {isSavingTitle ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Save Title Info
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Tabs */}
       <Tabs defaultValue="overview" className="w-full">
@@ -1452,6 +1581,26 @@ export default function JacketDetailPage() {
                       <Badge variant="secondary">Not Generated</Badge>
                     )}
                   </div>
+
+                  {/* NEW: Reassignment download row */}
+                  <div className="flex justify-between items-center text-sm">
+                    <Label>Reassignment Form</Label>
+                    {jacket.reassignmentUrl ? (
+                      <Button asChild size="sm" className="btn-soft">
+                        <a
+                          href={jacket.reassignmentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Open
+                        </a>
+                      </Button>
+                    ) : (
+                      <Badge variant="secondary">Not Generated</Badge>
+                    )}
+                  </div>
+
                   <div className="flex justify-between items-center text-sm">
                     <Label>Full Jacket Packet</Label>
                     {jacket.packetUrl ? (

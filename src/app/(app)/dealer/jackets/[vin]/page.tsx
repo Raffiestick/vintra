@@ -1,5 +1,6 @@
 "use client";
 
+import { Label } from "@/components/ui/label";
 import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { doc, onSnapshot, Timestamp } from "firebase/firestore";
@@ -12,7 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Download, FileText, AlertCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Label } from "@/components/ui/label";
 
 interface MiscFee {
   id: string;

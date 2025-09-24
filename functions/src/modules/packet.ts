@@ -11,6 +11,7 @@ import fetch from "node-fetch";
 import { renderInvoiceHTML, type Company, type Party, type JacketData } from "../templates/invoice";
 import { renderBoSHTML } from "../templates/bos";
 import { renderCoverHTML } from "../templates/cover";
+import { renderReassignmentHTML } from "../templates/reassignment"; // ADDED
 
 async function getParticipantData(jacketData: any): Promise<{ seller: Company, buyer: Party }> {
     const seller: Company = {
@@ -38,19 +39,14 @@ async function createPdfFromHtml(html: string): Promise<Buffer> {
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '1in', right: '1in', bottom: '1in', left: '1in' } });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
     await browser.close();
     return pdfBuffer;
 }
 
 async function createPdfFromImage(imageBuffer: Buffer, contentType: string): Promise<Buffer> {
     const base64Image = imageBuffer.toString('base64');
-    const html = `
-        <!DOCTYPE html>
-        <html>
-            <head><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; } img { max-width: 100%; max-height: 100%; object-fit: contain; }</style></head>
-            <body><img src="data:${contentType};base64,${base64Image}" /></body>
-        </html>`;
+    const html = `<!DOCTYPE html><html><head><style>body { margin: 0; } img { width: 100%; height: 100%; object-fit: contain; }</style></head><body><img src="data:${contentType};base64,${base64Image}" /></body></html>`;
     return createPdfFromHtml(html);
 }
 
@@ -80,30 +76,27 @@ export const generateJacketPacket = onCall({
         const coverHtml = renderCoverHTML(jacketData, seller);
         const invoiceHtml = renderInvoiceHTML(jacketData, seller, buyer);
         const bosHtml = renderBoSHTML(jacketData, seller, buyer);
+        const reassignmentHtml = renderReassignmentHTML(jacketData, seller, buyer); // ADDED
 
-        const [coverPdf, invoicePdf, bosPdf] = await Promise.all([
+        const [coverPdf, invoicePdf, bosPdf, reassignmentPdf] = await Promise.all([ // ADDED
             createPdfFromHtml(coverHtml),
             createPdfFromHtml(invoiceHtml),
-            createPdfFromHtml(bosHtml)
+            createPdfFromHtml(bosHtml),
+            createPdfFromHtml(reassignmentHtml), // ADDED
         ]);
         
         const mergedPdf = await PDFDocument.create();
-        const pdfsToMerge = [coverPdf, invoicePdf, bosPdf];
+        // The order is Cover, Invoice, BOS, Reassignment, then other docs
+        const pdfsToMerge = [coverPdf, invoicePdf, bosPdf, reassignmentPdf]; // ADDED reassignmentPdf
 
         const attachmentPromises = (jacketData.documents || []).map(async (doc) => {
             try {
                 const response = await fetch(doc.url);
                 if (!response.ok) throw new Error(`Failed to fetch ${doc.name}`);
-                
                 const fileBuffer = await response.buffer();
                 const contentType = response.headers.get('content-type') || '';
-
-                if (contentType.includes('pdf')) {
-                    return fileBuffer;
-                } else if (contentType.startsWith('image/')) {
-                    return await createPdfFromImage(fileBuffer, contentType);
-                }
-                console.warn(`Skipping unsupported document type: ${contentType} for ${doc.name}`);
+                if (contentType.includes('pdf')) { return fileBuffer; } 
+                else if (contentType.startsWith('image/')) { return await createPdfFromImage(fileBuffer, contentType); }
                 return null;
             } catch (error) {
                 console.error(`Failed to process attached document ${doc.name}:`, error);

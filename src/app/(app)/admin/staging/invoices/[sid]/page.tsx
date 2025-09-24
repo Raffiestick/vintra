@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const processStagedUnit = httpsCallable(functions, "processStagedUnit");
 
-const DEFINED_FIELDS: (keyof DocumentData)[] = [
+const DEFINED_FIELDS: string[] = [
   'vin', 'hin', 'vinOrHin', 'year', 'make', 'model', 'color', 'odometer', 
   'engine', 'lengthFeet', 'titleInfo', 'saleLocation', 'itemPrice', 
   'buyerFee', 'onlineFee', 'managementFee'

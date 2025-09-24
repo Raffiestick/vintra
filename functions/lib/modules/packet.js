@@ -16,6 +16,7 @@ const node_fetch_1 = __importDefault(require("node-fetch"));
 const invoice_1 = require("../templates/invoice");
 const bos_1 = require("../templates/bos");
 const cover_1 = require("../templates/cover");
+const reassignment_1 = require("../templates/reassignment"); // ADDED
 async function getParticipantData(jacketData) {
     const seller = {
         name: "RizeUp Ventures, LLC", dba: "Dolphin Chasers",
@@ -41,18 +42,13 @@ async function createPdfFromHtml(html) {
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '1in', right: '1in', bottom: '1in', left: '1in' } });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
     await browser.close();
     return pdfBuffer;
 }
 async function createPdfFromImage(imageBuffer, contentType) {
     const base64Image = imageBuffer.toString('base64');
-    const html = `
-        <!DOCTYPE html>
-        <html>
-            <head><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; } img { max-width: 100%; max-height: 100%; object-fit: contain; }</style></head>
-            <body><img src="data:${contentType};base64,${base64Image}" /></body>
-        </html>`;
+    const html = `<!DOCTYPE html><html><head><style>body { margin: 0; } img { width: 100%; height: 100%; object-fit: contain; }</style></head><body><img src="data:${contentType};base64,${base64Image}" /></body></html>`;
     return createPdfFromHtml(html);
 }
 exports.generateJacketPacket = (0, https_1.onCall)({
@@ -79,13 +75,16 @@ exports.generateJacketPacket = (0, https_1.onCall)({
         const coverHtml = (0, cover_1.renderCoverHTML)(jacketData, seller);
         const invoiceHtml = (0, invoice_1.renderInvoiceHTML)(jacketData, seller, buyer);
         const bosHtml = (0, bos_1.renderBoSHTML)(jacketData, seller, buyer);
-        const [coverPdf, invoicePdf, bosPdf] = await Promise.all([
+        const reassignmentHtml = (0, reassignment_1.renderReassignmentHTML)(jacketData, seller, buyer); // ADDED
+        const [coverPdf, invoicePdf, bosPdf, reassignmentPdf] = await Promise.all([
             createPdfFromHtml(coverHtml),
             createPdfFromHtml(invoiceHtml),
-            createPdfFromHtml(bosHtml)
+            createPdfFromHtml(bosHtml),
+            createPdfFromHtml(reassignmentHtml), // ADDED
         ]);
         const mergedPdf = await pdf_lib_1.PDFDocument.create();
-        const pdfsToMerge = [coverPdf, invoicePdf, bosPdf];
+        // The order is Cover, Invoice, BOS, Reassignment, then other docs
+        const pdfsToMerge = [coverPdf, invoicePdf, bosPdf, reassignmentPdf]; // ADDED reassignmentPdf
         const attachmentPromises = (jacketData.documents || []).map(async (doc) => {
             try {
                 const response = await (0, node_fetch_1.default)(doc.url);
@@ -99,7 +98,6 @@ exports.generateJacketPacket = (0, https_1.onCall)({
                 else if (contentType.startsWith('image/')) {
                     return await createPdfFromImage(fileBuffer, contentType);
                 }
-                console.warn(`Skipping unsupported document type: ${contentType} for ${doc.name}`);
                 return null;
             }
             catch (error) {
