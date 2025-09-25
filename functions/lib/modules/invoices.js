@@ -1,135 +1,95 @@
 "use strict";
-// functions/src/modules/invoices.ts
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateBillOfSale = exports.generateJacketInvoice = void 0;
+exports.generateBillOfSale = exports.regenerateInvoiceOnChange = exports.generateJacketInvoice = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const config_1 = require("../config");
 const utils_1 = require("../utils");
 const storage_1 = require("firebase-admin/storage");
-const date_fns_1 = require("date-fns");
 const puppeteer_core_1 = __importDefault(require("puppeteer-core"));
 const chromium_1 = __importDefault(require("@sparticuz/chromium"));
+const date_fns_1 = require("date-fns");
 const invoice_1 = require("../templates/invoice");
 const bos_1 = require("../templates/bos");
-// Helper function to get Seller and Buyer data
-async function getParticipantData(jacketData) {
-    const seller = {
-        name: "RizeUp Ventures, LLC",
-        dba: "Dolphin Chasers",
-        line1: "PO BOX 66741",
-        line2: "St Pete Beach, FL 33706",
-        fullAddress: "PO BOX 66741, St Pete Beach, FL 33706",
-        phone: "616-318-1991",
-        email: "admin@rizeupventures.com",
-    };
-    let buyer = { name: "N/A", line1: "", line2: "", phone: "", email: "" };
+async function createPdfDocument(vin, type) {
+    const jacketRef = config_1.db.collection("jackets").doc(vin);
+    const jacketSnap = await jacketRef.get();
+    if (!jacketSnap.exists) {
+        throw new https_1.HttpsError("not-found", "Jacket not found.");
+    }
+    const jacketData = jacketSnap.data();
+    const sellerInfo = { name: "RizeUp Ventures, LLC", dba: "Dolphin Chasers", line1: "PO BOX 66741", line2: "St Pete Beach, FL 33706", fullAddress: "PO BOX 66741, St Pete Beach, FL 33706", phone: "616-318-1991", email: "admin@rizeupventures.com" };
+    let buyerInfo = { name: "N/A", line1: "", line2: "", phone: "", email: "" };
     if (jacketData.dealerId) {
         const dealerSnap = await config_1.db.collection("users").doc(jacketData.dealerId).get();
         if (dealerSnap.exists) {
             const dealer = dealerSnap.data();
-            buyer = {
-                name: dealer.companyName || 'N/A',
-                line1: dealer.address1 || '',
-                line2: `${dealer.city || ''}, ${dealer.state || ''} ${dealer.zip || ''}`,
-                phone: dealer.phone || '',
-                email: dealer.email || '',
-            };
+            buyerInfo = { name: dealer.companyName || 'N/A', line1: dealer.address1 || '', line2: `${dealer.city || ''}, ${dealer.state || ''} ${dealer.zip || ''}`, phone: dealer.phone || '', email: dealer.email || '' };
         }
     }
-    return { seller, buyer };
+    const html = type === 'invoice'
+        ? (0, invoice_1.renderInvoiceHTML)(jacketData, sellerInfo, buyerInfo)
+        : (0, bos_1.renderBoSHTML)(jacketData, sellerInfo, buyerInfo);
+    const browser = await puppeteer_core_1.default.launch({
+        args: chromium_1.default.args,
+        executablePath: await chromium_1.default.executablePath(),
+        headless: true,
+    });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+    await browser.close();
+    const docId = `${type.toUpperCase()}-${jacketData.jacketNumber || vin.slice(-6)}-${(0, date_fns_1.format)(new Date(), 'yyyyMMddHHmmss')}`;
+    const filePath = `jacket-${type}s/${vin}/${docId}.pdf`;
+    const urlField = type === 'invoice' ? 'invoiceUrl' : 'bosUrl';
+    const idField = type === 'invoice' ? 'invoiceId' : 'bosId';
+    const file = (0, storage_1.getStorage)().bucket().file(filePath);
+    await file.save(pdfBuffer, { contentType: 'application/pdf' });
+    const [url] = await file.getSignedUrl({ action: 'read', expires: '03-09-2491' });
+    await jacketRef.update({
+        [urlField]: url,
+        [idField]: docId,
+        updatedAt: new Date(),
+    });
+    return { url, id: docId };
 }
-exports.generateJacketInvoice = (0, https_1.onCall)({
-    cors: true,
-    region: "us-central1",
-    memory: "1GiB",
-    timeoutSeconds: 60,
-}, async (request) => {
+exports.generateJacketInvoice = (0, https_1.onCall)({ cors: true, memory: '1GiB', timeoutSeconds: 60 }, async (request) => {
     (0, utils_1.assertAdmin)(request);
     const { vin } = request.data;
     if (!vin)
         throw new https_1.HttpsError("invalid-argument", "VIN is required.");
     try {
-        const jacketRef = config_1.db.collection("jackets").doc(vin);
-        const jacketSnap = await jacketRef.get();
-        if (!jacketSnap.exists)
-            throw new https_1.HttpsError("not-found", "Jacket not found.");
-        const rawData = jacketSnap.data() || {};
-        const jacketData = Object.assign({}, rawData);
-        // Smartly set the auctionSaleDate for the template
-        // If it exists as a Timestamp, convert it. Otherwise, default to the current date.
-        if (rawData.auctionSaleDate && typeof rawData.auctionSaleDate.toDate === 'function') {
-            jacketData.auctionSaleDate = rawData.auctionSaleDate.toDate();
-        }
-        else {
-            jacketData.auctionSaleDate = new Date();
-        }
-        const { seller, buyer } = await getParticipantData(jacketData);
-        const html = (0, invoice_1.renderInvoiceHTML)(jacketData, seller, buyer);
-        const browser = await puppeteer_core_1.default.launch({
-            args: chromium_1.default.args,
-            executablePath: await chromium_1.default.executablePath(),
-            headless: true,
-        });
-        const page = await browser.newPage();
-        await page.setContent(html, { waitUntil: 'networkidle0' });
-        const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
-        await browser.close();
-        const invoiceId = `INV-${jacketData.jacketNumber || vin.slice(-6)}-${(0, date_fns_1.format)(new Date(), 'yyyyMMdd')}`;
-        const filePath = `jacket-invoices/${vin}/${invoiceId}.pdf`;
-        const file = (0, storage_1.getStorage)().bucket().file(filePath);
-        await file.save(pdfBuffer, { contentType: 'application/pdf' });
-        const [url] = await file.getSignedUrl({ action: 'read', expires: '03-09-2491' });
-        await jacketRef.update({ invoiceId, invoiceUrl: url, updatedAt: new Date() });
-        return { success: true, url, invoiceId };
+        const { url, id } = await createPdfDocument(vin, 'invoice');
+        return { success: true, url, invoiceId: id };
     }
     catch (error) {
         console.error("Error generating invoice:", error);
         throw new https_1.HttpsError("internal", error.message || "Failed to generate invoice.");
     }
 });
-exports.generateBillOfSale = (0, https_1.onCall)({
-    cors: true,
-    region: "us-central1",
-    memory: "1GiB",
-    timeoutSeconds: 60,
-}, async (request) => {
+exports.regenerateInvoiceOnChange = (0, https_1.onCall)({ cors: true, memory: '1GiB', timeoutSeconds: 60 }, async (request) => {
     (0, utils_1.assertAdmin)(request);
     const { vin } = request.data;
     if (!vin)
-        throw new https_1.HttpsError("invalid-argument", "VIN is required.");
+        throw new https_1.HttpsError("invalid-argument", "VIN is required for regeneration.");
     try {
-        const jacketRef = config_1.db.collection("jackets").doc(vin);
-        const jacketSnap = await jacketRef.get();
-        if (!jacketSnap.exists)
-            throw new https_1.HttpsError("not-found", "Jacket not found.");
-        const rawData = jacketSnap.data() || {};
-        const jacketData = Object.assign({}, rawData);
-        // Smartly set the auctionSaleDate for the template
-        if (rawData.auctionSaleDate && typeof rawData.auctionSaleDate.toDate === 'function') {
-            jacketData.auctionSaleDate = rawData.auctionSaleDate.toDate();
-        }
-        else {
-            jacketData.auctionSaleDate = new Date();
-        }
-        const { seller, buyer } = await getParticipantData(jacketData);
-        const html = (0, bos_1.renderBoSHTML)(jacketData, seller, buyer);
-        const browser = await puppeteer_core_1.default.launch({
-            args: chromium_1.default.args,
-            executablePath: await chromium_1.default.executablePath(),
-            headless: true,
-        });
-        const page = await browser.newPage();
-        await page.setContent(html, { waitUntil: 'networkidle0' });
-        const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
-        await browser.close();
-        const filePath = `jacket-bos/${vin}/BOS-${vin}.pdf`;
-        const file = (0, storage_1.getStorage)().bucket().file(filePath);
-        await file.save(pdfBuffer, { contentType: 'application/pdf' });
-        const [url] = await file.getSignedUrl({ action: 'read', expires: '03-09-2491' });
-        await jacketRef.update({ bosUrl: url, updatedAt: new Date() });
+        await createPdfDocument(vin, 'invoice');
+        return { success: true, message: `Invoice for ${vin} regenerated.` };
+    }
+    catch (error) {
+        console.error("Error regenerating invoice:", error);
+        return { success: false, error: error.message };
+    }
+});
+exports.generateBillOfSale = (0, https_1.onCall)({ cors: true, memory: '1GiB', timeoutSeconds: 60 }, async (request) => {
+    (0, utils_1.assertAdmin)(request);
+    const { vin } = request.data;
+    if (!vin)
+        throw new https_1.HttpsError("invalid-argument", "VIN is required for Bill of Sale.");
+    try {
+        const { url } = await createPdfDocument(vin, 'bos');
         return { success: true, url };
     }
     catch (error) {

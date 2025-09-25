@@ -65,7 +65,8 @@ import {
   Files,
   CreditCard,
   UserPlus,
-  Save, // NEW
+  Save,
+  X,
 } from "lucide-react";
 import {
   Tooltip,
@@ -113,11 +114,14 @@ import { format, isValid } from "date-fns";
 
 /** ----- Types ----- */
 type DocType =
-  | "Title"
-  | "Power of Attorney"
-  | "Release Form"
+  | "Title Front"
+  | "Title Back"
   | "POA"
-  | "Addendum"
+  | "Reassignment"
+  | "Reposession Docs"
+  | "Affidavit"
+  | "Release of Lien"
+  | "Strike Acceptance"
   | "Misc Doc";
 
 interface MiscFee {
@@ -214,7 +218,8 @@ interface Activity {
     | "bosGenerated"
     | "packetGenerated"
     | "reassignmentGenerated"
-    | "titleInfoUpdated"; // NEW
+    | "titleInfoUpdated"
+    | "invoiceRegenerationTriggered"; // NEW for auto-regen
   message: string;
   meta?: any;
 }
@@ -437,13 +442,11 @@ export default function JacketDetailPage() {
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [isGeneratingBos, setIsGeneratingBos] = useState(false);
   const [isGeneratingPacket, setIsGeneratingPacket] = useState(false);
-  const [isGeneratingReassignment, setIsGeneratingReassignment] = useState(false); // NEW
+  const [isGeneratingReassignment, setIsGeneratingReassignment] = useState(false);
 
-  // NEW: Title Number state
   const [titleNumber, setTitleNumber] = useState("");
   const [isSavingTitle, setIsSavingTitle] = useState(false);
 
-  // Misc Fee states
   const [feeDescription, setFeeDescription] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
   const [feeError, setFeeError] = useState("");
@@ -454,7 +457,6 @@ export default function JacketDetailPage() {
   } | null>(null);
   const [isModifyingFee, setIsModifyingFee] = useState(false);
 
-  // Document states
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docType, setDocType] = useState<DocType | "">("");
   const [isUploading, setIsUploading] = useState(false);
@@ -463,11 +465,10 @@ export default function JacketDetailPage() {
   const [docToDelete, setDocToDelete] = useState<JacketDocument | null>(null);
   const [isDeletingDoc, setIsDeletingDoc] = useState(false);
   const [replacingDocId, setReplacingDocId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false); // For drag-and-drop UI
 
-  // Dealers
   const [approvedDealers, setApprovedDealers] = useState<ApprovedDealer[]>([]);
 
-  // Payment modal state
   const [paymentDialog, setPaymentDialog] = useState<{
     open: boolean;
     type: PaymentType | null;
@@ -480,7 +481,6 @@ export default function JacketDetailPage() {
   const [paymentRef, setPaymentRef] = useState("");
   const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
 
-  // Activity Log
   const [activityLog, setActivityLog] = useState<Activity[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(true);
 
@@ -568,14 +568,37 @@ export default function JacketDetailPage() {
     fetchDealers();
   }, [isAdmin, toast]);
 
-  /** NEW: populate Title Number from jacket on load */
   useEffect(() => {
     if (jacket?.titleNumber) {
       setTitleNumber(jacket.titleNumber);
     }
   }, [jacket]);
 
-  /** --- Document Generation (httpsCallableClient wrapper) --- */
+  /** --- Auto Invoice Regeneration --- */
+  const triggerInvoiceRegen = useCallback(async () => {
+    if (!vin || !isAdmin) return;
+    try {
+      const regenerateFn = httpsCallableClient("regenerateInvoiceOnChange");
+      await regenerateFn({ vin });
+      await logActivity(vin as string, {
+        type: "invoiceRegenerationTriggered",
+        message: "Invoice regeneration triggered due to financial status change",
+      });
+      toast({
+        title: "Invoice updating",
+        description: "A fresh invoice is being generated in the background.",
+      });
+    } catch (err: any) {
+      console.error("Invoice regeneration failed:", err);
+      toast({
+        title: "Invoice Regeneration Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
+  }, [vin, isAdmin, toast]);
+
+  /** --- Document Generation --- */
   const handleGenerateInvoice = useCallback(async () => {
     if (!vin || !isAdmin) return;
     setIsGeneratingInvoice(true);
@@ -749,7 +772,7 @@ export default function JacketDetailPage() {
     }
   }, [vin, isAdmin, toast]);
 
-  /** NEW: Save Title Number */
+  /** --- Title Number --- */
   const handleSaveTitleNumber = async () => {
     if (!vin || !isAdmin) return;
     setIsSavingTitle(true);
@@ -816,6 +839,7 @@ export default function JacketDetailPage() {
         meta: { date: paymentDate, note: paymentRef },
       });
 
+      await triggerInvoiceRegen(); // Auto-regenerate invoice
       setPaymentDialog({ open: false, type: null });
     } catch (err: any) {
       console.error("Failed to update jacket:", err);
@@ -852,6 +876,7 @@ export default function JacketDetailPage() {
         message: `${type === "auction" ? "Auction" : "Mgmt fee"} marked UNPAID`,
       });
 
+      await triggerInvoiceRegen(); // Auto-regenerate invoice
       setUnpaidConfirmDialog({ open: false, type: null });
     } catch (err: any) {
       console.error("Failed to update jacket:", err);
@@ -927,7 +952,7 @@ export default function JacketDetailPage() {
 
       let updatedFees: MiscFee[] = [];
       let logMessage = "";
-      let logType: Activity["type"] = "miscFeeDeleted"; // default
+      let logType: Activity["type"] = "miscFeeDeleted";
 
       if (action === "delete") {
         updatedFees = currentFees.filter((f) => f.id !== fee.id);
@@ -952,6 +977,10 @@ export default function JacketDetailPage() {
 
       toast({ title: "Fee Updated", description: "The fee status has been changed." });
       await logActivity(vin, { type: logType, message: logMessage, meta: { feeId: fee.id } });
+
+      if (action === "pay" || action === "unpay") {
+        await triggerInvoiceRegen(); // Auto-regenerate invoice
+      }
     } catch (err: any) {
       console.error("Failed to modify fee:", err);
       toast({ title: "Update Failed", description: err.message, variant: "destructive" });
@@ -1041,8 +1070,6 @@ export default function JacketDetailPage() {
 
       setDocFile(null);
       setDocType("");
-      const fileInput = document.getElementById("docFile") as HTMLInputElement;
-      if (fileInput) fileInput.value = "";
     } catch {
       // already toasted
     } finally {
@@ -1117,7 +1144,7 @@ export default function JacketDetailPage() {
       const currentDoc = await getDoc(jacketDocRef);
       const currentData = currentDoc.data() as Jacket;
 
-    const updatedDocuments = (currentData.documents || []).filter(
+      const updatedDocuments = (currentData.documents || []).filter(
         (d) => d.id !== docToDelete.id
       );
 
@@ -1342,24 +1369,7 @@ export default function JacketDetailPage() {
               Bill of Sale
             </Button>
 
-            {/* NEW: Reassignment button */}
-            <Button
-              size="sm"
-              onClick={handleGenerateReassignment}
-              disabled={isGeneratingReassignment || !isAdmin}
-              className="btn-soft"
-            >
-              <Loader2
-                className={cn(
-                  "mr-2 h-4 w-4",
-                  !isGeneratingReassignment && "hidden",
-                  isGeneratingReassignment && "animate-spin"
-                )}
-              />
-              <ScrollText className={cn("mr-2 h-4 w-4", isGeneratingReassignment && "hidden")} />
-              Reassignment
-            </Button>
-
+            {/* UPDATED BUTTON ORDER */}
             <Button
               size="sm"
               onClick={handleGeneratePacket}
@@ -1376,6 +1386,22 @@ export default function JacketDetailPage() {
               <Files className={cn("mr-2 h-4 w-4", isGeneratingPacket && "hidden")} />
               Jacket
             </Button>
+            <Button
+              size="sm"
+              onClick={handleGenerateReassignment}
+              disabled={isGeneratingReassignment || !isAdmin}
+              className="btn-soft"
+            >
+              <Loader2
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  !isGeneratingReassignment && "hidden",
+                  isGeneratingReassignment && "animate-spin"
+                )}
+              />
+              <ScrollText className={cn("mr-2 h-4 w-4", isGeneratingReassignment && "hidden")} />
+              Reassignment
+            </Button>
           </div>
           {isAdmin && (
             <AssignDealerComponent
@@ -1387,7 +1413,6 @@ export default function JacketDetailPage() {
         </div>
       </div>
 
-      {/* NEW: Title Information card (directly under Assigned Dealer) */}
       <Card className="panel">
         <CardHeader>
           <CardTitle>Title Information</CardTitle>
@@ -1452,7 +1477,6 @@ export default function JacketDetailPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Overview */}
         <TabsContent value="overview" className="mt-6">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-4 space-y-6">
@@ -1461,7 +1485,6 @@ export default function JacketDetailPage() {
                   <CardTitle>Payment Status</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Auction */}
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="auctionPaid" className="font-medium">
@@ -1504,7 +1527,6 @@ export default function JacketDetailPage() {
                       </div>
                     )}
                   </div>
-                  {/* Mgmt */}
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="mgmtPaid" className="font-medium">
@@ -1581,8 +1603,6 @@ export default function JacketDetailPage() {
                       <Badge variant="secondary">Not Generated</Badge>
                     )}
                   </div>
-
-                  {/* NEW: Reassignment download row */}
                   <div className="flex justify-between items-center text-sm">
                     <Label>Reassignment Form</Label>
                     {jacket.reassignmentUrl ? (
@@ -1660,7 +1680,6 @@ export default function JacketDetailPage() {
           </div>
         </TabsContent>
 
-        {/* Misc Fees */}
         <TabsContent value="misc-fees" className="mt-6">
           <Card className="panel">
             <CardHeader>
@@ -1780,7 +1799,6 @@ export default function JacketDetailPage() {
           </Card>
         </TabsContent>
 
-        {/* Documents */}
         <TabsContent value="documents" className="mt-6">
           <Card className="panel">
             <CardHeader>
@@ -1881,56 +1899,112 @@ export default function JacketDetailPage() {
             </CardContent>
             {isAdmin && (
               <CardFooter className="border-t pt-6">
-                <form onSubmit={handleUploadDocument} className="w-full space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                    <div className="space-y-1">
-                      <Label htmlFor="docType">Document Type</Label>
-                      <Select
-                        value={docType}
-                        onValueChange={(v) => setDocType(v as DocType)}
-                        disabled={isUploading}
-                      >
-                        <SelectTrigger className="input-like">
-                          <SelectValue placeholder="Select type..." />
-                        </SelectTrigger>
-                        <SelectContent className="panel">
-                          <SelectItem value="Title">Title</SelectItem>
-                          <SelectItem value="Power of Attorney">Power of Attorney</SelectItem>
-                          <SelectItem value="Release Form">Release Form</SelectItem>
-                          <SelectItem value="POA">POA</SelectItem>
-                          <SelectItem value="Addendum">Addendum</SelectItem>
-                          <SelectItem value="Misc Doc">Misc Doc</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="docFile">File</Label>
+                <form
+                  onSubmit={handleUploadDocument}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                      setDocFile(e.dataTransfer.files[0]);
+                      e.dataTransfer.clearData();
+                    }
+                  }}
+                  className={cn(
+                    "w-full space-y-4 border-2 border-dashed rounded-lg p-6 transition-colors",
+                    isDragging ? "border-primary bg-primary/10" : "border-border/50"
+                  )}
+                >
+                  {!docFile ? (
+                    <Label
+                      htmlFor="docFile"
+                      className="flex flex-col items-center justify-center text-center cursor-pointer"
+                    >
+                      <UploadCloud className="h-10 w-10 text-muted-foreground mb-2" />
+                      <span className="font-semibold">Drag & drop a file here</span>
+                      <span className="text-sm text-muted-foreground">or click to select</span>
                       <Input
                         id="docFile"
                         type="file"
+                        className="hidden"
                         onChange={(e) => setDocFile(e.target.files ? e.target.files[0] : null)}
                         disabled={isUploading}
-                        className="input-like"
                       />
+                    </Label>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-3 bg-muted/50 rounded-md">
+                        <div className="flex-1 truncate">
+                          <p className="font-medium text-sm truncate">{docFile.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {(docFile.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDocFile(null)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div className="space-y-1">
+                          <Label htmlFor="docType">Document Type</Label>
+                          <Select
+                            value={docType}
+                            onValueChange={(v) => setDocType(v as DocType)}
+                            disabled={isUploading}
+                          >
+                            <SelectTrigger className="input-like">
+                              <SelectValue placeholder="Select type..." />
+                            </SelectTrigger>
+                            <SelectContent className="panel">
+                              <SelectItem value="Title Front">Title Front</SelectItem>
+                              <SelectItem value="Title Back">Title Back</SelectItem>
+                              <SelectItem value="POA">POA</SelectItem>
+                              <SelectItem value="Reassignment">Reassignment</SelectItem>
+                              <SelectItem value="Reposession Docs">Reposession Docs</SelectItem>
+                              <SelectItem value="Affidavit">Affidavit</SelectItem>
+                              <SelectItem value="Release of Lien">Release of Lien</SelectItem>
+                              <SelectItem value="Strike Acceptance">Strike Acceptance</SelectItem>
+                              <SelectItem value="Misc Doc">Misc Doc</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          type="submit"
+                          disabled={isUploading || !docFile || !docType}
+                          className="btn-primary md:col-span-2"
+                        >
+                          {isUploading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <UploadCloud className="mr-2 h-4 w-4" />
+                              Upload Document
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
-                    <Button
-                      type="submit"
-                      disabled={isUploading || !docFile || !docType}
-                      className="btn-primary"
-                    >
-                      {isUploading ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Uploading...
-                        </>
-                      ) : (
-                        <>
-                          <UploadCloud className="mr-2 h-4 w-4" />
-                          Upload
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  )}
+
                   {isUploading && <Progress value={uploadProgress} className="w-full h-2 mt-2" />}
                   {docError && <p className="text-sm text-destructive mt-2">{docError}</p>}
                 </form>
@@ -1939,7 +2013,6 @@ export default function JacketDetailPage() {
           </Card>
         </TabsContent>
 
-        {/* Activity Log */}
         <TabsContent value="activity" className="mt-6">
           <Card className="panel">
             <CardHeader>
