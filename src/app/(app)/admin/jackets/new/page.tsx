@@ -101,7 +101,7 @@ export default function NewJacketQuickEntryPage() {
       }
 
       const payload = {
-        auctionSaleDate: invoiceDate.toISOString(),
+        auctionSaleDate: format(invoiceDate, "yyyy-MM-dd"),
         auctionInvoiceNumber: invoiceNumber || null,
         invoiceUrl,
         units: units.map(u => {
