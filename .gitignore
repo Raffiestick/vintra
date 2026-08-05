@@ -1,11 +1,27 @@
+# dependencies
 node_modules/
+
+# build output
 .next/
 out/
 dist/
-*.log
 functions/lib/
-backups/
+*.tsbuildinfo
+
+# firebase local/deploy artifacts
+.firebase/
+.firebase-debug.log
+firebase-debug.log
+
+# env & secrets
 .env*
 !.env.example
-.vscode/
 /keys
+serviceAccountKey*.json
+
+# misc
+*.log
+.DS_Store
+.vscode/
+backups/
+.modified
