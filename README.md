@@ -8,6 +8,9 @@ Powersport dealer management system. Manages the pipeline from auction purchase 
 
 | Document | What it covers |
 |---|---|
+| [`docs/VINTRA_PRD.md`](docs/VINTRA_PRD.md) | **Authoritative product requirements** — Release 1 scope and business rules |
+| [`docs/VINTRA_MIGRATION_PLAN.md`](docs/VINTRA_MIGRATION_PLAN.md) | Firebase → Supabase/Vercel migration: sequence, feature matrix, cutover |
+| [`CLAUDE.md`](CLAUDE.md) | Permanent build conventions and non-negotiable business rules |
 | [`docs/REPO-AUDIT.md`](docs/REPO-AUDIT.md) | Which repo held what, how they related, what was consolidated |
 | [`docs/SYSTEM-OVERVIEW.md`](docs/SYSTEM-OVERVIEW.md) | How the system works today, code health, migration notes |
 | [`docs/legacy/`](docs/legacy/) | Specs and domain models from earlier builds — input for the rebuild |
