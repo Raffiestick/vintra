@@ -123,7 +123,7 @@ Acceptance gate for Phase 1: RizeUp can run one real auction purchase end-to-end
 1. Rehearsal migration → staging Supabase project; RizeUp runs a parallel week if practical
 2. Freeze Firebase writes → final migration run → verification → DNS/entry point to Vercel
 3. Firebase kept read-only for 60 days, then decommissioned
-4. Old repos archived per the classification table; `vintra` default branch set to `main`; repo flipped private
+4. Old repos archived per the classification table; **`VintraOS` (private) is the canonical repo going forward** — it carries the full consolidated history; `vintra` (public) freezes alongside the other references
 
 ### Phases 2–5
 
@@ -135,8 +135,8 @@ Per PRD "Later phases" — each phase gets its own plan when its predecessor shi
 
 | Risk | Mitigation |
 |---|---|
-| PDF fidelity vs existing invoices | Re-author in react-pdf against a printed sample of the current output; Robert signs off before cutover |
-| Company address/email discrepancy (66741 vs 66471) | Blocked as a launch item in PRD §5 — confirm before first production invoice |
+| PDF fidelity vs existing invoices | Re-author in react-pdf against the approved sample invoice `11-0001` (docs/samples/); Robert signs off before cutover |
+| ~~Company address/email discrepancy~~ | **Resolved 2026-08-05:** PO Box 66741 / rizeupv@gmail.com confirmed; T&C updated to real terms (4% late after 3 days, 10-day grace then $100/vehicle/day) |
 | Firestore data quality (typo'd VINs as doc IDs) | Migration script flags un-parseable/duplicate VINs for manual review instead of silently importing |
 | Scope creep from feature-donor repos | Feature matrix above is the contract; anything not in it is a phase 2+ ticket |
 | Single operator, no staging discipline historically | Small PRs, deploy previews on Vercel, migrations only via files in `supabase/migrations/` |

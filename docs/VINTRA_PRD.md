@@ -4,6 +4,14 @@
 **Date:** 2026-08-05
 **Owner:** Robert Raff, RizeUp Ventures, LLC
 
+| Fact | Value |
+|---|---|
+| App name | **Vintra** |
+| Repository | **`Raffiestick/VintraOS`** (private) |
+| Live domain | **https://vintra.app** (points to Vercel at cutover) |
+| Initial Super Admin | Robert Raff — robert.raff@me.com |
+| Primary auction source | National Powersport Auctions (NPA), buyer #128011 |
+
 This document defines product behavior and requirements. It distinguishes three things:
 
 1. **What already exists** — see `SYSTEM-OVERVIEW.md` and the feature matrix in `VINTRA_MIGRATION_PLAN.md`
@@ -76,6 +84,8 @@ Admins can:
 
 > Prior art: the staging → review → commit flow in the current build (`stagingInvoices` → `processStagedUnit`) is the correct shape and carries over. The NPA regex parser is Phase 3 input, not Release 1.
 
+**Reference input:** real NPA invoices are preserved in `docs/samples/` (VintraOS repo). Confirmed intake fields per line item — AUC# (with ONLINE/SCAST sale channel), STOCK#, VIN, year/make/model, mileage [color], sale location, title info (e.g. `MI TITLE`, `IN REPO TITLE`, `WI TITLE`, `BOS ONLY`), item price, buyer fee, online fee, per-unit sub-total. Invoice-level: invoice number, date, buyer number, adjustments, tax, doc/license/other fees, total due, and an alert line for title signing instructions (e.g. "SIGN TITLES: DOLPHIN CHASERS BOAT RENTALS LLC"). The manual-entry form and the Phase 3 extraction schema must both cover exactly this field set.
+
 ### 4. Dynamic inventory
 
 Common fields for every unit:
@@ -120,20 +130,31 @@ Company block on every invoice:
 
 ```
 RizeUp Ventures, LLC
-235 Cory Ave.
-#66471
-St. Pete Beach, FL 33706
+Wholesale Powersport Dealer
+PO Box 66741
+St Pete Beach, FL 33706
 Phone: 616-318-1991
 Email: rizeupv@gmail.com
 ```
 
-> ⚠️ **Discrepancy to confirm before first production invoice:** the existing code hardcodes `PO BOX 66741` and `admin@rizeupventures.com`; this PRD specifies `235 Cory Ave. #66471` and `rizeupv@gmail.com`. Note the transposed digits (66741 vs 66471) — one of the two sources has a typo. The PRD version is treated as authoritative pending Robert's confirmation. Either way, the company block becomes **configuration, not hardcode**.
+> ✅ **Confirmed by Robert 2026-08-05** (resolves the earlier discrepancy — PO Box 66741 is correct; the email is `rizeupv@gmail.com`, replacing the legacy `admin@rizeupventures.com`). The company block is **configuration, not hardcode**.
 
-Required invoice footer (verbatim):
+**Reference output:** invoice `11-0001` to Pulse Powersports (`docs/samples/` in the VintraOS repo) is the approved format. The generated PDF must match it:
 
-> ALL SALES FINAL. VEHICLES SOLD AS-IS, WHERE-IS. NO RETURNS/EXCHANGES.
-> MAKE PAYABLE TO: RizeUp Ventures, LLC
-> A late payment fee of 2% will be applied to any overdue invoices. If units are not picked up within 10 business days of auction sale, a storage fee of $20 per day will be applied to each unit, per day.
+- **Invoice number** format `11-0001` (sequential)
+- Header fields: invoice no, invoice date, due date, **payment terms** (e.g. "BANK WIRE - DUE TODAY")
+- **Reference line** citing the source auction invoice number(s) and freight bill(s), plus pickup notes
+- Line items of two kinds: **vehicles** (VIN, year/make/model, mileage/color, sale location, single unit sub-total) and **fee lines** (e.g. transport fee, tied to a VIN)
+- Subtotal · Sales tax · Total due
+- **Payment instructions** block: bank wire only, payable to RizeUp Ventures, LLC; wire instructions provided separately for security
+- **Terms and conditions** (verbatim from the approved invoice):
+
+> **Late payment:** A fee equal to 4% of the total invoice will be assessed after 3 calendar days if the invoice remains unpaid.
+> **Storage:** Each vehicle includes a 10-day pickup grace period. After the grace period, storage is charged at $100 per vehicle, per day.
+> **Title delivery:** Titles will be properly executed within 3 business days after receipt by RizeUp Ventures, LLC and mailed to the buyer address on file.
+> **Final sale:** ALL SALES ARE FINAL. VEHICLES ARE SOLD AS-IS, WHERE-IS. NO RETURNS OR EXCHANGES.
+
+> Historical note: the legacy app's footer (2% late fee, $20/day storage) was copied from **NPA's own invoice footer** — those were NPA's terms toward RizeUp, not RizeUp's terms toward dealers. Do not resurrect them.
 
 Invoice math carries over from `functions/src/lib/invoice-math.ts` (validated logic):
 

@@ -24,11 +24,14 @@ Next.js App Router + TypeScript + Tailwind + shadcn/ui on **Vercel**. Postgres/A
 ## Non-negotiable business rules
 
 1. **Fees:** management fee defaults to **$100 and is editable per unit/invoice**; online fee defaults to **$0**. Invoice math is the ported `invoice-math` logic — auction charges (item + buyer fee + online fee) settle as one block, management fee settles separately, misc fees settle individually. `balanceDue = max(0, round(total − amountPaid, 2))`.
-2. **Invoice footer**, verbatim on every invoice PDF:
-   > ALL SALES FINAL. VEHICLES SOLD AS-IS, WHERE-IS. NO RETURNS/EXCHANGES.
-   > MAKE PAYABLE TO: RizeUp Ventures, LLC
-   > A late payment fee of 2% will be applied to any overdue invoices. If units are not picked up within 10 business days of auction sale, a storage fee of $20 per day will be applied to each unit, per day.
-3. **Company identity is configuration, never hardcoded.** ⚠️ Unresolved discrepancy: PRD says `235 Cory Ave. #66471` / `rizeupv@gmail.com`; legacy code says `PO BOX 66741` / `admin@rizeupventures.com`. Confirm with Robert before the first production invoice.
+2. **Invoice terms and conditions**, verbatim on every invoice PDF (from the approved sample invoice `11-0001`, see PRD §5):
+   > **Late payment:** A fee equal to 4% of the total invoice will be assessed after 3 calendar days if the invoice remains unpaid.
+   > **Storage:** Each vehicle includes a 10-day pickup grace period. After the grace period, storage is charged at $100 per vehicle, per day.
+   > **Title delivery:** Titles will be properly executed within 3 business days after receipt by RizeUp Ventures, LLC and mailed to the buyer address on file.
+   > **Final sale:** ALL SALES ARE FINAL. VEHICLES ARE SOLD AS-IS, WHERE-IS. NO RETURNS OR EXCHANGES.
+
+   Never resurrect the legacy footer (2% late fee, $20/day storage) — that text was copied from NPA's invoice and states NPA's terms, not RizeUp's.
+3. **Company identity is configuration, never hardcoded.** Confirmed values: RizeUp Ventures, LLC · PO Box 66741, St Pete Beach, FL 33706 · 616-318-1991 · rizeupv@gmail.com. Live domain: vintra.app. Initial Super Admin: robert.raff@me.com.
 4. **Financial history is append-only.** Credits/adjustments are new entries; voiding an invoice releases its units but never deletes the record. Sensitive actions (approvals, role changes, voids, fee edits, payments) write to `audit_log`.
 5. **AI never silently creates financial records.** Extraction always lands in a staging/review screen; a human commits.
 6. **Dealers see only their own data**, enforced by RLS policies, not application code.
